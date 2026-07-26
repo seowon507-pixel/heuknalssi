@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "node scripts/build-vercel.mjs",
-    "build:climate-normal": "node scripts/build-climate-normal.mjs"
+    "build:climate-normal": "node scripts/build-climate-normal.mjs",
+    "build:icons": "node scripts/build-icons.mjs"
   }
 }
