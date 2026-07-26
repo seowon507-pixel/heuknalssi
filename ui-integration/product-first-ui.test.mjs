@@ -60,6 +60,13 @@ test("온보딩은 복수 작물과 작물별 생육 상태를 날짜 추천값�
   assert.doesNotMatch(markup, /작물별 결과는 대시보드에서 바꿔 봅니다/);
   assert.doesNotMatch(markup, /검수된 연간 기준/);
   assert.match(markup, /id="growth-photo"[^>]*accept="image\/\*"/);
+  // capture 속성이 있으면 휴대폰에서 카메라가 바로 열려 사진첩·파일을 못 고른다
+  for (const id of ["growth-photo", "soil-test-photo"]) {
+    const tag = new RegExp(`<input id="${id}"[^>]*>`, "u").exec(markup)?.[0] ?? "";
+    assert.ok(tag !== "", `${id} 입력란이 없다`);
+    assert.doesNotMatch(tag, /\bcapture\b/u, `${id}에 capture가 있으면 카메라로 바로 넘어간다`);
+  }
+  assert.match(markup, /id="soil-test-photo"[^>]*accept="image\/\*,application\/pdf,\.pdf"/);
   assert.match(markup, /id="growth-settings"/);
   assert.match(html, /function recommendedGrowthStage/);
   assert.match(html, /`growth-\$\{crop\}`/);
