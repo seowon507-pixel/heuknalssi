@@ -828,12 +828,12 @@ test('unconfigured scientific sources fail closed and deterministic reports do n
   assert.equal(result.capabilities.smartfarm, 'DISABLED');
   assert.equal(result.capabilities.satellite, 'DISABLED');
 
+  // 서버리스에서 응답 후 작업이 얼어붙지 않도록 리포트는 응답 전에 끝낸다.
   const pending = await services.requestReport({
     ownerSessionId: 'owner-a',
     analysisId: result.analysisId,
   });
-  assert.equal(pending.analysis.report.state, 'PENDING');
-  await new Promise((resolve) => queueMicrotask(resolve));
+  assert.equal(pending.analysis.report.state, 'FALLBACK');
   const completed = await services.getAnalysis({
     ownerSessionId: 'owner-a',
     analysisId: result.analysisId,
@@ -1243,7 +1243,7 @@ test('successful analysis and report record the specified lifecycle transitions'
     ownerSessionId: 'owner-a',
     analysisId: created.analysisId,
   });
-  assert.equal(pending.analysis.lifecycle.currentState, 'REPORT_PENDING');
+  assert.equal(pending.analysis.lifecycle.currentState, 'COMPLETE');
   await new Promise((resolve) => queueMicrotask(resolve));
   const completed = await services.getAnalysis({
     ownerSessionId: 'owner-a',

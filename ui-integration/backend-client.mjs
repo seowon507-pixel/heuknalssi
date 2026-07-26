@@ -1858,6 +1858,23 @@ function renderExplanation(analysis) {
     element("p", "", summary.title),
     element("p", "muted", summary.detail),
   );
+
+  // 확정된 분석 문장을 쉬운 말로 다시 쓴 결과. 검증을 통과한 경우에만 붙인다.
+  const plain = analysis?.report?.plainLanguage;
+  if (plain?.state === "READY" && plain.paragraphs?.length) {
+    const easy = element("div", "plain-report");
+    easy.append(
+      element("h3", "", "쉬운 말로 다시 읽기 "),
+      ...plain.paragraphs.map((text) => element("p", "", text)),
+      element(
+        "p",
+        "formula-note",
+        "위 분석 결과를 초보 농업인이 읽기 쉬운 말로 다시 쓴 것입니다. 새로운 진단이나 처방은 만들지 않으며, 분석에 없는 숫자가 나오면 자동으로 버려집니다.",
+      ),
+    );
+    explanation.append(easy);
+  }
+
   grid.classList.add("is-user-summary");
   grid.replaceChildren(explanation);
 }

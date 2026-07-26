@@ -29,6 +29,10 @@ import {
   unavailableModule,
 } from './disclosure.js';
 import { latestKmaMidIssue, latestKmaShortIssue } from './forecast-issue.js';
+import { buildPlainReport } from './plain-report.js';
+
+// 쉬운 말 리포트에 쓸 최대 시간. 넘으면 템플릿만 쓴다.
+const PLAIN_REPORT_BUDGET_MS = 6_000;
 import {
   resolveLocationKeys,
   validateVerifiedLocationMappings,
@@ -619,18 +623,29 @@ export function createApplicationServices({
       clock() + reportLockTtlMs,
     );
     persistAnalysisRecord(analysisId, record);
-    queueMicrotask(() => {
-      const current = analysisStore.get(analysisId);
-      if (!current || current.ownerSessionId !== ownerSessionId) return;
-      current.result.report = {
-        state: 'FALLBACK',
-        value: buildDeterministicReport(current.result),
-      };
-      appendLifecycleTransition(current.result, 'COMPLETE', clock);
-      current.reportPending = false;
-      persistAnalysisRecord(analysisId, current);
+    // 서버리스에서는 응답을 보낸 뒤 백그라운드 작업이 얼어붙는다.
+    // 리포트는 응답 전에 끝내고, 지연이 길어지면 템플릿으로 되돌린다.
+    const template = buildDeterministicReport(record.result);
+    const plain = await buildPlainReport({
+      analysis: record.result,
+      assistant,
+      deadlineAt: clock() + PLAIN_REPORT_BUDGET_MS,
     });
-    return { analysis: structuredClone(record.result), started: true };
+    const current = analysisStore.get(analysisId) ?? record;
+    current.result.report = {
+      state: plain.state === 'READY' ? 'READY' : 'FALLBACK',
+      value: template,
+      plainLanguage: {
+        state: plain.state,
+        reason: plain.reason,
+        paragraphs: plain.paragraphs,
+        basis: 'REWRITTEN_FROM_CONFIRMED_ANALYSIS',
+      },
+    };
+    appendLifecycleTransition(current.result, 'COMPLETE', clock);
+    current.reportPending = false;
+    persistAnalysisRecord(analysisId, current);
+    return { analysis: structuredClone(current.result), started: true };
   }
 
   function persistAnalysisRecord(analysisId, record) {
@@ -751,7 +766,7 @@ export function createApplicationServices({
         smartfarm: smartfarmState,
         satellite: capabilities.satellite ?? 'DISABLED',
         persistence: capabilities.persistence ?? 'NOT_AVAILABLE',
-        report: 'DETERMINISTIC_TEMPLATE',
+        report: 'TEMPLATE_PLUS_PLAIN_REWRITE',
         assistant: capabilities.assistant ?? assistant?.state ?? 'FALLBACK',
       },
       guarantees: {
