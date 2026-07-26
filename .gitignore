@@ -1,0 +1,25 @@
+.DS_Store
+*.mp4
+Screenshot*.png
+
+# Redundant or superseded local visual-QA captures
+product_first_baseline/*_desktop.png
+product_first_baseline/*_viewport.png
+product_first_baseline/11_target_dashboard_v1.png
+product_first_baseline/13_dashboard_fullpage_desktop.jpg
+
+.env
+.env.local
+.env.*
+!.env.example
+
+node_modules/
+coverage/
+*.log
+
+# Vercel
+.vercel/
+public/
+.vercel
+.env*
+!.env.example

@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 1123" width="794" height="1123" role="img" aria-label="시연용 예시 비료 사용 처방서">
+  <title>비료 사용 처방서 (앱 시연용 예시)</title>
+  <desc>흙날씨 농지 진단 앱 시연을 위해 만든 예시 문서입니다. 실제 토양검정 결과가 아닙니다.</desc>
+
+  <style>
+    .k     { font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; }
+    .title { font-size: 27px; font-weight: 700; letter-spacing: -0.5px; }
+    .sub   { font-size: 12px; fill: #55605A; }
+    .lbl   { font-size: 12px; fill: #55605A; }
+    .val   { font-size: 13px; font-weight: 600; fill: #1B211D; }
+    .th    { font-size: 12px; font-weight: 700; fill: #23312A; }
+    .td    { font-size: 13px; fill: #1B211D; }
+    .tdb   { font-size: 13px; font-weight: 700; fill: #1B211D; }
+    .sect  { font-size: 14px; font-weight: 700; fill: #23312A; }
+    .foot  { font-size: 10.5px; fill: #6B7671; }
+    .ok    { font-size: 12px; font-weight: 700; fill: #1F6B36; }
+    .high  { font-size: 12px; font-weight: 700; fill: #A8641B; }
+  </style>
+
+  <rect width="794" height="1123" fill="#FFFFFF"/>
+
+  <!-- 시연용임을 지울 수 없게 문서 전체에 표시 -->
+  <text class="k" x="397" y="600" text-anchor="middle" transform="rotate(-27 397 600)"
+        font-size="96" font-weight="800" fill="#1F6B36" opacity="0.09">예시 · SAMPLE</text>
+
+  <!-- 머리말 -->
+  <text class="k title" x="397" y="86" text-anchor="middle">비료 사용 처방서</text>
+  <text class="k sub"   x="397" y="108" text-anchor="middle">토양검정 결과에 따른 작물별 비료 사용 처방</text>
+  <line x1="60" y1="126" x2="734" y2="126" stroke="#23312A" stroke-width="2"/>
+
+  <text class="k sub" x="60"  y="148">발급기관 : 안동시농업기술센터 종합검정실</text>
+  <text class="k sub" x="734" y="148" text-anchor="end">처방서번호 : SAMPLE-2026-0315-0417</text>
+
+  <!-- 신청 정보 -->
+  <text class="k sect" x="60" y="188">1. 신청 정보</text>
+  <rect x="60" y="200" width="674" height="96" fill="#F7FAF7" stroke="#CFE0D3"/>
+  <line x1="60" y1="232" x2="734" y2="232" stroke="#E1EAE3"/>
+  <line x1="60" y1="264" x2="734" y2="264" stroke="#E1EAE3"/>
+  <line x1="200" y1="200" x2="200" y2="296" stroke="#E1EAE3"/>
+  <line x1="460" y1="200" x2="460" y2="296" stroke="#E1EAE3"/>
+  <line x1="580" y1="200" x2="580" y2="296" stroke="#E1EAE3"/>
+
+  <text class="k lbl" x="76"  y="221">농 가 명</text>
+  <text class="k val" x="216" y="221">홍길동 (예시)</text>
+  <text class="k lbl" x="476" y="221">시료번호</text>
+  <text class="k val" x="596" y="221">A-2026-0417</text>
+
+  <text class="k lbl" x="76"  y="253">필지 소재지</text>
+  <text class="k val" x="216" y="253">경상북도 안동시 퇴계로 115</text>
+  <text class="k lbl" x="476" y="253">재배작물</text>
+  <text class="k val" x="596" y="253">사과 (노지)</text>
+
+  <text class="k lbl" x="76"  y="285">검정 의뢰일</text>
+  <text class="k val" x="216" y="285">2026년 3월 2일</text>
+  <text class="k lbl" x="476" y="285">검정 완료일</text>
+  <text class="k val" x="596" y="285">2026년 3월 15일</text>
+
+  <!-- 화학성 분석 결과 -->
+  <text class="k sect" x="60" y="336">2. 토양 화학성 분석 결과</text>
+
+  <rect x="60" y="348" width="674" height="30" fill="#EDF3EE" stroke="#CFE0D3"/>
+  <rect x="60" y="378" width="674" height="222" fill="none" stroke="#CFE0D3"/>
+  <line x1="330" y1="348" x2="330" y2="600" stroke="#E1EAE3"/>
+  <line x1="452" y1="348" x2="452" y2="600" stroke="#E1EAE3"/>
+  <line x1="612" y1="348" x2="612" y2="600" stroke="#E1EAE3"/>
+
+  <text class="k th" x="76"  y="368">검정 항목</text>
+  <text class="k th" x="346" y="368">단위</text>
+  <text class="k th" x="468" y="368">검정값</text>
+  <text class="k th" x="628" y="368">적정범위 / 판정</text>
+
+  <line x1="60" y1="410" x2="734" y2="410" stroke="#E1EAE3"/>
+  <text class="k td"  x="76"  y="401">산도 (pH, 1:5)</text>
+  <text class="k td"  x="346" y="401">—</text>
+  <text class="k tdb" x="468" y="401">6.1</text>
+  <text class="k ok"  x="628" y="401">6.0 ~ 7.0  적정</text>
+
+  <line x1="60" y1="442" x2="734" y2="442" stroke="#E1EAE3"/>
+  <text class="k td"  x="76"  y="433">전기전도도 (EC)</text>
+  <text class="k td"  x="346" y="433">dS/m</text>
+  <text class="k tdb" x="468" y="433">0.8</text>
+  <text class="k ok"  x="628" y="433">2.0 이하  적정</text>
+
+  <line x1="60" y1="474" x2="734" y2="474" stroke="#E1EAE3"/>
+  <text class="k td"  x="76"  y="465">유기물 (OM)</text>
+  <text class="k td"  x="346" y="465">g/kg</text>
+  <text class="k tdb" x="468" y="465">26</text>
+  <text class="k ok"  x="628" y="465">20 ~ 30  적정</text>
+
+  <line x1="60" y1="506" x2="734" y2="506" stroke="#E1EAE3"/>
+  <text class="k td"  x="76"  y="497">유효인산 (Av.P₂O₅)</text>
+  <text class="k td"  x="346" y="497">mg/kg</text>
+  <text class="k tdb" x="468" y="497">350</text>
+  <text class="k ok" x="628" y="497">300 ~ 550  적정</text>
+
+  <line x1="60" y1="538" x2="734" y2="538" stroke="#E1EAE3"/>
+  <text class="k td"  x="76"  y="529">치환성 칼륨 (K)</text>
+  <text class="k td"  x="346" y="529">cmol⁺/kg</text>
+  <text class="k tdb" x="468" y="529">0.55</text>
+  <text class="k ok"  x="628" y="529">0.50 ~ 0.80  적정</text>
+
+  <line x1="60" y1="570" x2="734" y2="570" stroke="#E1EAE3"/>
+  <text class="k td"  x="76"  y="561">치환성 칼슘 (Ca)</text>
+  <text class="k td"  x="346" y="561">cmol⁺/kg</text>
+  <text class="k tdb" x="468" y="561">5.2</text>
+  <text class="k ok"  x="628" y="561">5.0 ~ 6.0  적정</text>
+
+  <text class="k td"  x="76"  y="593">치환성 마그네슘 (Mg)</text>
+  <text class="k td"  x="346" y="593">cmol⁺/kg</text>
+  <text class="k tdb" x="468" y="593">1.8</text>
+  <text class="k ok"  x="628" y="593">1.5 ~ 2.0  적정</text>
+
+  <!-- 시비 처방 -->
+  <text class="k sect" x="60" y="642">3. 비료 사용 처방량 (10a 기준)</text>
+
+  <rect x="60" y="654" width="674" height="30" fill="#EDF3EE" stroke="#CFE0D3"/>
+  <rect x="60" y="684" width="674" height="96" fill="none" stroke="#CFE0D3"/>
+  <line x1="228" y1="654" x2="228" y2="780" stroke="#E1EAE3"/>
+  <line x1="396" y1="654" x2="396" y2="780" stroke="#E1EAE3"/>
+  <line x1="564" y1="654" x2="564" y2="780" stroke="#E1EAE3"/>
+  <line x1="60" y1="716" x2="734" y2="716" stroke="#E1EAE3"/>
+  <line x1="60" y1="748" x2="734" y2="748" stroke="#E1EAE3"/>
+
+  <text class="k th" x="76"  y="674">구분</text>
+  <text class="k th" x="244" y="674">질소 (N)</text>
+  <text class="k th" x="412" y="674">인산 (P₂O₅)</text>
+  <text class="k th" x="580" y="674">칼리 (K₂O)</text>
+
+  <text class="k td"  x="76"  y="707">밑거름 (kg)</text>
+  <text class="k tdb" x="244" y="707">5.4</text>
+  <text class="k tdb" x="412" y="707">0.0</text>
+  <text class="k tdb" x="580" y="707">4.1</text>
+
+  <text class="k td"  x="76"  y="739">웃거름 (kg)</text>
+  <text class="k tdb" x="244" y="739">3.6</text>
+  <text class="k tdb" x="412" y="739">—</text>
+  <text class="k tdb" x="580" y="739">2.7</text>
+
+  <text class="k td"  x="76"  y="771">퇴비 (kg)</text>
+  <text class="k tdb" x="244" y="771">1,500</text>
+  <text class="k td"  x="412" y="771" fill="#55605A">석회 (kg)</text>
+  <text class="k tdb" x="580" y="771">0 (불필요)</text>
+
+  <!-- 종합 의견 -->
+  <text class="k sect" x="60" y="822">4. 종합 의견</text>
+  <rect x="60" y="834" width="674" height="104" fill="#F7FAF7" stroke="#CFE0D3"/>
+  <text class="k td" x="76" y="860">· 산도(pH 6.1)는 사과 재배 적정범위에 들어 석회 시용이 필요하지 않습니다.</text>
+  <text class="k td" x="76" y="886">· 유효인산·칼륨·칼슘·마그네슘 모두 적정범위 안에 있습니다.</text>
+  <text class="k td" x="76" y="912">· 유기물 함량 유지를 위해 퇴비는 처방량대로 시용하시기 바랍니다.</text>
+
+  <!-- 꼬리말 -->
+  <line x1="60" y1="982" x2="734" y2="982" stroke="#CFE0D3"/>
+  <text class="k foot" x="60" y="1004">적정범위는 흙토람 토양검정 기준(과수)입니다. 같은 필지라도 채취 지점에 따라 값이 달라질 수 있습니다.</text>
+  <text class="k foot" x="60" y="1022">문의 : 안동시농업기술센터 종합검정실</text>
+
+  <rect x="60" y="1042" width="674" height="46" fill="#FFF4E5" stroke="#E0B071"/>
+  <text class="k" x="76" y="1062" font-size="12" font-weight="700" fill="#8A5A12">※ 이 문서는 앱 시연을 위해 만든 예시입니다.</text>
+  <text class="k" x="76" y="1080" font-size="11" fill="#8A5A12">실제 토양검정 결과가 아니며, 실제 발급된 공문서가 아닙니다. 농사 판단에 사용하지 마십시오.</text>
+</svg>

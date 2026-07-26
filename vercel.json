@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "node scripts/build-vercel.mjs",
+  "outputDirectory": "public",
+  "functions": {
+    "api/gateway.js": {
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/:apiPath*",
+      "destination": "/api/gateway?__vpath=/api/:apiPath*"
+    },
+    {
+      "source": "/__integration/config",
+      "destination": "/api/gateway?__vpath=/api/__integration/config"
+    }
+  ]
+}

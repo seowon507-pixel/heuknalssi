@@ -1,0 +1,14 @@
+{
+  "name": "heuknalssi-vercel",
+  "version": "3.0.0",
+  "private": true,
+  "description": "흙날씨.진단 — Vercel 배포 래퍼 (정적 UI + backend-v3 서버리스 함수)",
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "build": "node scripts/build-vercel.mjs",
+    "build:climate-normal": "node scripts/build-climate-normal.mjs"
+  }
+}

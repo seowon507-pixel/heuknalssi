@@ -1,0 +1,24 @@
+# 로컬 키 파일은 절대 업로드하지 않는다. 값은 Vercel 환경변수로만 주입한다.
+.env
+.env.*
+
+# 배포에 필요 없는 기획·검증 산출물은 업로드하지 않는다.
+*.md
+!README.md
+audit/
+product_first_baseline/
+product_first_validation/
+backend-v3/test/
+# 평년값 원본 엑셀은 빌드 소스일 뿐 런타임에 필요 없다.
+# 변환 결과(backend-v3/runtime/climate-normal-1991-2020.json)만 배포된다.
+*.xlsx
+*.png
+*.jpg
+# PWA 아이콘은 빌드가 public/으로 복사하므로 업로드해야 한다.
+!ui-integration/icons/*.png
+*.mp4
+public/
+coverage/
+
+# 시연용 예시 결과지 (배포 불필요)
+ddt.*
