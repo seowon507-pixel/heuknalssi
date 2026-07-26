@@ -16,6 +16,7 @@ import { createHttpHandler } from '../src/api/index.js';
 import { createApplicationServices } from '../src/application/index.js';
 import { createRuleRegistry } from '../src/domain/index.js';
 import { createDeviceBackupStore } from '../src/infrastructure/index.js';
+import { createWebPushSender } from '../src/infrastructure/web-push.js';
 import { loadConfig } from './config.js';
 
 export function createBackend({
@@ -166,6 +167,8 @@ export function createBackend({
         // 계정키는 12자리 무작위값이라 대입 시도를 막으려면 조회를 조여야 한다.
         'backup.save': { limit: 10, windowMs: 60_000 },
         'backup.restore': { limit: 5, windowMs: 60_000 },
+        // 시험 알림은 사람이 버튼을 누를 때만 나간다.
+        'push.test': { limit: 6, windowMs: 60_000 },
       },
     },
     clock,
@@ -173,6 +176,13 @@ export function createBackend({
     deviceBackup: createDeviceBackupStore({
       url: config.deviceBackupConfig.url,
       serviceKey: config.deviceBackupConfig.serviceKey,
+      fetchImpl,
+      now: clock,
+    }),
+    webPush: createWebPushSender({
+      publicKey: config.webPushConfig.publicKey,
+      privateKey: config.webPushConfig.privateKey,
+      subject: config.webPushConfig.subject,
       fetchImpl,
       now: clock,
     }),

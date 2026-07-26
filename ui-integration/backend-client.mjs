@@ -156,6 +156,8 @@ class BackendApi {
   constructor(baseUrl = "") {
     this.baseUrl = baseUrl;
     this.csrfToken = null;
+    // 서버가 푸시 발신자 공개키를 주면 앱이 꺼져 있어도 알림을 보낼 수 있다.
+    this.pushPublicKey = null;
   }
 
   async startSession(force = false) {
@@ -165,6 +167,18 @@ class BackendApi {
       throw new ApiRequestError({ code: "SESSION_INVALID", status: 502 });
     }
     this.csrfToken = session.csrfToken;
+    this.pushPublicKey =
+      typeof session.pushPublicKey === "string" && session.pushPublicKey !== ""
+        ? session.pushPublicKey
+        : null;
+  }
+
+  async sendTestPush(subscription, delaySeconds) {
+    return this.request("/api/push/test", {
+      method: "POST",
+      body: { subscription, delaySeconds },
+      csrf: true,
+    });
   }
 
   async preflight() {
@@ -3283,6 +3297,52 @@ function todoNotificationCopy() {
   };
 }
 
+/** VAPID 공개키는 base64url 문자열로 오지만 구독에는 바이트 배열이 필요하다. */
+function decodeVapidKey(value) {
+  const padded = String(value).replace(/-/gu, "+").replace(/_/gu, "/");
+  const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "="));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+/**
+ * 푸시 구독을 확보한다. 앱을 나가 있어도 알림이 뜨려면 페이지 타이머가
+ * 아니라 이 구독으로 서버가 밀어 넣어야 한다.
+ *
+ * 아이폰은 홈 화면에 추가한 앱에서만 푸시를 허용한다. 사파리 탭에서 열면
+ * pushManager가 아예 없거나 구독이 거부되므로 그대로 null을 돌려준다.
+ */
+async function ensurePushSubscription() {
+  if (!api.pushPublicKey) return null;
+  const registration = await registerServiceWorker();
+  if (!registration?.pushManager) return null;
+  try {
+    const existing = await registration.pushManager.getSubscription();
+    // 서버 키가 바뀌었으면 옛 구독으로는 보낼 수 없다. 지우고 다시 받는다.
+    if (existing) {
+      const applied = existing.options?.applicationServerKey;
+      const sameKey =
+        !applied ||
+        base64UrlFromBuffer(applied) === api.pushPublicKey;
+      if (sameKey) return existing.toJSON();
+      await existing.unsubscribe();
+    }
+    const created = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: decodeVapidKey(api.pushPublicKey),
+    });
+    return created.toJSON();
+  } catch {
+    // 권한 거부·미지원. 화면 타이머로 물러선다.
+    return null;
+  }
+}
+
+function base64UrlFromBuffer(buffer) {
+  let binary = "";
+  for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/gu, "-").replace(/\//gu, "_").replace(/=+$/u, "");
+}
+
 async function showNotificationNow(copy) {
   const registration = await registerServiceWorker();
   if (registration?.active) {
@@ -3437,7 +3497,34 @@ function setupNotificationPanel() {
       }
     }
     await registerServiceWorker();
-    if (status) status.textContent = "10초 뒤에 시험 알림이 갑니다. 앱을 닫지 마세요.";
+
+    // 서버 푸시로 보내야 홈 화면으로 나가 있어도 배너가 뜬다. 페이지
+    // 타이머는 앱을 나가는 순간 멈춰서 아무것도 오지 않는다.
+    const subscription = await ensurePushSubscription();
+    if (subscription) {
+      if (status) {
+        status.textContent = "10초 뒤에 알림이 갑니다. 지금 홈 화면으로 나가 보세요.";
+      }
+      try {
+        await api.sendTestPush(subscription, 10);
+        if (status) status.textContent = "시험 알림을 보냈습니다.";
+      } catch (error) {
+        if (status) {
+          status.textContent =
+            error?.code === "PUSH_SUBSCRIPTION_EXPIRED"
+              ? "알림 권한이 끊겼습니다. 알림을 다시 허용해 주세요."
+              : "시험 알림을 보내지 못했습니다. 잠시 뒤 다시 눌러 주세요.";
+        }
+      }
+      return;
+    }
+
+    // 푸시를 쓸 수 없는 환경(홈 화면에 추가하지 않은 아이폰 등)에서는
+    // 앱을 열어 둔 동안에만 뜬다는 것을 분명히 알린다.
+    if (status) {
+      status.textContent =
+        "10초 뒤에 시험 알림이 갑니다. 이 기기에서는 앱을 열어 두어야 뜹니다.";
+    }
     setTimeout(() => {
       const copy = todoNotificationCopy();
       void showNotificationNow({

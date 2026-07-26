@@ -112,6 +112,21 @@ const ERROR_DEFINITIONS = Object.freeze({
     message: "The analysis was not found.",
     retryable: false,
   },
+  PUSH_NOT_CONFIGURED: {
+    status: 503,
+    message: "Push notifications are not configured on this deployment.",
+    retryable: false,
+  },
+  PUSH_SUBSCRIPTION_EXPIRED: {
+    status: 410,
+    message: "The push subscription is no longer valid. Allow notifications again.",
+    retryable: false,
+  },
+  PUSH_SEND_FAILED: {
+    status: 502,
+    message: "The push service refused the notification.",
+    retryable: true,
+  },
   NOT_FOUND: {
     status: 404,
     message: "The requested API route was not found.",
