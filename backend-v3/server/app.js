@@ -156,9 +156,11 @@ export function createBackend({
       logger,
       requestTimeoutMs: 15_000,
       rateLimits: {
-        'locations.search': { limit: 30, windowMs: 60_000 },
-        'analyses.create': { limit: 10, windowMs: 60_000 },
-        'analyses.report': { limit: 5, windowMs: 60_000 },
+        // 대상 작물이 5종이라 한 번 조작에 작물 수만큼 호출된다.
+        // 5종을 두세 번 다시 분석해도 막히지 않도록 잡는다.
+        'locations.search': { limit: 60, windowMs: 60_000 },
+        'analyses.create': { limit: 30, windowMs: 60_000 },
+        'analyses.report': { limit: 30, windowMs: 60_000 },
         'analyses.assistant': { limit: 20, windowMs: 60_000 },
         'health.preflight': { limit: 30, windowMs: 60_000 },
         // 계정키는 12자리 무작위값이라 대입 시도를 막으려면 조회를 조여야 한다.

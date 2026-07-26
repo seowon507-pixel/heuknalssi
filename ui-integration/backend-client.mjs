@@ -140,13 +140,15 @@ const ERROR_MESSAGES = Object.freeze({
 });
 
 class ApiRequestError extends Error {
-  constructor({ code, status = 0, requestId = null, details = null }) {
+  constructor({ code, status = 0, requestId = null, details = null, retryAfterSeconds = null }) {
     super(code || "API_ERROR");
     this.name = "ApiRequestError";
     this.code = code || "API_ERROR";
     this.status = status;
     this.requestId = requestId;
     this.details = details;
+    // 서버가 알려 준 재시도 대기 시간. 사용자에게 몇 초인지 알려 준다.
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -249,11 +251,15 @@ class BackendApi {
       });
       const body = await readResponseBody(response);
       if (!response.ok) {
+        const retryAfterHeader = Number(response.headers.get("Retry-After"));
         const apiError = new ApiRequestError({
           code: body?.error?.code ?? body?.code ?? `HTTP_${response.status}`,
           status: response.status,
           requestId: body?.error?.requestId ?? body?.requestId ?? null,
           details: body?.error?.details ?? body?.details ?? null,
+          retryAfterSeconds: Number.isFinite(retryAfterHeader) && retryAfterHeader > 0
+            ? Math.ceil(retryAfterHeader)
+            : null,
         });
         const sessionExpired = ["SESSION_REQUIRED", "SESSION_INVALID"].includes(
           apiError.code,
@@ -4027,6 +4033,12 @@ function locationResolutionLabel(mode) {
 
 function errorMessage(error) {
   const code = error?.code ?? "UNKNOWN_ERROR";
+  if (code === "RATE_LIMITED") {
+    const wait = error?.retryAfterSeconds;
+    return wait
+      ? `요청이 몰려 잠시 쉬어야 합니다. ${wait}초 뒤에 다시 눌러 주세요.`
+      : "요청이 몰려 잠시 쉬어야 합니다. 잠시 뒤 다시 눌러 주세요.";
+  }
   const base =
     ERROR_MESSAGES[code] ??
     (code.startsWith("INVALID_")

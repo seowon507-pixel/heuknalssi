@@ -176,7 +176,15 @@ function mappingAreaCodeCandidates(location) {
   for (const code of rawCodes) {
     candidates.push(code);
     if (code.length === 10) {
-      candidates.push(`${code.slice(0, 5)}00000`, code.slice(0, 5));
+      // 법정동코드는 시도(2) + 시군구(3) + 읍면동(5)이다.
+      // 구가 있는 시는 5자리 접두어가 구 코드라(수원 팔달구 41115)
+      // 시 단위 매핑(4111000000)과 어긋난다. 시·군 단위인 4자리
+      // 접두어까지 후보에 넣어 같은 시의 어느 구에서든 찾게 한다.
+      candidates.push(
+        `${code.slice(0, 5)}00000`,
+        code.slice(0, 5),
+        `${code.slice(0, 4)}000000`,
+      );
     }
   }
   return [...new Set(candidates)];

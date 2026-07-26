@@ -2831,3 +2831,41 @@ test('SmartFarm provider failure does not block a completed core analysis', asyn
   assert.equal(result.conditionState, 'NOT_APPLICABLE');
   assert.equal(result.riskState, 'READY');
 });
+
+test('구가 있는 시는 어느 구 주소로도 시 단위 검수 매핑을 찾는다', async () => {
+  const { resolveLocationKeys } = await import('../src/application/index.js');
+  const { REVIEWED_LOCATION_MAPPINGS } = await import(
+    '../runtime/reviewed-location-mappings.js'
+  );
+  const at = () => new Date('2026-07-27T00:00:00.000Z');
+
+  // 수원시 팔달구 매산로1가. 5자리 접두어는 41115(팔달구)라
+  // 시 단위 키 4111000000과 직접 일치하지 않는다.
+  const paldal = resolveLocationKeys(
+    {
+      resolutionMode: 'ADDRESS_RESOLVED',
+      legalDongCode: '4111514100',
+      latitude: 37.2636,
+      longitude: 127.0286,
+    },
+    REVIEWED_LOCATION_MAPPINGS,
+    { now: at },
+  );
+  assert.equal(paldal.verifiedSoilAreaCode, '4111000000');
+  assert.equal(paldal.observationStationId, '119');
+  assert.equal(paldal.midForecastRegionIds.temperatureRegId, '11B20601');
+
+  // 용인시 처인구도 같은 방식으로 시 단위 매핑을 찾아야 한다.
+  const yongin = resolveLocationKeys(
+    {
+      resolutionMode: 'ADDRESS_RESOLVED',
+      legalDongCode: '4146110300',
+      latitude: 37.2342,
+      longitude: 127.2015,
+    },
+    REVIEWED_LOCATION_MAPPINGS,
+    { now: at },
+  );
+  assert.equal(yongin.verifiedSoilAreaCode, '4146000000');
+  assert.equal(yongin.midForecastRegionIds.temperatureRegId, '11B20612');
+});

@@ -30,15 +30,17 @@ const DEFAULT_RATE_LIMITS = Object.freeze({
   "health.preflight": { limit: 30, windowMs: 60_000 },
 });
 
+// 작물 5종을 한 번에 분석하면 그만큼 호출된다. 같은 공유망(학교·기관)에서
+// 여러 명이 동시에 써도 막히지 않도록 실사용 기준으로 잡는다.
 const DEFAULT_IP_RATE_LIMITS = Object.freeze({
-  "session.get": { limit: 30, windowMs: 60_000 },
-  "locations.search": { limit: 30, windowMs: 60_000 },
-  "locations.current": { limit: 10, windowMs: 60_000 },
-  "analyses.create": { limit: 10, windowMs: 60_000 },
-  "analyses.get": { limit: 60, windowMs: 60_000 },
-  "analyses.report": { limit: 5, windowMs: 60_000 },
+  "session.get": { limit: 60, windowMs: 60_000 },
+  "locations.search": { limit: 60, windowMs: 60_000 },
+  "locations.current": { limit: 20, windowMs: 60_000 },
+  "analyses.create": { limit: 30, windowMs: 60_000 },
+  "analyses.get": { limit: 120, windowMs: 60_000 },
+  "analyses.report": { limit: 30, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
-  "health.preflight": { limit: 30, windowMs: 60_000 },
+  "health.preflight": { limit: 60, windowMs: 60_000 },
 });
 
 const ROUTES = Object.freeze([
