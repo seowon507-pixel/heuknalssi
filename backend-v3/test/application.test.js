@@ -99,6 +99,7 @@ function locationAdapter({
   resolutionMode = 'ADDRESS_RESOLVED',
   latitude = 37.25,
   longitude = 127.05,
+  fieldParcelLookupKey,
 } = {}) {
   return {
     id: 'kakao-fixture',
@@ -113,12 +114,27 @@ function locationAdapter({
               resolutionMode,
               latitude,
               longitude,
+              ...(resolutionMode === 'ADMIN_AREA_BROAD'
+                ? {
+                    administrativeRepresentative: {
+                      latitude,
+                      longitude,
+                      purpose: 'REGIONAL_FORECAST_ONLY',
+                    },
+                  }
+                : {}),
               legalDongCode10: '4111710500',
               adminAreaCode: '4111710500',
+              ...(fieldParcelLookupKey
+                ? { fieldParcelLookupKey }
+                : {}),
             },
           ],
         },
       });
+    },
+    async resolveCurrentLocation() {
+      return this.searchLocations();
     },
   };
 }
@@ -492,7 +508,7 @@ function analysisInput(candidateToken) {
 function verifiedMapping(overrides = {}) {
   return {
     provenance: { ...MAPPING_PROVENANCE },
-    soil: { verified: true, code: '41117' },
+    soil: { verified: true, code: '4111710500' },
     midForecast: {
       verified: true,
       temperatureRegId: '11B20601',
@@ -527,6 +543,82 @@ async function confirmedCandidate(services, ownerSessionId = 'owner-a') {
   assert.equal(search.candidates.length, 1);
   return search.candidates[0].candidateToken;
 }
+
+test('current coordinates are converted to an owner-bound opaque location candidate', async () => {
+  const services = createApplicationServices({
+    adapters: { kakao: locationAdapter() },
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+  });
+  const result = await services.resolveCurrentLocation({
+    ownerSessionId: 'owner-current',
+    latitude: 37.285,
+    longitude: 127.045,
+  });
+
+  assert.equal(result.candidates.length, 1);
+  assert.equal('latitude' in result.candidates[0], false);
+  assert.equal('longitude' in result.candidates[0], false);
+  assert.match(result.candidates[0].candidateToken, /^[A-Za-z0-9_-]+$/u);
+});
+
+test('field soil profile is attached without exposing the private parcel lookup key', async () => {
+  const privatePnu = '4111710500100010001';
+  const calls = {
+    climate: [],
+    observations: [],
+    soil: [],
+    short: [],
+    mid: [],
+  };
+  const adapters = completeAdapters(calls);
+  adapters.kakao = locationAdapter({
+    fieldParcelLookupKey: privatePnu,
+  });
+  adapters.soilField = {
+    id: 'soil-field-fixture',
+    async getFieldProfile(params) {
+      assert.deepEqual(params, { pnuCode: privatePnu });
+      return envelope({
+        sourceId: 'soil-field-v3',
+        spatialLevel: 'FIELD',
+        observedAt: '2025-12-31T15:00:00.000Z',
+        data: {
+          parcelMatched: true,
+          mapScale: '1:5000',
+          drainageCode: '02',
+          effectiveDepthCode: '03',
+          topsoilTextureCode: '04',
+          codeLabelsVerified: false,
+        },
+      });
+    },
+  };
+  const services = createApplicationServices({
+    adapters,
+    rules: reviewedRules(),
+    verifiedLocationMappings: sixVerifiedMappings(),
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+  });
+  const candidateToken = await confirmedCandidate(services);
+  const result = await services.createAnalysis({
+    ownerSessionId: 'owner-a',
+    analysisId: 'analysis-field-soil',
+    input: analysisInput(candidateToken),
+  });
+
+  assert.equal(result.soil.result.fieldProfileState, 'SUCCESS');
+  assert.deepEqual(result.soil.result.fieldProfile, {
+    parcelMatched: true,
+    mapScale: '1:5000',
+    drainageCode: '02',
+    effectiveDepthCode: '03',
+    topsoilTextureCode: '04',
+    codeLabelsVerified: false,
+  });
+  assert.equal(JSON.stringify(result).includes(privatePnu), false);
+});
 
 test('application integrates verified modules without a composite score or hidden reweighting', async () => {
   const calls = {
@@ -563,7 +655,10 @@ test('application integrates verified modules without a composite score or hidde
   assert.equal(result.forecast.result.noActiveRisksConfirmed, true);
   assert.equal(result.inputSummary.regionLabel, '경기도 수원시');
   assert.equal(JSON.stringify(result).match(/"(?:score|penalty)"/giu), null);
-  assert.deepEqual(calls.soil[0], { verifiedSoilAreaCode: '41117' });
+  assert.deepEqual(calls.soil[0], {
+    verifiedSoilAreaCode: '4111710500',
+    landUse: 'PFLD',
+  });
   assert.equal(calls.climate[0].stationId, '119');
   assert.equal(calls.observations[0].completedDays, 7);
   assert.equal(calls.short[0].nx > 0 && calls.short[0].ny > 0, true);
@@ -860,6 +955,57 @@ test('facility no-risk state triggers resolve to current eligible evidence', asy
   );
 });
 
+test('facility partial forecast still gives an internal sensor check action', async () => {
+  const calls = {
+    climate: [],
+    observations: [],
+    soil: [],
+    short: [],
+    mid: [],
+  };
+  const adapters = completeAdapters(calls);
+  adapters.kmaMid.getForecast = async () =>
+    envelope({
+      sourceId: 'kma-mid-forecast',
+      spatialLevel: 'FORECAST_REGION',
+      issuedAt: '2026-07-23T02:00:00.000Z',
+      validFrom: '2026-07-24T15:00:00.000Z',
+      validTo: '2026-07-25T14:59:59.000Z',
+      qualityFlags: ['VERIFIED_FIXTURE', 'PARTIAL_PROVIDER_FAILURE'],
+      data: { days: [forecastDay('2026-07-25', 'MID_REGIONAL')] },
+    });
+  const services = createApplicationServices({
+    adapters,
+    rules: facilityForecastRules(),
+    verifiedLocationMappings: {
+      '4111710500': verifiedMapping(),
+    },
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+  });
+  const candidateToken = await confirmedCandidate(services);
+  const result = await services.createAnalysis({
+    ownerSessionId: 'owner-a',
+    analysisId: 'analysis-facility-partial-forecast',
+    input: {
+      usageMode: 'ACTIVE_GROWING',
+      location: { candidateToken, userConfirmed: true },
+      crop: 'CUCUMBER',
+      cultivationMode: 'FACILITY_HYDRO',
+      growthStage: 'UNSPECIFIED',
+    },
+  });
+
+  assert.equal(result.forecast.state, 'PARTIAL');
+  assert.equal(result.decision.code, 'FACILITY_DATA_NEEDED');
+  assert.equal(
+    result.actions.some(
+      ({ actionId }) => actionId === 'CHECK_INTERNAL_SENSORS',
+    ),
+    true,
+  );
+});
+
 test('report generation preserves an absolute expiry and can extend it only by the bounded lock window', async () => {
   let now = FIXED_TIME;
   const services = createApplicationServices({
@@ -1093,7 +1239,7 @@ test('successful analysis and report record the specified lifecycle transitions'
   );
 });
 
-test('broad administrative candidates never trigger point-grid or observation-station calls', async () => {
+test('broad administrative candidates use only a labeled regional forecast grid and never select an observation station', async () => {
   let shortCalls = 0;
   let observationCalls = 0;
   const services = createApplicationServices({
@@ -1105,9 +1251,22 @@ test('broad administrative candidates never trigger point-grid or observation-st
       }),
       kmaShort: {
         id: 'short-fixture',
-        async getForecast() {
+        async getForecast(params) {
           shortCalls += 1;
-          throw new Error('broad regions must not be treated as points');
+          assert.deepEqual(params, {
+            nx: 61,
+            ny: 121,
+            baseDate: '20260723',
+            baseTime: '1100',
+          });
+          return envelope({
+            sourceId: 'kma-short-forecast',
+            spatialLevel: 'FORECAST_GRID',
+            issuedAt: '2026-07-23T02:00:00.000Z',
+            validFrom: '2026-07-23T15:00:00.000Z',
+            validTo: '2026-07-24T14:59:59.000Z',
+            data: { days: [forecastDay('2026-07-24', 'SHORT_GRID')] },
+          });
         },
       },
       observations: {
@@ -1142,9 +1301,14 @@ test('broad administrative candidates never trigger point-grid or observation-st
     input: analysisInput(candidateToken),
   });
 
-  assert.equal(shortCalls, 0);
+  assert.equal(shortCalls, 1);
   assert.equal(observationCalls, 0);
   assert.equal(result.inputSummary.locationPrecision, 'ADMIN_AREA_BROAD');
+  const shortSource = result.dataSources.find(
+    ({ sourceId }) => sourceId === 'kma-short-forecast',
+  );
+  assert.equal(shortSource.spatialLabel, '시·군 대표 예보 격자');
+  assert.ok(shortSource.qualityFlags.includes('ADMIN_AREA_REPRESENTATIVE'));
   assert.equal(result.state, 'DATA_NEEDED');
 });
 
@@ -1964,7 +2128,7 @@ test('location mapping activation requires provenance, validity, and verified st
         },
         clock: () => FIXED_TIME,
       }),
-    /operation and requested-period data must be verified/,
+    /requires verified coordinates or a verified legacy distance/,
   );
 });
 
@@ -2472,4 +2636,181 @@ test('application core deadline contains adapters that ignore AbortSignal', asyn
         source.qualityFlags.includes('CORE_DEADLINE_EXCEEDED'),
     ),
   );
+});
+
+test('SmartFarm reference is returned separately and cannot change core decisions or actions', async () => {
+  const calls = {
+    climate: [],
+    observations: [],
+    soil: [],
+    short: [],
+    mid: [],
+    smartfarm: [],
+  };
+  const adapters = completeAdapters(calls);
+  adapters.smartfarm = {
+    id: 'smartfarm-fixture',
+    async getReference(params) {
+      calls.smartfarm.push(params);
+      return envelope({
+        sourceId: 'smartfarm-reference',
+        spatialLevel: 'REFERENCE_DATASET',
+        data: {
+          referenceType: 'PUBLIC_PEER_COHORT',
+          decisionUse: 'REFERENCE_ONLY',
+          affectsDecision: false,
+          affectsScore: false,
+          selectedCrop: '오이',
+          requestedRegion: '경기도 수원시',
+          comparisonLevel: 'SAME_DISTRICT',
+          sameProvinceCount: 12,
+          sameDistrictCount: 4,
+          farmCount: 28,
+          recordCount: 35,
+          seasonCount: 35,
+          privacy: {
+            individualFarmIdsExposed: false,
+            individualFarmSelected: false,
+            aggregation: 'COHORT_ONLY',
+          },
+          datasetType: 'FACILITY_ITEM_DATA',
+          datasetName: '스마트팜코리아 품목별 시설원예 데이터',
+          datasetPeriod: { fromYear: 2018, toYear: 2024 },
+          datasetUpdateCycle: 'ANNUAL_AFTER_SEASON',
+          regions: [{ name: '경기도 수원시', count: 4 }],
+          cultivationMethods: [{ name: '토경', count: 35 }],
+          facilityTypes: [{ name: '비닐', count: 20 }],
+          greenhouseStructures: [],
+          sizeBands: [],
+          varieties: [],
+          fetchedDataTypes: ['FARM_SEASON_METADATA'],
+          availableDataTypes: [
+            'CROP_SEASON',
+            'ENVIRONMENT',
+            'CONTROL',
+            'GROWTH',
+          ],
+          limitations: [
+            'PUBLIC_COHORT_NOT_USER_FARM',
+            'NO_ENVIRONMENT_VALUE_USED_AS_OPTIMUM',
+          ],
+        },
+      });
+    },
+  };
+  const services = createApplicationServices({
+    adapters,
+    rules: facilityForecastRules(),
+    verifiedLocationMappings: {
+      '4111710500': verifiedMapping(),
+    },
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+  });
+  const candidateToken = await confirmedCandidate(services);
+  const facilityInput = {
+    usageMode: 'LAND_SEARCH',
+    location: { candidateToken, userConfirmed: true },
+    crop: 'CUCUMBER',
+    cultivationMode: 'FACILITY_HYDRO',
+  };
+  const withoutReference = await services.createAnalysis({
+    ownerSessionId: 'owner-a',
+    analysisId: 'analysis-without-smartfarm',
+    input: facilityInput,
+  });
+  const withReference = await services.createAnalysis({
+    ownerSessionId: 'owner-a',
+    analysisId: 'analysis-with-smartfarm',
+    input: {
+      ...facilityInput,
+      options: {
+        includeSmartfarmBenchmark: true,
+        includeSatelliteObservation: false,
+        saveConsent: false,
+      },
+    },
+  });
+
+  assert.equal(withReference.smartfarm.state, 'READY');
+  assert.equal(withReference.smartfarm.affectsDecision, false);
+  assert.equal(withReference.smartfarm.affectsScore, false);
+  assert.equal(withReference.smartfarm.result.farmCount, 28);
+  assert.deepEqual(withReference.decision, withoutReference.decision);
+  assert.deepEqual(withReference.actions, withoutReference.actions);
+  assert.equal(withReference.state, withoutReference.state);
+  assert.equal(withReference.conditionState, withoutReference.conditionState);
+  assert.equal(withReference.riskState, withoutReference.riskState);
+  assert.equal(calls.smartfarm.length, 1);
+  assert.deepEqual(calls.smartfarm[0], {
+    crop: 'CUCUMBER',
+    cultivationMode: 'FACILITY_HYDRO',
+    growthStage: 'UNSPECIFIED',
+    regionLabel: '경기도 수원시',
+  });
+  assert.equal(
+    withReference.dataSources.some(
+      ({ sourceId }) => sourceId === 'smartfarm-reference',
+    ),
+    true,
+  );
+  assert.equal(
+    withReference.limitations.some((value) =>
+      value.startsWith('smartfarm-reference:'),
+    ),
+    false,
+  );
+  assert.equal(
+    JSON.stringify(withReference).match(/"smartfarmScore"/giu),
+    null,
+  );
+  assert.equal(withoutReference.smartfarm, null);
+});
+
+test('SmartFarm provider failure does not block a completed core analysis', async () => {
+  const calls = {
+    climate: [],
+    observations: [],
+    soil: [],
+    short: [],
+    mid: [],
+  };
+  const adapters = completeAdapters(calls);
+  adapters.smartfarm = {
+    async getReference() {
+      throw new Error('provider unavailable');
+    },
+  };
+  const services = createApplicationServices({
+    adapters,
+    rules: facilityForecastRules(),
+    verifiedLocationMappings: {
+      '4111710500': verifiedMapping(),
+    },
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+  });
+  const candidateToken = await confirmedCandidate(services);
+  const result = await services.createAnalysis({
+    ownerSessionId: 'owner-a',
+    analysisId: 'analysis-smartfarm-failure',
+    input: {
+      usageMode: 'LAND_SEARCH',
+      location: { candidateToken, userConfirmed: true },
+      crop: 'CUCUMBER',
+      cultivationMode: 'FACILITY_HYDRO',
+      options: {
+        includeSmartfarmBenchmark: true,
+        includeSatelliteObservation: false,
+        saveConsent: false,
+      },
+    },
+  });
+
+  assert.equal(result.smartfarm.state, 'UNAVAILABLE');
+  assert.equal(result.smartfarm.affectsDecision, false);
+  assert.equal(result.smartfarm.affectsScore, false);
+  assert.equal(result.state, 'COMPLETE');
+  assert.equal(result.conditionState, 'NOT_APPLICABLE');
+  assert.equal(result.riskState, 'READY');
 });

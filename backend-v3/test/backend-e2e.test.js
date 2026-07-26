@@ -422,7 +422,7 @@ function fixtureMapping() {
       validFrom: '2026-01-01',
       validTo: '2026-12-31',
     },
-    soil: { verified: true, code: '41117' },
+    soil: { verified: true, code: '4111710500' },
     midForecast: {
       verified: true,
       temperatureRegId: '11B20601',

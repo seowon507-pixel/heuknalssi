@@ -7,6 +7,7 @@ import {
   VERIFIED_KAKAO_ADDRESS_CONTRACT_VERSION,
   VERIFIED_KMA_MID_CONTRACT_VERSION,
   VERIFIED_KMA_SHORT_CONTRACT_VERSION,
+  VERIFIED_SOIL_V2_CONTRACT,
   VERIFIED_SOIL_V2_CONTRACT_VERSION,
   createAdapterRegistry,
   createKakaoAdapter,
@@ -14,6 +15,7 @@ import {
   createKmaShortForecastAdapter,
   createSoilV2Adapter,
   parseKakaoCandidates,
+  parseKakaoRegionCandidates,
   parseKmaMidForecast,
   parseKmaShortForecast,
   parseSoilV2
@@ -96,6 +98,40 @@ test("Kakao parser handles 0, 1, and multiple candidates without selecting the f
   assert.equal("primary" in many[0], false);
 });
 
+test("Kakao coordinate parser keeps only a verified legal-region candidate", () => {
+  assert.deepEqual(
+    parseKakaoRegionCandidates({
+      documents: [
+        {
+          region_type: "H",
+          address_name: "경기도 수원시 영통구 광교1동",
+          code: "4111760000",
+          x: 127.05,
+          y: 37.28
+        },
+        {
+          region_type: "B",
+          address_name: "경기도 수원시 영통구 원천동",
+          code: "4111710500",
+          x: 127.045,
+          y: 37.285
+        }
+      ]
+    }),
+    [
+      {
+        displayName: "경기도 수원시 영통구 원천동",
+        resolutionMode: "ADDRESS_RESOLVED",
+        providerAddressType: "LEGAL_REGION_COORDINATE",
+        legalDongCode10: "4111710500",
+        longitude: 127.045,
+        latitude: 37.285,
+        providerCoordinatesExcluded: false
+      }
+    ]
+  );
+});
+
 test("Kakao REGION and ROAD candidates do not expose provider centroids as points", () => {
   for (const addressType of ["REGION", "ROAD"]) {
     const [candidate] = parseKakaoCandidates({
@@ -114,6 +150,11 @@ test("Kakao REGION and ROAD candidates do not expose provider centroids as point
     assert.equal(candidate.longitude, null);
     assert.equal(candidate.latitude, null);
     assert.equal(candidate.providerCoordinatesExcluded, true);
+    assert.deepEqual(candidate.administrativeRepresentative, {
+      longitude: 126.978,
+      latitude: 37.566,
+      purpose: "REGIONAL_FORECAST_ONLY",
+    });
   }
 });
 
@@ -159,6 +200,39 @@ test("Kakao adapter returns all candidates and an explicit selection requirement
   assert.equal("selectedCandidate" in result.data, false);
   assert.equal(calls, 1);
   assert.equal(result.sourceUrl.includes("fixture-key"), false);
+});
+
+test("Kakao adapter resolves current coordinates without exposing them in its cache key or source URL", async () => {
+  let requestedUrl;
+  const adapter = createKakaoAdapter({
+    enabled: true,
+    apiKey: "fixture-key",
+    contractVersion: VERIFIED_KAKAO_ADDRESS_CONTRACT_VERSION,
+    fetchImpl: async (url) => {
+      requestedUrl = String(url);
+      return jsonResponse({
+        documents: [
+          {
+            region_type: "B",
+            address_name: "경기도 수원시 영통구 원천동",
+            code: "4111710500",
+            x: 127.045,
+            y: 37.285
+          }
+        ]
+      });
+    }
+  });
+
+  const result = await adapter.resolveCurrentLocation({
+    latitude: 37.285,
+    longitude: 127.045
+  });
+  assert.equal(result.adapterState, "SUCCESS");
+  assert.equal(result.data.candidates[0].legalDongCode10, "4111710500");
+  assert.match(requestedUrl, /coord2regioncode\.json/);
+  assert.equal(result.sourceUrl.includes("37.285"), false);
+  assert.equal(result.sourceUrl.includes("127.045"), false);
 });
 
 test("Kakao empty result is NO_DATA, not schema failure", async () => {
@@ -992,63 +1066,33 @@ test("mid KMA legacy single regId mapping makes zero provider calls", async () =
   assert.equal(calls, 0);
 });
 
-const SOIL_CONTRACT = Object.freeze({
-  frozen: true,
-  version: VERIFIED_SOIL_V2_CONTRACT_VERSION,
-  rowTag: "item",
-  fields: {
-    metric: "metric",
-    lower: "lower",
-    upper: "upper",
-    lowerInclusive: "lowerInclusive",
-    upperInclusive: "upperInclusive",
-    area: "area",
-    areaUnit: "areaUnit",
-    totalValidArea: "totalValidArea"
-  },
-  supportedMetrics: ["PH"],
-  metricUnits: {
-    PH: "pH"
-  },
-  requestFields: {
-    areaCode: "areaCode",
-    year: "year"
-  },
-  allowedAreaUnits: ["ha"],
-  areaSumTolerance: 0
-});
+const SOIL_CONTRACT = VERIFIED_SOIL_V2_CONTRACT;
+const SOIL_AREA_CODE = "4717000000";
 
 const SOIL_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <response>
-  <items>
-    <item>
-      <metric>PH</metric>
-      <lower>4.5</lower>
-      <upper>5.5</upper>
-      <lowerInclusive>true</lowerInclusive>
-      <upperInclusive>false</upperInclusive>
-      <area>30</area>
-      <areaUnit>ha</areaUnit>
-      <totalValidArea>100</totalValidArea>
-    </item>
-    <item>
-      <metric>PH</metric>
-      <lower>5.5</lower>
-      <upper>7.0</upper>
-      <lowerInclusive>true</lowerInclusive>
-      <upperInclusive>true</upperInclusive>
-      <area>70</area>
-      <areaUnit>ha</areaUnit>
-      <totalValidArea>100</totalValidArea>
-    </item>
-  </items>
+  <header><result_Code>200</result_Code><result_Msg>정상</result_Msg></header>
+  <body><items><item>
+    <stdg_Cd>${SOIL_AREA_CODE}</stdg_Cd>
+    <bjd_Nm>경상북도 안동시</bjd_Nm>
+    <acid_Pfld1_Area>10</acid_Pfld1_Area>
+    <acid_Pfld2_Area>10</acid_Pfld2_Area>
+    <acid_Pfld3_Area>20</acid_Pfld3_Area>
+    <acid_Pfld4_Area>30</acid_Pfld4_Area>
+    <acid_Pfld5_Area>20</acid_Pfld5_Area>
+    <acid_Pfld6_Area>10</acid_Pfld6_Area>
+  </item></items></body>
 </response>`;
 
 test("Soil V2 accepts only interval/area arrays and never creates a first-row representative", () => {
-  const result = parseSoilV2(SOIL_XML, { contract: SOIL_CONTRACT });
+  const result = parseSoilV2(SOIL_XML, {
+    contract: SOIL_CONTRACT,
+    landUse: "PFLD",
+    requestedAreaCode: SOIL_AREA_CODE
+  });
   assert.equal(result.contractVersion, SOIL_CONTRACT.version);
   assert.equal(result.metrics.length, 1);
-  assert.equal(result.metrics[0].intervals.length, 2);
+  assert.equal(result.metrics[0].intervals.length, 6);
   assert.equal(result.metrics[0].totalValidArea, 100);
   assert.equal(result.metrics[0].areaUnit, "ha");
   assert.equal(result.metrics[0].unit, "pH");
@@ -1060,19 +1104,26 @@ test("Soil V2 accepts only interval/area arrays and never creates a first-row re
   assert.equal("mean" in result.metrics[0], false);
 });
 
-test("Soil V2 missing contract version or field map is UNSUPPORTED", () => {
+test("Soil V2 missing contract version or official field map is UNSUPPORTED", () => {
   assert.throws(
     () =>
       parseSoilV2(SOIL_XML, {
-        contract: { ...SOIL_CONTRACT, version: "" }
+        contract: { ...SOIL_CONTRACT, version: "" },
+        landUse: "PFLD"
       }),
     UnsupportedContractError
   );
-  const { totalValidArea: _removed, ...fields } = SOIL_CONTRACT.fields;
   assert.throws(
     () =>
       parseSoilV2(SOIL_XML, {
-        contract: { ...SOIL_CONTRACT, fields }
+        contract: {
+          ...SOIL_CONTRACT,
+          responseFields: {
+            ...SOIL_CONTRACT.responseFields,
+            areaCode: "otherCode"
+          }
+        },
+        landUse: "PFLD"
       }),
     UnsupportedContractError
   );
@@ -1082,35 +1133,46 @@ test("Soil V2 empty, '-', and missing required numeric tags never become zero", 
   for (const replacement of ["", "-", null]) {
     const xml =
       replacement === null
-        ? SOIL_XML.replace("<lower>4.5</lower>", "")
+        ? SOIL_XML.replace("<acid_Pfld1_Area>10</acid_Pfld1_Area>", "")
         : SOIL_XML.replace(
-            "<lower>4.5</lower>",
-            `<lower>${replacement}</lower>`
+            "<acid_Pfld1_Area>10</acid_Pfld1_Area>",
+            `<acid_Pfld1_Area>${replacement}</acid_Pfld1_Area>`
           );
     assert.throws(
-      () => parseSoilV2(xml, { contract: SOIL_CONTRACT }),
+      () =>
+        parseSoilV2(xml, {
+          contract: SOIL_CONTRACT,
+          landUse: "PFLD",
+          requestedAreaCode: SOIL_AREA_CODE
+        }),
       SchemaChangedError
     );
   }
 });
 
-test("Soil V2 rejects DTDs, empty rows, and area-sum schema changes", () => {
+test("Soil V2 rejects DTDs, provider no-data, and a mismatched legal area", () => {
   assert.throws(
     () =>
       parseSoilV2(
         '<!DOCTYPE response [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><response/>',
-        { contract: SOIL_CONTRACT }
+        { contract: SOIL_CONTRACT, landUse: "PFLD" }
       ),
     SchemaChangedError
   );
   assert.throws(
-    () => parseSoilV2("<response><items/></response>", { contract: SOIL_CONTRACT }),
+    () =>
+      parseSoilV2(
+        "<response><header><result_Code>301</result_Code></header></response>",
+        { contract: SOIL_CONTRACT, landUse: "PFLD" }
+      ),
     (error) => error.adapterState === "NO_DATA"
   );
   assert.throws(
     () =>
-      parseSoilV2(SOIL_XML.replace("<area>70</area>", "<area>69</area>"), {
-        contract: SOIL_CONTRACT
+      parseSoilV2(SOIL_XML, {
+        contract: SOIL_CONTRACT,
+        landUse: "PFLD",
+        requestedAreaCode: "4717010100"
       }),
     SchemaChangedError
   );
@@ -1121,12 +1183,12 @@ test("Soil adapter returns success, NO_DATA, and SCHEMA_CHANGED envelopes from X
     { name: "success", xml: SOIL_XML, state: "SUCCESS" },
     {
       name: "empty",
-      xml: "<response><items/></response>",
+      xml: "<response><header><result_Code>301</result_Code></header></response>",
       state: "NO_DATA"
     },
     {
       name: "schema",
-      xml: SOIL_XML.replace("<area>70</area>", "<area>69</area>"),
+      xml: SOIL_XML.replace("<acid_Pfld6_Area>10</acid_Pfld6_Area>", ""),
       state: "SCHEMA_CHANGED"
     }
   ];
@@ -1139,12 +1201,12 @@ test("Soil adapter returns success, NO_DATA, and SCHEMA_CHANGED envelopes from X
         fetchImpl: async () => textResponse(fixture.xml)
       });
       const result = await adapter.getDistribution({
-        verifiedSoilAreaCode: "11110",
-        year: 2025
+        verifiedSoilAreaCode: SOIL_AREA_CODE,
+        landUse: "PFLD"
       });
       assert.equal(result.adapterState, fixture.state);
       if (fixture.state === "SUCCESS") {
-        assert.equal(result.data.metrics[0].intervals.length, 2);
+        assert.equal(result.data.metrics[0].intervals.length, 6);
         assert.equal(result.distanceKm, null);
       } else {
         assert.equal(result.deliveryState, "UNAVAILABLE");
@@ -1167,8 +1229,8 @@ test("unfrozen Soil V2 and null verified area key perform zero external calls", 
     fetchImpl
   });
   const unsupported = await unfrozen.getDistribution({
-    verifiedSoilAreaCode: "11110",
-    year: 2025
+    verifiedSoilAreaCode: SOIL_AREA_CODE,
+    landUse: "PFLD"
   });
   assert.equal(unsupported.adapterState, "UNSUPPORTED");
 
@@ -1180,7 +1242,7 @@ test("unfrozen Soil V2 and null verified area key perform zero external calls", 
   });
   const unavailable = await noKey.getDistribution({
     verifiedSoilAreaCode: null,
-    year: 2025
+    landUse: "PFLD"
   });
   assert.equal(unavailable.deliveryState, "UNAVAILABLE");
   assert.ok(
@@ -1204,8 +1266,8 @@ test("structurally valid Soil contracts with arbitrary versions perform zero fet
     }
   });
   const result = await adapter.getDistribution({
-    verifiedSoilAreaCode: "11110",
-    year: 2025
+    verifiedSoilAreaCode: SOIL_AREA_CODE,
+    landUse: "PFLD"
   });
   assert.equal(result.adapterState, "UNSUPPORTED");
   assert.equal(result.deliveryState, "UNAVAILABLE");
@@ -1226,9 +1288,9 @@ test("same-version Soil semantic contract drift performs zero fetches", async (t
       name: "field mapping",
       contract: {
         ...SOIL_CONTRACT,
-        fields: {
-          ...SOIL_CONTRACT.fields,
-          lower: "minimumValue"
+        responseFields: {
+          ...SOIL_CONTRACT.responseFields,
+          areaCode: "otherCode"
         }
       }
     },
@@ -1236,9 +1298,15 @@ test("same-version Soil semantic contract drift performs zero fetches", async (t
       name: "boundary mapping",
       contract: {
         ...SOIL_CONTRACT,
-        fields: {
-          ...SOIL_CONTRACT.fields,
-          lowerInclusive: "isLowerClosed"
+        landUses: {
+          ...SOIL_CONTRACT.landUses,
+          PFLD: {
+            ...SOIL_CONTRACT.landUses.PFLD,
+            intervals: SOIL_CONTRACT.landUses.PFLD.intervals.map(
+              (interval, index) =>
+                index === 0 ? { ...interval, upperInclusive: false } : interval
+            )
+          }
         }
       }
     },
@@ -1246,7 +1314,7 @@ test("same-version Soil semantic contract drift performs zero fetches", async (t
       name: "area unit",
       contract: {
         ...SOIL_CONTRACT,
-        allowedAreaUnits: ["m2"]
+        areaUnit: "m2"
       }
     },
     {
@@ -1278,7 +1346,7 @@ test("same-version Soil semantic contract drift performs zero fetches", async (t
       }
     },
     {
-      name: "runtime year embedded in contract",
+      name: "unreviewed runtime property",
       contract: {
         ...SOIL_CONTRACT,
         defaultYear: 2025
@@ -1293,14 +1361,14 @@ test("same-version Soil semantic contract drift performs zero fetches", async (t
         enabled: true,
         apiKey: "fixture-key",
         contract: fixture.contract,
-        defaultYear: 2025,
         fetchImpl: async () => {
           calls += 1;
           return textResponse(SOIL_XML);
         }
       });
       const result = await adapter.getDistribution({
-        verifiedSoilAreaCode: "11110"
+        verifiedSoilAreaCode: SOIL_AREA_CODE,
+        landUse: "PFLD"
       });
       assert.equal(result.adapterState, "UNSUPPORTED");
       assert.equal(result.deliveryState, "UNAVAILABLE");
@@ -1347,8 +1415,8 @@ test("custom Kakao and Soil endpoints are disclosed without query secrets", asyn
     fetchImpl: async () => textResponse(SOIL_XML)
   });
   const soilResult = await soil.getDistribution({
-    verifiedSoilAreaCode: "11110",
-    year: 2025
+    verifiedSoilAreaCode: SOIL_AREA_CODE,
+    landUse: "PFLD"
   });
   assert.equal(
     soilResult.sourceUrl,
@@ -1357,14 +1425,13 @@ test("custom Kakao and Soil endpoints are disclosed without query secrets", asyn
   assert.equal(soilResult.sourceUrl.includes("hidden"), false);
 });
 
-test("Soil adapter can use only an explicitly injected frozen dataset year", async () => {
+test("Soil adapter sends the official legal-area parameter and caches per land use", async () => {
   let requestedUrl;
   let calls = 0;
   const adapter = createSoilV2Adapter({
     enabled: true,
     apiKey: "fixture-key",
     contract: SOIL_CONTRACT,
-    defaultYear: 2025,
     fetchImpl: async (url) => {
       calls += 1;
       requestedUrl = url;
@@ -1372,14 +1439,21 @@ test("Soil adapter can use only an explicitly injected frozen dataset year", asy
     }
   });
   const result = await adapter.getDistribution({
-    verifiedSoilAreaCode: "11110"
+    verifiedSoilAreaCode: SOIL_AREA_CODE,
+    landUse: "PFLD"
   });
   const cached = await adapter.getDistribution({
-    verifiedSoilAreaCode: "11110"
+    verifiedSoilAreaCode: SOIL_AREA_CODE,
+    landUse: "PFLD"
   });
   assert.equal(result.adapterState, "SUCCESS");
   assert.equal(cached.deliveryState, "CACHE");
-  assert.equal(result.data.requestedYear, 2025);
-  assert.equal(requestedUrl.searchParams.get("year"), "2025");
+  assert.equal(result.data.landUse, "PFLD");
+  assert.equal(
+    requestedUrl.pathname,
+    "/1390802/SoilEnviron/SoilExamStat/V2/getFarmExamPhInfo"
+  );
+  assert.equal(requestedUrl.searchParams.get("STDG_CD"), SOIL_AREA_CODE);
+  assert.equal(requestedUrl.searchParams.has("year"), false);
   assert.equal(calls, 1);
 });

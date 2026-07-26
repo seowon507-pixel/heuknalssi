@@ -191,6 +191,31 @@
     .inline-check label { flex: 1; }
     .validation { margin-top: 14px; color: var(--danger); font-weight: 650; }
     .unknown-note { margin-top: 14px; }
+    .location-primary { display: grid; gap: 10px; margin: 22px 0; padding: 18px; border: 1px solid #CFE0D3; border-radius: 12px; background: #F3F8F4; }
+    .location-primary .button { width: 100%; }
+    .location-divider { display: flex; align-items: center; gap: 12px; margin: 22px 0; color: var(--muted); font-size: .84rem; }
+    .location-divider::before, .location-divider::after { height: 1px; flex: 1; background: var(--border); content: ""; }
+    .crop-settings-list { display: grid; gap: 14px; margin-top: 20px; }
+    .crop-setting-card { padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-subtle); }
+    .crop-setting-card h2 { margin: 0 0 5px; font-size: 1.05rem; }
+    .crop-setting-card > p { margin: 0 0 14px; color: var(--muted); font-size: .88rem; }
+    .crop-setting-card .choice-grid { margin-top: 10px; }
+    .crop-setting-card + .crop-setting-card { margin-top: 0; }
+    .photo-stage-card { display: grid; gap: 14px; margin: 20px 0 24px; padding: 18px; border: 1px solid #CFE0D3; border-radius: 12px; background: #F7FAF7; }
+    .photo-stage-card label { display: block; }
+    .photo-stage-card input[type="file"] { width: 100%; margin-top: 8px; color: var(--text); }
+    .photo-stage-card input[type="file"]::file-selector-button { min-height: 44px; margin-right: 10px; padding: 8px 14px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); color: var(--text); font-weight: 700; }
+    .growth-photo-preview { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 14px; align-items: center; }
+    .growth-photo-preview img { width: 92px; height: 92px; border-radius: 10px; object-fit: cover; }
+    .growth-settings-list { display: grid; gap: 14px; margin-top: 18px; }
+    .growth-crop-card { background: #FFFFFF; }
+    .growth-crop-card .choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .choice-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+    .choice-recommendation { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 8px; border-radius: 999px; background: #E8F5EC; color: #17663F; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .crop-result-switcher { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+    .crop-result-switcher button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font-weight: 700; }
+    .crop-result-switcher button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-dark); }
+    .wizard-footer #run-analysis { flex: 1; margin-left: auto; }
 
     .summary-list { display: grid; gap: 0; margin: 18px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
     .summary-row { display: grid; grid-template-columns: 108px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 62px; padding: 10px 14px; border-top: 1px solid var(--border); }
@@ -260,6 +285,7 @@
       .split, .three-up, .source-grid { grid-template-columns: 1fr; }
       .choice-grid, .choice-grid.crop-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
       .choice-card { min-height: 88px; padding: 13px; }
+      .growth-crop-card .choice-grid { grid-template-columns: 1fr; }
       .analysis-card { grid-template-columns: 1fr; }
       .analysis-card-actions { justify-content: flex-start; }
       .setting-row { align-items: flex-start; flex-direction: column; }
@@ -456,7 +482,7 @@
     .task-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 16px 0 0; align-items: center; gap: 15px; border: 0; border-top: 1px solid var(--v5-hairline); border-radius: 0; background: transparent; }
     .task-title { font-size: 16px; font-weight: 650; }
     .task-actions { grid-column: 2; grid-row: 1 / span 3; margin: 0; justify-content: flex-end; }
-    .task-actions .button { min-height: 42px; }
+    .task-actions .button { min-height: 44px; }
     .task-item.is-complete { background: transparent; border-color: var(--v5-hairline); }
     .compact-risk h2 { margin-bottom: 5px; }
     .compact-risk .risk-figure { margin: 18px 0 4px; font-size: 24px; font-weight: 680; font-variant-numeric: tabular-nums; }
@@ -464,6 +490,25 @@
     .three-up { grid-template-columns: 1fr; gap: 0; }
     .three-up .source-card { padding: 10px 0; border: 0; border-top: 1px solid var(--v5-hairline); border-radius: 0; background: transparent; }
     .three-up .source-card:first-child { border-top: 0; }
+
+    .smartfarm-reference-panel { margin: 0 0 16px; overflow: hidden; border: 1px solid var(--v5-hairline); border-radius: 13px; background: #FFFFFF; }
+    .smartfarm-reference-head { display: flex; padding: 22px 24px 18px; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .smartfarm-reference-eyebrow { display: block; margin-bottom: 5px; color: var(--v5-brand); font-size: 12px; font-weight: 680; letter-spacing: .02em; }
+    .smartfarm-reference-head h2 { margin: 0; font-size: 21px; letter-spacing: -.025em; }
+    .smartfarm-reference-subtitle { max-width: 66ch; margin: 7px 0 0; color: var(--v5-secondary); font-size: 13px; }
+    .smartfarm-reference-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--v5-hairline); border-bottom: 1px solid var(--v5-hairline); }
+    .smartfarm-reference-stat { min-width: 0; padding: 18px 24px; border-left: 1px solid var(--v5-hairline); }
+    .smartfarm-reference-stat:first-child { border-left: 0; }
+    .smartfarm-reference-stat span { display: block; margin-bottom: 6px; color: var(--v5-secondary); font-size: 12px; font-weight: 590; }
+    .smartfarm-reference-stat strong { display: block; color: var(--v5-text); font-size: 20px; font-weight: 690; font-variant-numeric: tabular-nums; }
+    .smartfarm-reference-stat small { display: block; margin-top: 5px; color: #737D76; font-size: 11px; line-height: 1.45; }
+    .smartfarm-reference-detail { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); padding: 20px 24px 22px; gap: 24px; }
+    .smartfarm-reference-detail h3 { margin: 0 0 10px; color: var(--v5-secondary); font-size: 12px; font-weight: 650; }
+    .smartfarm-chip-list { display: flex; flex-wrap: wrap; gap: 7px; }
+    .smartfarm-chip { display: inline-flex; min-height: 30px; padding: 5px 10px; align-items: center; border: 1px solid #D6DDD7; border-radius: 999px; background: #F8FAF8; color: #3E4B43; font-size: 12px; font-weight: 580; }
+    .smartfarm-reference-caveat { padding: 14px 15px; border-left: 3px solid var(--v5-info); border-radius: 7px; background: var(--v5-info-soft); color: #435149; font-size: 13px; line-height: 1.55; }
+    .smartfarm-reference-caveat strong { display: block; margin-bottom: 3px; color: var(--v5-text); }
+    .smartfarm-reference-empty { padding: 22px 24px 24px; border-top: 1px solid var(--v5-hairline); color: var(--v5-secondary); }
 
     .insight-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(280px, 5fr); margin-bottom: 16px; overflow: hidden; border: 1px solid var(--v5-hairline); border-radius: 13px; background: #FFFFFF; }
     .insight-grid > .panel { padding: 25px 26px; border: 0; border-radius: 0; }
@@ -502,7 +547,7 @@
     .range-node:nth-child(2)::before { background: var(--v5-soil); box-shadow: 0 0 0 1px var(--v5-soil); }
     .range-node:nth-child(3)::before { background: var(--v5-info); box-shadow: 0 0 0 1px var(--v5-info); }
     .data-controls { margin-top: 8px; }
-    .data-state-button { min-height: 40px; border-color: #CDD3CE; font-size: 13px; font-weight: 590; }
+    .data-state-button { min-height: 44px; border-color: #CDD3CE; font-size: 13px; font-weight: 590; }
     .data-state-button[aria-pressed="true"] { border: 1px solid var(--v5-brand); background: var(--v5-brand-soft); }
 
     .analysis-list-surface, .settings-surface { overflow: hidden; border: 1px solid var(--v5-hairline); border-radius: 13px; background: #FFFFFF; }
@@ -567,7 +612,7 @@
       .mobile-brand .brand-mark { width: 28px; height: 28px; border-color: #CDD4CE; color: var(--v5-brand); }
       .topbar-context > strong { display: none; }
       .topbar-actions .button-quiet { display: none; }
-      .topbar-actions .button { min-height: 40px; padding: 7px 11px; }
+      .topbar-actions .button { min-height: 44px; padding: 7px 11px; }
       .app-main { margin-left: 0; padding: 80px 14px 92px; }
       .decision-flow { grid-template-columns: 1fr; }
       .summary-panel, .risk-panel, .overview-score { grid-column: 1; }
@@ -580,6 +625,7 @@
       .metric-cell:nth-child(3) { border-left: 0; }
       .metric-cell:nth-child(n+3) { border-top: 1px solid var(--v5-hairline); }
       .action-workspace, .insight-grid { grid-template-columns: 1fr; }
+      .smartfarm-reference-detail { grid-template-columns: 1fr; }
       .insight-reasons { border-top: 1px solid var(--v5-hairline) !important; border-left: 0 !important; }
       .field-context { grid-template-columns: 1fr; }
       .bottom-nav { position: fixed; z-index: 50; inset: auto 0 0; display: grid; min-height: 68px; grid-template-columns: repeat(3, 1fr); background: #FFFFFF; border-top: 1px solid var(--v5-hairline); box-shadow: 0 -4px 16px rgb(21 26 23 / 7%); }
@@ -606,6 +652,11 @@
       .risk-title { font-size: 23px; }
       .metric-cell { padding: 16px; }
       .action-main, .action-side { padding: 20px; }
+      .smartfarm-reference-head { padding: 20px; }
+      .smartfarm-reference-grid { grid-template-columns: 1fr; }
+      .smartfarm-reference-stat { padding: 15px 20px; border-top: 1px solid var(--v5-hairline); border-left: 0; }
+      .smartfarm-reference-stat:first-child { border-top: 0; }
+      .smartfarm-reference-detail { padding: 18px 20px 20px; }
       .task-item { grid-template-columns: 1fr; }
       .task-actions { grid-column: 1; grid-row: auto; justify-content: flex-start; }
       .insight-grid > .panel { padding: 22px 20px; }
@@ -621,7 +672,7 @@
   </style>
   <style id="v5-1-commercial-finish">
     .panel { padding: 20px; }
-    .button { min-height: 42px; padding: 8px 14px; }
+    .button { min-height: 44px; padding: 8px 14px; }
     .page-header { margin-bottom: 22px; }
     .section-heading { margin-bottom: 13px; }
 
@@ -726,6 +777,1061 @@
       .topbar-actions .button { padding-inline: 8px; }
     }
   </style>
+  <style id="r1-product-first">
+    :root {
+      --r1-ink: #17221B;
+      --r1-subtle: #F4F7F4;
+      --r1-mint: #E8F5ED;
+      --r1-mint-strong: #CFE8D8;
+      --r1-amber: #A35E08;
+      --r1-amber-soft: #FFF5E4;
+    }
+
+    [tabindex="-1"]:focus { outline: none; }
+    [tabindex="-1"] { scroll-margin-top: 84px; }
+    .view { max-width: 1240px; }
+    .page-header h1 { color: var(--r1-ink); }
+    .app-main { padding-top: 84px; }
+    .page-header { margin-bottom: 16px; }
+    .integration-banner {
+      margin-bottom: 12px;
+      padding: 11px 14px;
+    }
+    .integration-banner p {
+      max-width: 86ch;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .wizard-shell {
+      grid-template-columns: minmax(300px, 36%) minmax(0, 64%);
+      grid-template-rows: auto minmax(0, 1fr) 76px;
+    }
+    .wizard-top {
+      grid-column: 1;
+      grid-row: 1 / 4;
+      background:
+        radial-gradient(circle at 15% 85%, rgb(69 157 103 / 20%), transparent 34%),
+        var(--v5-chrome);
+    }
+    .wizard-connection { grid-column: 2; grid-row: 1; }
+    .wizard-shell > form {
+      grid-column: 2;
+      grid-row: 2;
+      width: min(100%, 780px);
+      max-width: 780px;
+      max-height: calc(100vh - 118px);
+      padding: 34px clamp(28px, 5vw, 68px) 26px;
+      overflow-y: auto;
+    }
+    .wizard-footer {
+      grid-column: 2;
+      grid-row: 3;
+      width: min(100%, 780px);
+      max-width: 780px;
+      padding-inline: clamp(28px, 5vw, 68px);
+    }
+    .wizard-step[data-step="1"] h1 {
+      max-width: 19ch;
+      margin-bottom: 12px;
+      color: var(--r1-ink);
+      font-size: clamp(34px, 3.8vw, 46px);
+      line-height: 1.16;
+    }
+    .onboarding-kicker,
+    .brief-kicker,
+    .overview-kicker {
+      color: var(--v5-brand);
+      font-size: 12px;
+      font-weight: 740;
+      letter-spacing: .035em;
+    }
+    .onboarding-kicker { margin-bottom: 10px; }
+    .wizard-step > .onboarding-lead {
+      max-width: 61ch;
+      margin-bottom: 0;
+      color: #4D5A51;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .onboarding-promises {
+      display: grid;
+      margin: 22px 0 20px;
+      padding: 0;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      list-style: none;
+    }
+    .onboarding-promises li {
+      min-width: 0;
+      padding: 13px 14px;
+      border: 1px solid #D9E5DC;
+      border-radius: 10px;
+      background: var(--r1-subtle);
+    }
+    .onboarding-promises strong,
+    .onboarding-promises span { display: block; }
+    .onboarding-promises strong {
+      margin-bottom: 3px;
+      color: #24442F;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .onboarding-promises span {
+      color: #637068;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .wizard-step[data-step="1"] .choice-grid { margin-top: 8px; }
+    .situation-legend {
+      margin-bottom: 9px;
+      color: var(--r1-ink);
+      font-size: 17px;
+      font-weight: 690;
+    }
+    .wizard-step[data-step="1"] .choice-card {
+      min-height: 70px;
+      padding: 12px 15px;
+    }
+    .wizard-step[data-step="1"] .choice-card small {
+      margin-top: 3px;
+      color: #5D6961;
+      line-height: 1.42;
+    }
+
+    .decision-flow {
+      grid-template-columns: minmax(0, 1.65fr) minmax(310px, .85fr);
+      border-color: #D9E1DB;
+      box-shadow: 0 18px 50px rgb(17 31 22 / 8%);
+    }
+    .decision-flow.is-user-focused {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .decision-flow.is-user-focused .risk-panel {
+      grid-column: 1;
+    }
+    .insight-grid.is-user-summary {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .insight-grid.is-user-summary > .panel {
+      padding-right: 0;
+    }
+    .action-workspace.is-summary-only {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .summary-panel {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      padding: 13px 24px;
+      border-bottom: 1px solid var(--v5-hairline) !important;
+      background: #F8FAF8;
+    }
+    .summary-meta {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px 16px;
+    }
+    .summary-primary {
+      color: #435048;
+      font-size: 15px;
+      font-weight: 760;
+    }
+    .summary-meta > div:last-child {
+      display: block;
+      min-width: 118px;
+      text-align: right;
+    }
+    .summary-meta > div.summary-context-list {
+      display: flex;
+      grid-column: 1 / -1;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+    .summary-context-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 5px 10px;
+      border: 1px solid #D7E1DA;
+      border-radius: 999px;
+      background: #FFFFFF;
+      color: #445248;
+      font-size: 12px;
+      font-weight: 680;
+    }
+    .summary-context-chip.is-ai {
+      border-color: #BFE2CB;
+      background: #EAF7EF;
+      color: #226841;
+    }
+    .risk-panel {
+      grid-column: 1;
+      grid-row: 2;
+      padding: 26px 32px 28px;
+      border-left: 0 !important;
+      background:
+        linear-gradient(135deg, rgb(232 245 237 / 72%), transparent 50%),
+        #FFFFFF;
+    }
+    .brief-kicker { margin-bottom: 9px; }
+    .headline-status {
+      display: block;
+      margin-bottom: 17px;
+      color: #305C3E;
+      font-size: 15px;
+      letter-spacing: -.01em;
+    }
+    .risk-date {
+      margin-bottom: 8px;
+      color: var(--r1-amber);
+      font-size: 13px;
+    }
+    .risk-date::before { height: 16px; }
+    .risk-title {
+      max-width: 30ch;
+      margin-bottom: 10px;
+      color: var(--r1-ink);
+      font-size: clamp(27px, 2.35vw, 33px);
+      line-height: 1.25;
+    }
+    .risk-panel > p:not(.risk-date):not(.brief-kicker) {
+      max-width: 66ch;
+      color: #4E5B52;
+    }
+    .primary-action-card {
+      display: grid;
+      max-width: 660px;
+      margin-top: 16px;
+      padding: 16px 18px;
+      gap: 3px;
+      border: 1px solid var(--r1-mint-strong);
+      border-radius: 11px;
+      background: var(--r1-mint);
+    }
+    .primary-action-card span {
+      color: #356046;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .primary-action-card strong {
+      color: #183B27;
+      font-size: 16px;
+      font-weight: 690;
+      line-height: 1.48;
+    }
+    .risk-action.button { margin-top: 14px; }
+
+    .overview-score {
+      grid-column: 2;
+      grid-row: 2;
+      padding: 28px;
+      justify-content: flex-start;
+      gap: 18px;
+      background: #F7F9F7;
+    }
+    .overview-heading h2 {
+      margin: 5px 0 0;
+      color: var(--r1-ink);
+      font-size: 20px;
+    }
+    .axis-status-list {
+      display: grid;
+      margin-top: 18px;
+      gap: 8px;
+    }
+    .axis-status {
+      position: relative;
+      display: grid;
+      padding: 12px 12px 12px 26px;
+      gap: 2px;
+      border: 1px solid #DCE5DE;
+      border-radius: 9px;
+      background: #FFFFFF;
+    }
+    .axis-status::before {
+      position: absolute;
+      top: 17px;
+      left: 11px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--v5-brand);
+      content: "";
+    }
+    .axis-status.is-caution::before { background: var(--r1-amber); }
+    .axis-status span {
+      color: #667168;
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .axis-status strong {
+      color: #243229;
+      font-size: 14px;
+      font-weight: 690;
+    }
+    .axis-status small {
+      color: #737D76;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .score-state {
+      margin: 12px 0 0;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: var(--r1-amber-soft);
+      color: #80500F;
+    }
+    .score-evidence-button { margin-top: 0; }
+    .overview-spatial { margin-top: 0; }
+
+    .metric-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .metric-cell { min-height: 126px; }
+    .metric-value.metric-copy {
+      align-items: flex-start;
+      font-size: 18px;
+      line-height: 1.35;
+    }
+    .metric-detail {
+      margin: 8px 0 0;
+      color: #6B756E;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .metric-track { margin-top: 10px; }
+    .insight-reasons h2 { margin-bottom: 10px; }
+
+    @media (max-width: 1100px) {
+      .onboarding-promises { grid-template-columns: 1fr; }
+      .onboarding-promises li {
+        display: grid;
+        grid-template-columns: 132px minmax(0, 1fr);
+        align-items: start;
+        gap: 8px;
+      }
+      .onboarding-promises strong { margin: 0; }
+    }
+
+    @media (max-width: 920px) {
+      .app-main { padding-top: 74px; }
+      .integration-banner p {
+        overflow: visible;
+        text-overflow: clip;
+        white-space: normal;
+      }
+      .wizard-shell { display: flex; overflow-y: auto; }
+      .wizard-top {
+        position: sticky;
+        grid-column: auto;
+        grid-row: auto;
+        flex: 0 0 auto;
+      }
+      .wizard-connection { grid-column: auto; grid-row: auto; flex: 0 0 auto; }
+      .wizard-shell > form {
+        grid-column: auto;
+        grid-row: auto;
+        width: 100%;
+        max-width: none;
+        max-height: none;
+        padding: 24px 18px 98px;
+        overflow: visible;
+      }
+      .wizard-footer { grid-column: auto; grid-row: auto; }
+      .wizard-step[data-step="1"] h1 { max-width: 20ch; font-size: 34px; }
+      .onboarding-promises {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-block: 18px;
+      }
+      .onboarding-promises li { display: block; padding: 11px; }
+      .onboarding-promises strong { margin-bottom: 2px; }
+      .decision-flow { grid-template-columns: 1fr; }
+      .summary-panel { grid-column: 1; grid-row: auto; }
+      .risk-panel { grid-column: 1; grid-row: auto; padding: 28px 24px; }
+      .overview-score { grid-column: 1; grid-row: auto; }
+      .overview-score-inner { display: block; }
+      .axis-status-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .metric-cell { min-height: 118px; }
+    }
+
+    @media (max-width: 620px) {
+      .wizard-shell,
+      .wizard-shell > form,
+      .wizard-body,
+      .wizard-step {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+      }
+      .wizard-step input[type="text"],
+      .location-primary,
+      .photo-stage-card,
+      .crop-setting-card {
+        min-width: 0;
+        max-width: 100%;
+      }
+      .integration-banner {
+        margin-bottom: 10px;
+        padding: 10px 12px;
+      }
+      .integration-banner p { display: none; }
+      .wizard-step[data-step="1"] h1 { font-size: 30px; }
+      .wizard-step > .onboarding-lead { font-size: 15px; line-height: 1.52; }
+      .onboarding-promises { grid-template-columns: 1fr; gap: 6px; }
+      .onboarding-promises li {
+        display: grid;
+        grid-template-columns: 125px minmax(0, 1fr);
+        padding: 9px 11px;
+        gap: 8px;
+      }
+      .onboarding-promises span { font-size: 11px; }
+      .summary-panel { padding: 14px 18px; }
+      .summary-meta { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+      .summary-primary { grid-column: 1 / -1; }
+      .summary-meta > div:nth-child(2),
+      .summary-meta > .persistence-state { display: none; }
+      .risk-panel { padding: 20px 20px 24px; }
+      .headline-status { margin-bottom: 13px; }
+      .risk-title { font-size: 24px; }
+      .primary-action-card { padding: 14px; }
+      .overview-score { padding: 22px 20px; }
+      .axis-status-list { grid-template-columns: 1fr; }
+      .metric-strip { grid-template-columns: 1fr; }
+      .metric-cell {
+        min-height: auto;
+        padding: 15px 2px;
+        border-top: 1px solid var(--v5-hairline);
+        border-left: 0;
+      }
+      .metric-cell:first-child { border-top: 0; }
+      .metric-cell:nth-child(n+3) { border-top: 1px solid var(--v5-hairline); }
+      .metric-value.metric-copy { font-size: 18px; }
+    }
+
+    @media (max-width: 380px) {
+      .wizard-shell > form { padding-inline: 15px; }
+      .wizard-step[data-step="1"] h1 { font-size: 28px; }
+      .onboarding-promises li { grid-template-columns: 112px minmax(0, 1fr); }
+      .wizard-step[data-step="1"] .choice-card { min-height: 68px; }
+    }
+
+    .auto-date-note {
+      display: flex;
+      align-items: flex-start;
+      margin-top: 14px;
+      padding: 13px 14px;
+      gap: 10px;
+      border: 1px solid #CFE4D5;
+      border-radius: 10px;
+      background: #F0F8F2;
+    }
+    .auto-date-note > span {
+      display: grid;
+      width: 24px;
+      height: 24px;
+      flex: 0 0 24px;
+      place-items: center;
+      border-radius: 50%;
+      background: #238255;
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .auto-date-note strong,
+    .auto-date-note p { display: block; margin: 0; }
+    .auto-date-note strong { color: #1E5135; font-size: 14px; }
+    .auto-date-note p { margin-top: 2px; color: #5E6C63; font-size: 12px; }
+
+    .live-outlook {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(300px, .75fr);
+      margin-bottom: 18px;
+      gap: 14px;
+    }
+    .live-outlook-card,
+    .live-action-card {
+      overflow: hidden;
+      border: 1px solid #D9E4DC;
+      border-radius: 16px;
+      background: #FFFFFF;
+      box-shadow: 0 12px 32px rgb(19 38 25 / 7%);
+    }
+    .live-outlook-card { padding: 22px 24px 20px; }
+    .live-outlook-header,
+    .live-action-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .live-outlook-kicker,
+    .live-action-kicker {
+      display: block;
+      margin-bottom: 5px;
+      color: #287047;
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: .02em;
+    }
+    .live-outlook h2,
+    .live-action-card h2 {
+      margin: 0;
+      color: #17231B;
+      font-size: 21px;
+      line-height: 1.35;
+    }
+    .forecast-source-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: #EDF6F0;
+      color: #2E6845;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .forecast-chart-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      min-height: 112px;
+      margin-top: 14px;
+      padding: 12px 14px 8px;
+      gap: 16px;
+      border: 1px solid #E1E8E3;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #F7FBF8 0%, #FFFFFF 100%);
+    }
+    .forecast-temperature-chart {
+      width: 100%;
+      height: 116px;
+      overflow: visible;
+    }
+    .forecast-temperature-chart .grid-line { stroke: #DCE6DF; stroke-width: 1; }
+    .forecast-temperature-chart .temperature-line {
+      fill: none;
+      stroke: #278B5A;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 3;
+    }
+    .forecast-temperature-chart .temperature-point {
+      fill: #FFFFFF;
+      stroke: #278B5A;
+      stroke-width: 3;
+    }
+    .forecast-temperature-chart .temperature-value-label {
+      fill: #1D3627;
+      font-size: 12px;
+      font-weight: 760;
+    }
+    .forecast-temperature-chart .temperature-date-label {
+      fill: #657168;
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .forecast-chart-summary {
+      min-width: 92px;
+      padding-bottom: 7px;
+      text-align: right;
+    }
+    .forecast-chart-summary span,
+    .forecast-chart-summary strong { display: block; }
+    .forecast-chart-summary span { color: #68746C; font-size: 11px; }
+    .forecast-chart-summary strong {
+      margin-top: 3px;
+      color: #1D3627;
+      font-size: 20px;
+      letter-spacing: -.02em;
+    }
+    .forecast-day-list {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(78px, 1fr));
+      margin-top: 12px;
+      overflow-x: auto;
+      gap: 7px;
+      scrollbar-width: thin;
+    }
+    .forecast-day {
+      min-width: 78px;
+      padding: 12px 10px 11px;
+      border: 1px solid #E2E8E4;
+      border-radius: 11px;
+      background: #FFFFFF;
+      text-align: center;
+    }
+    .forecast-day.is-short { background: #F6FBF8; }
+    .forecast-day-date,
+    .forecast-day-source,
+    .forecast-day-rain { display: block; }
+    .forecast-day-date { color: #526057; font-size: 13px; font-weight: 720; }
+    .forecast-glyph {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      margin: 7px auto 5px;
+      place-items: center;
+      border-radius: 10px;
+      background: #EDF6F0;
+      color: #2D7650;
+    }
+    .forecast-glyph svg { width: 23px; height: 23px; }
+    .forecast-day-temperature {
+      display: block;
+      color: #17231B;
+      font-size: 16px;
+      font-weight: 760;
+    }
+    .forecast-day-temperature small {
+      color: #748078;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .forecast-day-rain { margin-top: 5px; color: #356892; font-size: 12px; font-weight: 650; }
+    .forecast-day-source { margin-top: 6px; color: #667169; font-size: 11px; }
+    .forecast-scroll-hint {
+      display: none;
+      margin: 9px 2px 0;
+      color: #68746C;
+      font-size: 11px;
+    }
+    .forecast-empty {
+      display: grid;
+      min-height: 190px;
+      margin-top: 14px;
+      padding: 24px;
+      place-items: center;
+      border: 1px dashed #C9D5CD;
+      border-radius: 12px;
+      background: #F8FAF8;
+      color: #5C6860;
+      text-align: center;
+    }
+    .forecast-empty strong { display: block; margin-bottom: 4px; color: #29372E; }
+    .forecast-empty .button { margin-top: 14px; }
+    .live-action-card {
+      display: flex;
+      flex-direction: column;
+      padding: 22px;
+      background:
+        radial-gradient(circle at 88% 8%, rgb(83 180 123 / 18%), transparent 34%),
+        #173B28;
+      color: #FFFFFF;
+    }
+    .live-action-card .live-action-kicker { color: #9FE0B9; }
+    .live-action-card h2 { color: #FFFFFF; font-size: 19px; }
+    .live-action-status {
+      display: inline-flex;
+      min-height: 28px;
+      align-items: center;
+      padding: 4px 9px;
+      border: 1px solid rgb(159 224 185 / 45%);
+      border-radius: 999px;
+      color: #C7F0D5;
+      font-size: 12px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+    .live-action-condition-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 16px;
+      gap: 8px;
+    }
+    .live-action-condition {
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid rgb(199 240 213 / 24%);
+      border-radius: 9px;
+      background: rgb(255 255 255 / 7%);
+    }
+    .live-action-condition span,
+    .live-action-condition strong {
+      display: block;
+    }
+    .live-action-condition span {
+      color: #A8C9B5;
+      font-size: 11px;
+      font-weight: 680;
+    }
+    .live-action-condition strong {
+      display: -webkit-box;
+      margin-top: 2px;
+      overflow: hidden;
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 720;
+      line-height: 1.42;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+    .live-action-visual {
+      position: relative;
+      display: grid;
+      width: 90px;
+      height: 90px;
+      margin: 24px 0 18px;
+      place-items: center;
+      border-radius: 24px;
+      background: rgb(255 255 255 / 10%);
+    }
+    .live-action-visual::before,
+    .live-action-visual::after {
+      position: absolute;
+      border-radius: 50% 50% 48% 52%;
+      background: #8BD3A4;
+      content: "";
+      transform-origin: bottom center;
+    }
+    .live-action-visual::before {
+      width: 31px;
+      height: 48px;
+      transform: translate(-14px, -4px) rotate(-35deg);
+    }
+    .live-action-visual::after {
+      width: 28px;
+      height: 43px;
+      transform: translate(14px, -1px) rotate(38deg);
+    }
+    .live-action-stem {
+      position: absolute;
+      z-index: 1;
+      width: 5px;
+      height: 48px;
+      border-radius: 8px;
+      background: #C9EFD5;
+      transform: translateY(16px);
+    }
+    .live-action-title {
+      margin: 0;
+      color: #FFFFFF;
+      font-size: 19px;
+      font-weight: 740;
+      line-height: 1.48;
+    }
+    .live-action-context {
+      margin: 8px 0 0;
+      color: #C8D9CF;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .live-action-button {
+      min-height: 44px;
+      margin-top: 16px;
+      padding: 9px 13px;
+      align-self: flex-start;
+      border: 1px solid rgb(255 255 255 / 42%);
+      border-radius: 9px;
+      background: #FFFFFF;
+      color: #173B28;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 760;
+      cursor: pointer;
+    }
+    .live-action-button:hover { background: #EAF7EF; }
+    .live-action-button:focus-visible {
+      outline: 3px solid #9FE0B9;
+      outline-offset: 3px;
+    }
+    .live-action-meta {
+      display: grid;
+      margin-top: auto;
+      padding-top: 18px;
+      gap: 8px;
+    }
+    .live-action-meta span {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: #D9E8DF;
+      font-size: 11px;
+    }
+    .live-action-meta span::before {
+      width: 6px;
+      height: 6px;
+      flex: 0 0 6px;
+      border-radius: 50%;
+      background: #67C88E;
+      content: "";
+    }
+    .live-action-steps {
+      display: grid;
+      margin: 14px 0 0;
+      padding: 0;
+      gap: 8px;
+      list-style: none;
+      counter-reset: live-action-step;
+    }
+    .live-action-steps li {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      align-items: start;
+      gap: 8px;
+      color: #E7F2EB;
+      font-size: 13px;
+      line-height: 1.48;
+      counter-increment: live-action-step;
+    }
+    .live-action-steps li::before {
+      display: grid;
+      width: 22px;
+      height: 22px;
+      place-items: center;
+      border-radius: 50%;
+      background: rgb(139 211 164 / 18%);
+      color: #BDE9CC;
+      content: counter(live-action-step);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .farm-condition-guide {
+      grid-column: 1 / -1;
+      overflow: hidden;
+      border: 1px solid #D7E2DA;
+      border-radius: 16px;
+      background: #FFFFFF;
+      box-shadow: 0 12px 32px rgb(19 38 25 / 6%);
+    }
+    .farm-condition-guide-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 24px 26px 20px;
+      gap: 20px;
+      border-bottom: 1px solid #E2E9E4;
+    }
+    .farm-condition-kicker {
+      display: block;
+      margin-bottom: 5px;
+      color: #267047;
+      font-size: 12px;
+      font-weight: 760;
+    }
+    .farm-condition-guide h2 {
+      margin: 0;
+      color: #17231B;
+      font-size: 23px;
+      line-height: 1.35;
+      letter-spacing: -.02em;
+    }
+    .farm-condition-summary {
+      max-width: 780px;
+      margin: 8px 0 0;
+      color: #59665D;
+      font-size: 14px;
+      line-height: 1.58;
+    }
+    .farm-condition-status {
+      display: inline-flex;
+      min-height: 30px;
+      padding: 5px 10px;
+      align-items: center;
+      border-radius: 999px;
+      background: #EDF6F0;
+      color: #276A44;
+      font-size: 12px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+    .farm-condition-status.is-caution {
+      background: #FFF1DD;
+      color: #975A0A;
+    }
+    .farm-condition-facts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0;
+    }
+    .condition-fact-card {
+      position: relative;
+      min-height: 210px;
+      padding: 24px 26px;
+      background: #F7FAF8;
+    }
+    .condition-fact-card + .condition-fact-card {
+      border-left: 1px solid #E0E8E2;
+    }
+    .condition-fact-card.is-caution,
+    .condition-fact-card.is-danger {
+      background: #FFFAF1;
+    }
+    .condition-fact-card.is-unknown {
+      background: #F8F7F3;
+    }
+    .condition-fact-label {
+      display: block;
+      color: #5E6B62;
+      font-size: 12px;
+      font-weight: 760;
+    }
+    .condition-fact-title {
+      display: block;
+      margin-top: 8px;
+      color: #16241B;
+      font-size: 19px;
+      line-height: 1.42;
+    }
+    .condition-fact-card h3 {
+      margin: 22px 0 6px;
+      color: #405047;
+      font-size: 13px;
+    }
+    .condition-fact-card p {
+      margin: 0;
+      color: #536158;
+      font-size: 14px;
+      line-height: 1.58;
+    }
+    .condition-fact-card .condition-fact-caveat {
+      margin-top: 11px;
+      color: #8A5A22;
+      font-size: 12px;
+      font-weight: 690;
+    }
+    .condition-source-link {
+      display: inline-flex;
+      margin-top: 14px;
+      color: #236642;
+      font-size: 12px;
+      font-weight: 760;
+      text-underline-offset: 3px;
+    }
+    .farm-condition-actions {
+      padding: 22px 26px 25px;
+      border-top: 1px solid #E0E8E2;
+      background: #FFFFFF;
+    }
+    .farm-condition-actions h3 {
+      margin: 0 0 14px;
+      color: #17231B;
+      font-size: 16px;
+    }
+    .farm-condition-action-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin: 0;
+      padding: 0;
+      gap: 10px 22px;
+      list-style: none;
+      counter-reset: farm-action;
+    }
+    .farm-condition-action-list li {
+      display: grid;
+      grid-template-columns: 27px minmax(0, 1fr);
+      align-items: start;
+      gap: 10px;
+      color: #314139;
+      font-size: 14px;
+      line-height: 1.55;
+      counter-increment: farm-action;
+    }
+    .farm-condition-action-list li::before {
+      display: grid;
+      width: 27px;
+      height: 27px;
+      place-items: center;
+      border-radius: 8px;
+      background: #E5F4EA;
+      color: #1E7548;
+      content: counter(farm-action);
+      font-size: 12px;
+      font-weight: 820;
+    }
+    .farm-condition-recheck {
+      margin: 16px 0 0;
+      padding: 13px 15px;
+      border-radius: 10px;
+      background: #F1F6F2;
+      color: #405047;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .farm-condition-recheck strong { color: #1E5D39; }
+    .evidence-technical-details {
+      margin-top: 18px;
+      border: 1px solid #DCE4DE;
+      border-radius: 12px;
+      background: #FFFFFF;
+    }
+    .evidence-technical-details > summary {
+      padding: 16px 18px;
+      color: #34443A;
+      font-size: 14px;
+      font-weight: 760;
+      cursor: pointer;
+    }
+    .evidence-technical-body {
+      display: grid;
+      padding: 0 18px 18px;
+      gap: 16px;
+    }
+    .backend-report-details {
+      border: 1px solid #D9E3DC;
+      border-radius: 12px;
+      background: #FFFFFF;
+    }
+    .backend-report-details > summary {
+      padding: 15px 18px;
+      color: #314238;
+      font-size: 14px;
+      font-weight: 740;
+      cursor: pointer;
+    }
+    .backend-report-details > .backend-report {
+      padding: 0 18px 18px;
+    }
+    .decision-flow { margin-top: 0; }
+
+    @media (max-width: 1050px) {
+      .live-outlook { grid-template-columns: 1fr; }
+      .live-action-card { min-height: 260px; }
+      .live-action-visual { margin-block: 18px 12px; }
+      .farm-condition-facts,
+      .farm-condition-action-list { grid-template-columns: 1fr; }
+      .condition-fact-card + .condition-fact-card {
+        border-top: 1px solid #E0E8E2;
+        border-left: 0;
+      }
+    }
+    @media (max-width: 620px) {
+      .live-outlook-card,
+      .live-action-card { border-radius: 13px; }
+      .live-outlook-card { padding: 18px 16px 16px; }
+      .live-outlook-header { display: grid; }
+      .forecast-source-badge { justify-self: start; }
+      .forecast-chart-shell { grid-template-columns: 1fr; min-height: 126px; }
+      .forecast-chart-summary { display: flex; align-items: baseline; gap: 6px; text-align: left; }
+      .forecast-day-list { grid-template-columns: repeat(7, 82px); }
+      .forecast-scroll-hint { display: block; }
+      .live-action-card {
+        order: -1;
+        min-height: 260px;
+        padding: 20px;
+      }
+      .live-action-visual { display: none; }
+      .live-action-condition-row { margin-top: 14px; }
+      .farm-condition-guide {
+        border-radius: 13px;
+      }
+      .farm-condition-guide-header {
+        display: grid;
+        padding: 20px 18px 17px;
+      }
+      .farm-condition-guide h2 { font-size: 20px; }
+      .farm-condition-status { justify-self: start; }
+      .condition-fact-card {
+        min-height: auto;
+        padding: 20px 18px;
+      }
+      .farm-condition-actions { padding: 19px 18px 21px; }
+      .summary-meta { grid-template-columns: 1fr; }
+      .summary-meta > div:last-child { text-align: left; }
+    }
+  </style>
 </head>
 <body data-integration="pending">
   <a class="skip-link" href="#main-content">본문으로 바로가기</a>
@@ -768,8 +1874,8 @@
       <section class="view" id="view-dashboard" data-view-panel="dashboard" aria-labelledby="dashboard-title">
         <header class="page-header">
           <div>
-            <h1 id="dashboard-title" tabindex="-1">평창 감자 브리핑</h1>
-            <p class="muted" id="dashboard-mode-copy">농지를 알아보는 분에게 필요한 확인 순서로 보여드립니다.</p>
+            <h1 id="dashboard-title" tabindex="-1">평창 · 감자 농장 분석</h1>
+            <p class="muted" id="dashboard-mode-copy">현재 재배 조건 기준 기상·토양·예보 분석</p>
           </div>
         </header>
         <div class="integration-banner is-loading" id="backend-service-banner" role="status" aria-live="polite">
@@ -779,6 +1885,8 @@
           </div>
           <button class="button button-secondary" id="retry-backend-connection" type="button" hidden>다시 연결</button>
         </div>
+        <nav class="crop-result-switcher" id="crop-result-switcher" aria-label="작물별 분석 결과" hidden></nav>
+        <section class="live-outlook" id="live-outlook" aria-label="오늘 행동과 가까운 예보" hidden></section>
 
         <div class="decision-flow">
         <section class="panel summary-panel" aria-label="분석 조건 요약">
@@ -786,14 +1894,19 @@
             <div class="summary-primary"><span id="result-region">강원특별자치도 평창군 진부면</span> · <span id="result-crop">감자</span></div>
             <div><span class="meta-label">자료 갱신</span><span class="meta-value">4월 13일 06:00</span></div>
             <div><span class="status-label warning">체험용 결과</span></div>
-            <span class="headline-status" id="headline-status">현재 판단 · 계속 검토, 배수 확인 필요</span>
           </div>
         </section>
 
         <section class="panel risk-panel" aria-labelledby="risk-title">
-          <p class="risk-date">가장 가까운 확인 필요 · 4월 16일</p>
-          <h2 class="risk-title" id="risk-title">비 18mm 예보, 물 빠지는 길을 먼저 확인하세요</h2>
+          <p class="brief-kicker">자동 위험 분석</p>
+          <span class="headline-status" id="headline-status">현재 판단 · 계속 검토</span>
+          <p class="risk-date">주요 확인 사항 · 4월 16일</p>
+          <h2 class="risk-title" id="risk-title">비 18mm 예보가 있어 배수 상태를 먼저 봐야 합니다</h2>
           <p id="risk-context">아직 실제 재배시기를 정하지 않았다면 이 비를 생육 위험으로 보지는 않습니다. 농지를 볼 때 배수 상태를 확인할 근거로만 사용하세요.</p>
+          <div class="primary-action-card">
+            <span>우선 조치</span>
+            <strong>비 온 뒤 고인 물 자국과 물 빠지는 길을 확인하세요.</strong>
+          </div>
           <button class="button button-primary risk-action" id="first-action" type="button" aria-expanded="false" aria-controls="field-checklist">현장 확인 체크리스트 열기</button>
           <div class="checklist-panel" id="field-checklist" hidden tabindex="-1" aria-labelledby="field-checklist-title">
             <h3 id="field-checklist-title">현장 확인 체크리스트</h3>
@@ -806,11 +1919,29 @@
           </div>
         </section>
 
-        <aside class="overview-score" aria-labelledby="score-title">
+        <aside class="overview-score" aria-labelledby="readiness-title">
           <div class="overview-score-inner">
-            <h2 id="score-title">재배환경 참고지수</h2>
-            <div class="score-number" aria-label="100점 만점에 62점"><strong id="score-value">62</strong><span>/100</span></div>
-            <p class="score-range" id="score-range">추정 범위 56~68</p>
+            <div class="overview-heading">
+              <span class="overview-kicker">판단 준비 상태</span>
+              <h2 id="readiness-title">항목별 분석 상태</h2>
+            </div>
+            <div class="axis-status-list">
+              <article class="axis-status">
+                <span>기후 조건</span>
+                <strong id="climate-axis-status">대체로 맞음</strong>
+                <small>검수 규칙 범위와 비교</small>
+              </article>
+              <article class="axis-status is-caution">
+                <span>토양 조건</span>
+                <strong id="soil-axis-status">현장 확인 필요</strong>
+                <small>지역 대표자료, 필지 실측 아님</small>
+              </article>
+              <article class="axis-status is-caution">
+                <span>가까운 예보</span>
+                <strong id="forecast-axis-status">4월 16일 비</strong>
+                <small>예보는 장기 적합성과 분리</small>
+              </article>
+            </div>
             <p class="score-state" id="score-state">일부 자료 부족 · 추가 확인 필요</p>
           </div>
           <button class="button button-secondary score-evidence-button" type="button" data-open-dialog="evidence">분석 근거 보기</button>
@@ -827,22 +1958,21 @@
         </div>
 
         <section class="metric-strip" aria-label="핵심 분석 지표">
-          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-weather" aria-hidden="true"></span>기후</span><div class="metric-value"><span id="climate-metric-value">68점</span> <small>반영 55%</small></div><div class="metric-track" role="meter" aria-label="기후 점수" aria-valuemin="0" aria-valuemax="100" aria-valuenow="68"><div class="metric-fill meter-fill" style="width: 68%"></div></div></div>
-          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-soil" aria-hidden="true"></span>토양</span><div class="metric-value"><span id="soil-metric-value">54점</span> <small>반영 45%</small></div><div class="metric-track" role="meter" aria-label="토양 점수" aria-valuemin="0" aria-valuemax="100" aria-valuenow="54"><div class="metric-fill meter-fill soil" style="width: 54%"></div></div></div>
-
-          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-data" aria-hidden="true"></span>필요 자료 충족</span><div class="metric-value" id="coverage-value">78%</div><div class="metric-track coverage-track" role="meter" aria-label="필요 자료 충족도" aria-valuemin="0" aria-valuemax="100" aria-valuenow="78"><div class="metric-fill coverage-fill" id="coverage-fill"></div></div></div>
-          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-rain" aria-hidden="true"></span>향후 10일</span><div class="metric-value">18mm <small>4월 16일</small></div><div class="metric-track"><div class="metric-fill warning" style="width: 64%"></div></div></div>
+          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-weather" aria-hidden="true"></span>확인된 사실</span><div class="metric-value metric-copy" id="climate-metric-value">기온은 대체로 적정</div><p class="metric-detail">지역 기후와 작물 기준 비교</p></div>
+          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-soil" aria-hidden="true"></span>확인되지 않은 정보</span><div class="metric-value metric-copy" id="soil-metric-value">내 밭의 pH·배수</div><p class="metric-detail">지역값을 필지 실측으로 보지 않음</p></div>
+          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-data" aria-hidden="true"></span>자료 준비</span><div class="metric-value" id="coverage-value">78%</div><p class="metric-detail">부족한 값은 임의로 채우지 않음</p><div class="metric-track coverage-track" role="meter" aria-label="필요 자료 충족도" aria-valuemin="0" aria-valuemax="100" aria-valuenow="78"><div class="metric-fill coverage-fill" id="coverage-fill"></div></div></div>
+          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-rain" aria-hidden="true"></span>가까운 변화</span><div class="metric-value metric-copy">4월 16일 · 18mm</div><p class="metric-detail">재배시기 확정 뒤 위험 재판단</p></div>
         </section>
 
         <section class="action-workspace" aria-label="우선 행동과 가까운 변화">
           <div class="action-main">
             <section class="action-planning" data-mode-only="planning" aria-labelledby="planning-action-title">
-              <div class="section-heading"><div><h2 id="planning-action-title"><span class="ui-icon icon-check" aria-hidden="true"></span> 현장에서 먼저 볼 것</h2><p class="muted">수치보다 직접 확인할 한 가지를 먼저 준비하세요.</p></div><span class="status-label warning">배수 확인</span></div>
+              <div class="section-heading"><div><h2 id="planning-action-title"><span class="ui-icon icon-check" aria-hidden="true"></span> 현장 점검 항목</h2><p class="muted">현장 확인 우선 항목</p></div><span class="status-label warning">배수 확인</span></div>
               <div class="next-step"><span class="step-index">1</span><div><strong>비 온 뒤 고인 물 자국과 배수로 위치를 보세요.</strong><p class="muted no-margin">실제 재배시기를 정하기 전에는 예보를 생육 위험으로 단정하지 않습니다.</p></div></div>
             </section>
             <section id="today-task-panel" data-mode-only="growing" aria-labelledby="today-task-title" hidden>
-              <div class="section-heading"><div><h2 id="today-task-title">오늘 할 일</h2><p class="muted">가까운 위험부터 한 가지씩 확인하세요.</p></div><span class="status-label info" id="today-task-count">1개 남음</span></div>
-              <div class="task-list"><article class="task-item" id="drainage-task"><p class="task-title">밭의 배수로가 막히지 않았는지 확인하기</p><p>4월 16일 비 예보 전에 물이 빠지는 길만 먼저 살펴보세요.</p><p class="muted" id="task-status">아직 확인 전</p><div class="task-actions"><button class="button button-primary" type="button" data-task-action="complete">완료</button><button class="button button-secondary" type="button" data-task-action="remind">나중에 알림</button><button class="button button-quiet" type="button" data-task-action="different">현장과 다름</button></div></article></div>
+              <div class="section-heading"><div><h2 id="today-task-title">오늘의 점검 항목</h2><p class="muted">가까운 위험 기준 우선 조치</p></div><span class="status-label info" id="today-task-count">1개 남음</span></div>
+              <div class="task-list"><article class="task-item" id="drainage-task"><p class="task-title">밭의 배수로가 막히지 않았는지 확인하기</p><p>4월 16일 비 예보 전에 물이 빠지는 길만 먼저 살펴보세요.</p><p class="muted" id="task-status">아직 확인 전</p><div class="task-actions"><button class="button button-primary" type="button" data-task-action="complete">완료</button><button class="button button-secondary" type="button" data-task-action="remind">이번 화면에서 나중에 보기</button><button class="button button-quiet" type="button" data-task-action="different">현장과 다름</button></div></article></div>
             </section>
           </div>
           <aside class="action-side">
@@ -850,6 +1980,8 @@
             <section class="compact-change" data-mode-only="growing" aria-labelledby="weekly-change-title" hidden><div class="section-heading"><div><h2 id="weekly-change-title">이번 주 변화</h2><p class="muted">관측과 예보를 나눠 봅니다.</p></div></div><div class="three-up"><div class="source-card"><span class="meta-label">최근 7일 강수</span><strong>11mm</strong><p class="muted no-margin">평년 범위 안</p></div><div class="source-card"><span class="meta-label">앞으로 3일</span><strong>18mm 예보</strong><p class="muted no-margin">4월 16일 집중</p></div><div class="source-card"><span class="meta-label">판단</span><strong>과습 확인 필요</strong><p class="muted no-margin">점수에는 별도</p></div></div></section>
           </aside>
         </section>
+
+        <section class="smartfarm-reference-panel" id="smartfarm-reference-panel" aria-labelledby="smartfarm-reference-title" hidden></section>
 
         <section class="insight-grid" aria-label="분석 설명과 주요 이유">
           <article class="panel ai-panel" aria-labelledby="ai-explanation-title">
@@ -863,7 +1995,7 @@
             <p class="formula-note">검증된 구조 결과를 쉬운 말로 정리합니다. 점수 계산, 공식 범위 변경, 누락값 추정은 하지 않습니다.</p>
           </article>
           <aside class="panel insight-reasons" aria-labelledby="score-reasons-title">
-            <h2 id="score-reasons-title">점수를 낮춘 이유 3가지</h2>
+            <h2 id="score-reasons-title">주요 분석 근거 3가지</h2>
             <ol class="reason-list" id="score-reasons">
               <li>토양 산도 pH 5.1로 공식 적정범위 5.5~6.5보다 낮습니다.</li>
               <li>유기물 자료가 6.8km 떨어진 대표지점 값이라 불확실성이 있습니다.</li>
@@ -940,7 +2072,7 @@
             <summary>자료 공간범위</summary>
             <div class="details-body">
               <div class="field-context">
-                <div><strong>실제 필지가 아닌 체험용 지역자료입니다.</strong><p class="muted">상세 필지를 등록하지 않아 장식용 지도를 만들지 않았습니다. 자료가 대표하는 거리만 비교해 보여드립니다.</p></div>
+                <div><strong>실제 필지가 아닌 체험용 지역자료입니다.</strong><p class="muted">필지 미등록 상태 · 자료별 대표 거리 비교</p></div>
                 <div class="range-diagram" aria-label="진부면 격자 약 5킬로미터, 토양 대표지점 6.8킬로미터, 대관령 관측소 12.4킬로미터">
                   <span class="range-node">진부면 예보 격자 · 약 5km</span>
                   <span class="range-node">토양 대표지점 · 6.8km</span>
@@ -980,7 +2112,7 @@
               <div>
                 <div class="cluster"><h2>평창군 진부면 · 감자</h2><span class="status-label info">체험 예시</span></div>
                 <p>농지를 알아보는 중 · 고랭지 여름 감자</p>
-                <p class="muted">마지막 확인 4월 13일 06:00 · 참고지수 62점</p>
+                <p class="muted">마지막 확인 4월 13일 06:00 · 토양 현장 확인 필요</p>
               </div>
               <div class="analysis-card-actions">
                 <button class="button" type="button" data-analysis-action="view">결과 보기</button>
@@ -1004,7 +2136,7 @@
 
         <section class="panel" aria-labelledby="farm-help-title">
           <h2 id="farm-help-title">실제로 재배를 시작했나요?</h2>
-          <p>저장한 조합을 농장으로 전환하면 같은 계산을 사용하되, 오늘 할 일과 1~3일 위험을 가장 위에 보여드립니다.</p>
+          <p>농장 전환 시 오늘의 점검 항목과 1~3일 위험 우선 표시</p>
           <p class="muted">필지 실측값을 등록하기 전에는 계속 지역 대표자료로 표시됩니다.</p>
         </section>
         </div>
@@ -1038,13 +2170,13 @@
         </section>
 
         <section class="panel" aria-labelledby="notification-title">
-          <h2 id="notification-title">알림 설정</h2>
+          <h2 id="notification-title">알림 설정 <span class="status-label">준비 중</span></h2>
           <div class="setting-row">
-            <div><label for="risk-notification">가까운 기상 위험 알림</label><p class="muted no-margin" id="risk-notification-status">현재 꺼짐</p></div>
-            <input id="risk-notification" type="checkbox" role="switch">
+            <div><label for="risk-notification">가까운 기상 위험 알림</label><p class="muted no-margin" id="risk-notification-status">DB·주기 확인·알림 채널 구현 전에는 사용할 수 없습니다.</p></div>
+            <input id="risk-notification" type="checkbox" role="switch" disabled>
           </div>
           <div class="setting-row">
-            <div><label for="notification-time">알림 확인 시간</label><p class="muted no-margin">알림을 켰을 때 적용됩니다.</p></div>
+            <div><label for="notification-time">알림 확인 시간</label><p class="muted no-margin">실제 알림 기능 구현 뒤 제공할 예정입니다.</p></div>
             <select id="notification-time" name="notification-time" style="width: auto" disabled>
               <option value="morning">아침 7시</option>
               <option value="noon">낮 12시</option>
@@ -1087,10 +2219,10 @@
           <progress id="wizard-progressbar" max="5" value="1" aria-label="분석 조건 입력 진행률">1 / 5</progress>
         </div>
         <ol class="wizard-step-list" aria-label="분석 조건 입력 단계">
-          <li class="is-current" data-step-number="1" aria-current="step">상황</li>
-          <li data-step-number="2">지역</li>
-          <li data-step-number="3">작물</li>
-          <li data-step-number="4">시기</li>
+          <li class="is-current" data-step-number="1" aria-current="step">위치</li>
+          <li data-step-number="2">작물</li>
+          <li data-step-number="3">재배 조건</li>
+          <li data-step-number="4">생육 상태</li>
           <li data-step-number="5">확인</li>
         </ol>
       </header>
@@ -1102,113 +2234,91 @@
       <form id="onboarding-form" novalidate>
         <div class="wizard-body" id="wizard-body">
           <section class="wizard-step" data-step="1" aria-labelledby="wizard-title">
-            <h1 id="wizard-title" tabindex="-1">지금 어떤 상황인가요?</h1>
-            <p>내 상황에 맞춰 먼저 볼 내용과 행동 순서를 다르게 안내합니다.</p>
-            <fieldset class="settings-group choice-grid">
-              <legend class="sr-only">현재 상황 선택</legend>
-              <label class="choice-card">
-                <input type="radio" name="situation" value="planning">
-                <span><strong>농지를 알아보는 중</strong><small>지역이 작물과 잘 맞는지 먼저 살펴봐요.</small></span>
-              </label>
-              <label class="choice-card">
-                <input type="radio" name="situation" value="growing">
-                <span><strong>이미 농사 중</strong><small>오늘 할 일과 가까운 위험부터 살펴봐요.</small></span>
-              </label>
+            <h1 id="wizard-title" tabindex="-1">분석할 위치와 목적을 선택해 주세요</h1>
+            <p class="onboarding-lead">농사를 시작할 곳을 검토하거나, 이미 키우는 작물을 점검할 수 있습니다.</p>
+            <fieldset class="settings-group">
+              <legend class="situation-legend">분석 목적</legend>
+              <div class="choice-grid">
+                <label class="choice-card">
+                  <input type="radio" name="situation" value="planning" checked>
+                  <span><strong>농사를 시작할 곳 알아보기</strong><small>후보 지역과 작물의 기후·토양 적합성 확인</small></span>
+                </label>
+                <label class="choice-card">
+                  <input type="radio" name="situation" value="growing">
+                  <span><strong>이미 재배 중인 농장 점검</strong><small>현재 생육 상태와 가까운 예보에 맞춘 행동 확인</small></span>
+                </label>
+              </div>
             </fieldset>
-            <p class="validation" id="situation-error" role="alert" hidden>두 가지 중 지금 상황에 가까운 항목을 선택해 주세요.</p>
-          </section>
-
-          <section class="wizard-step" data-step="2" aria-labelledby="region-step-title" hidden>
-            <h1 id="region-step-title" tabindex="-1">어느 지역을 알아볼까요?</h1>
-            <p>시·군·읍·면 정도까지만 적어도 됩니다. 상세 주소는 필요하지 않습니다.</p>
+            <h2 class="location-section-title">분석할 위치</h2>
+            <p class="onboarding-lead">선택한 위치를 기준으로 가까운 기상 자료와 지역 토양 자료를 연결합니다.</p>
+            <div class="location-primary">
+              <button class="button button-primary" id="use-current-location" type="button" disabled>현재 위치 사용</button>
+              <span class="location-search-status" id="current-location-status" role="status" aria-live="polite">백엔드 연결을 기다리는 중입니다.</span>
+            </div>
+            <div class="location-divider"><span>또는 직접 입력</span></div>
             <div class="field">
-              <label for="region-input">재배 희망지역</label>
+              <label for="region-input">농장 지역</label>
               <input id="region-input" name="region" type="text" placeholder="강원특별자치도 평창군 진부면" autocomplete="address-level3" aria-describedby="region-help region-search-status region-error">
-              <p class="field-help" id="region-help">지역을 입력한 뒤 실제 주소 후보를 찾아 하나를 확인해 주세요.</p>
+              <p class="field-help" id="region-help">상세 주소를 몰라도 시·군·구까지만 입력할 수 있습니다.</p>
             </div>
             <div class="location-search-actions">
-              <button class="button button-secondary" id="search-location" type="button" disabled>주소 후보 찾기</button>
+              <button class="button button-secondary" id="search-location" type="button" disabled>입력한 지역 확인</button>
               <span class="location-search-status" id="region-search-status" role="status" aria-live="polite">백엔드 연결을 기다리는 중입니다.</span>
             </div>
             <div class="location-candidates" id="location-candidates" aria-label="주소 후보" role="list" hidden></div>
-            <button class="button button-secondary" id="region-unknown" type="button" aria-expanded="false" aria-controls="region-unknown-note">상세 주소를 잘 모르겠어요</button>
-            <div class="notice unknown-note" id="region-unknown-note" hidden>
-              <p><strong>알고 있는 시·군까지만 입력해도 됩니다.</strong></p>
-              <p>예: 평창군, 수원시. 특정 지역을 임의로 정하지 않으며, 입력 후 실제 주소 후보를 직접 확인합니다.</p>
-              <button class="button" id="use-broad-region" type="button">시·군 입력하기</button>
-            </div>
-            <p class="validation" id="region-error" role="alert" hidden>지역을 입력하거나 ‘주소를 잘 모르겠어요’를 선택해 주세요.</p>
+            <p class="validation" id="region-error" role="alert" hidden>현재 위치를 사용하거나 시·군·구를 입력해 주세요.</p>
           </section>
 
-          <section class="wizard-step" data-step="3" aria-labelledby="crop-step-title" hidden>
-            <h1 id="crop-step-title" tabindex="-1">어떤 작물을 키우고 싶나요?</h1>
-            <p>지금은 다섯 작물을 지원합니다. 하나를 선택해 주세요.</p>
+          <section class="wizard-step" data-step="2" aria-labelledby="crop-step-title" hidden>
+            <h1 id="crop-step-title" tabindex="-1">검토할 작물을 모두 골라 주세요</h1>
+            <p id="crop-step-help">여러 작물을 비교하려면 복수로 선택할 수 있습니다. 분석 후 작물 탭에서 결과를 전환할 수 있습니다.</p>
             <fieldset class="settings-group choice-grid crop-grid">
               <legend class="sr-only">작물 선택</legend>
-              <label class="choice-card"><input type="radio" name="crop" value="apple"><span><strong>사과</strong><small>과수</small></span></label>
-              <label class="choice-card"><input type="radio" name="crop" value="pear"><span><strong>배</strong><small>과수</small></span></label>
-              <label class="choice-card"><input type="radio" name="crop" value="cucumber"><span><strong>오이</strong><small>노지·시설</small></span></label>
-              <label class="choice-card"><input type="radio" name="crop" value="potato"><span><strong>감자</strong><small>봄·고랭지·가을</small></span></label>
-              <label class="choice-card"><input type="radio" name="crop" value="lettuce"><span><strong>상추</strong><small>노지·시설</small></span></label>
+              <label class="choice-card"><input type="checkbox" name="crop" value="apple"><span><strong>사과</strong><small>과수</small></span></label>
+              <label class="choice-card"><input type="checkbox" name="crop" value="pear"><span><strong>배</strong><small>과수</small></span></label>
+              <label class="choice-card"><input type="checkbox" name="crop" value="cucumber"><span><strong>오이</strong><small>노지·시설</small></span></label>
+              <label class="choice-card"><input type="checkbox" name="crop" value="potato"><span><strong>감자</strong><small>봄·고랭지·가을</small></span></label>
+              <label class="choice-card"><input type="checkbox" name="crop" value="lettuce"><span><strong>상추</strong><small>노지·시설</small></span></label>
             </fieldset>
-            <p class="validation" id="crop-error" role="alert" hidden>사과, 배, 오이, 감자, 상추 중 하나를 선택해 주세요.</p>
-
-            <fieldset class="settings-group" id="cultivation-group" aria-describedby="cultivation-help cultivation-error" hidden>
-              <legend>어디에서 재배할 예정인가요?</legend>
-              <p class="field-help" id="cultivation-help">오이와 상추는 재배 환경에 따라 적정 범위가 크게 달라집니다.</p>
-              <div class="choice-grid">
-                <label class="choice-card"><input type="radio" name="cultivation" value="outdoor"><span><strong>노지</strong><small>야외 밭</small></span></label>
-                <label class="choice-card"><input type="radio" name="cultivation" value="facility-soil"><span><strong>시설흙</strong><small>비닐하우스 토양</small></span></label>
-                <label class="choice-card"><input type="radio" name="cultivation" value="facility-water"><span><strong>시설물</strong><small>양액·수경 시설</small></span></label>
-                <label class="choice-card"><input type="radio" name="cultivation" value="unknown"><span><strong>잘 모름</strong><small>공통 위험만 안내</small></span></label>
-              </div>
-              <div class="notice unknown-note" id="cultivation-unknown-note" hidden>
-                <p><strong>재배 방식을 확인한 뒤 분석할 수 있어요.</strong></p>
-                <p>노지·시설흙·시설물은 판단 기준이 달라 임의로 추측하지 않습니다. 현장 또는 계획을 확인한 뒤 하나를 선택해 주세요.</p>
-              </div>
-              <p class="validation" id="cultivation-error" role="alert" hidden>안전한 분석을 위해 노지·시설흙·시설물 중 하나를 확인해 주세요.</p>
-            </fieldset>
+            <p class="validation" id="crop-error" role="alert" hidden>사과, 배, 오이, 감자, 상추 중 하나 이상을 선택해 주세요.</p>
           </section>
 
-          <section class="wizard-step" data-step="4" aria-labelledby="season-step-title" hidden>
-            <h1 id="season-step-title" tabindex="-1">언제 재배할 예정인가요?</h1>
-            <p>시기를 알면 해당 작기에 가까운 기상 위험을 따로 보여드릴 수 있습니다.</p>
-            <fieldset class="settings-group" aria-describedby="season-error">
-              <legend class="sr-only">재배 시기 또는 작기 선택</legend>
-              <div class="choice-grid" id="season-options">
-                <label class="choice-card"><input type="radio" name="season" value="spring"><span><strong>봄 감자</strong><small>대체로 3~6월</small></span></label>
-                <label class="choice-card"><input type="radio" name="season" value="highland-summer"><span><strong>고랭지 여름 감자</strong><small>대체로 4~9월</small></span></label>
-                <label class="choice-card"><input type="radio" name="season" value="autumn"><span><strong>가을 감자</strong><small>대체로 7~11월</small></span></label>
-                <label class="choice-card"><input type="radio" name="season" value="unknown"><span><strong>잘 모름</strong><small>시기 위험은 참고만</small></span></label>
-              </div>
-            </fieldset>
-            <div class="notice unknown-note" id="season-unknown-note" hidden>
-              <p><strong>작기를 정하지 않아도 지역 환경은 살펴볼 수 있어요.</strong></p>
-              <p>다만 10일 예보를 실제 파종·생육 위험으로 단정하지 않습니다. 작기를 정한 뒤 다시 분석해 주세요.</p>
-            </div>
-            <p class="validation" id="season-error" role="alert" hidden>재배 시기를 선택해 주세요. 모르겠다면 ‘잘 모름’을 선택할 수 있습니다.</p>
+          <section class="wizard-step" data-step="3" aria-labelledby="settings-step-title" hidden>
+            <h1 id="settings-step-title" tabindex="-1">작물별 재배 조건을 확인해 주세요</h1>
+            <p id="settings-step-help">분석 날짜는 오늘로 자동 적용합니다.</p>
+            <div class="crop-settings-list" id="crop-settings"></div>
+            <p class="validation" id="cultivation-error" role="alert" hidden>노지·시설흙·시설물 중 하나를 선택해 주세요.</p>
+          </section>
 
-            <fieldset class="settings-group" id="growth-group" aria-describedby="growth-error" hidden>
-              <legend>지금 어느 생육단계인가요?</legend>
-              <div class="choice-grid">
-                <label class="choice-card"><input type="radio" name="growth" value="before"><span><strong>심기 전</strong><small>밭 준비 중</small></span></label>
-                <label class="choice-card"><input type="radio" name="growth" value="early"><span><strong>초기 생육</strong><small>싹·어린 잎 시기</small></span></label>
-                <label class="choice-card"><input type="radio" name="growth" value="middle"><span><strong>한창 자라는 중</strong><small>생육 중기</small></span></label>
-                <label class="choice-card"><input type="radio" name="growth" value="harvest"><span><strong>수확 무렵</strong><small>수확 준비</small></span></label>
-                <label class="choice-card"><input type="radio" name="growth" value="unknown"><span><strong>잘 모름</strong><small>단계 공통 행동 안내</small></span></label>
+          <section class="wizard-step" data-step="4" aria-labelledby="growth-step-title" hidden>
+            <h1 id="growth-step-title" tabindex="-1">작물별 현재 상태를 확인해 주세요</h1>
+            <p id="growth-step-help">오늘 날짜로 예상한 단계가 기본 선택되어 있습니다. 실제 작물과 다르면 작물별로 바꿔 주세요.</p>
+            <div class="notice notice-good" id="growth-planning-note" hidden>
+              <p><strong>후보지 분석은 생육 단계를 입력하지 않습니다.</strong></p>
+              <p>선택한 위치·작물·현재 날짜를 기준으로 기후와 토양을 비교합니다.</p>
+            </div>
+            <div class="photo-stage-card" id="growth-photo-card">
+              <label for="growth-photo">작물 사진 추가 <span class="muted">(선택 · 미리보기)</span>
+                <input id="growth-photo" name="growthPhoto" type="file" accept="image/*" capture="environment" aria-describedby="growth-photo-status">
+              </label>
+              <div class="growth-photo-preview" id="growth-photo-preview" hidden>
+                <img id="growth-photo-image" alt="선택한 작물 사진 미리보기">
+                <p id="growth-photo-status">선택한 사진 미리보기</p>
               </div>
-              <p class="validation" id="growth-error" role="alert" hidden>생육단계를 선택해 주세요. 모르겠다면 ‘잘 모름’을 선택할 수 있습니다.</p>
-            </fieldset>
+            </div>
+            <div class="growth-settings-list" id="growth-settings"></div>
+            <p class="validation" id="growth-error" role="alert" hidden>각 작물의 생육단계를 확인해 주세요.</p>
           </section>
 
           <section class="wizard-step" data-step="5" aria-labelledby="review-step-title" hidden>
             <h1 id="review-step-title" tabindex="-1">입력한 조건을 확인해 주세요</h1>
             <p>틀린 항목은 바로 돌아가 고칠 수 있습니다.</p>
             <dl class="summary-list">
-              <div class="summary-row"><dt>현재 상황</dt><dd id="review-situation">선택 전</dd><button class="text-button" type="button" data-edit-step="1">수정</button></div>
-              <div class="summary-row"><dt>지역</dt><dd id="review-region">선택 전</dd><button class="text-button" type="button" data-edit-step="2">수정</button></div>
-              <div class="summary-row"><dt>작물·환경</dt><dd id="review-crop">선택 전</dd><button class="text-button" type="button" data-edit-step="3">수정</button></div>
-              <div class="summary-row"><dt>시기·단계</dt><dd id="review-season">선택 전</dd><button class="text-button" type="button" data-edit-step="4">수정</button></div>
+              <div class="summary-row"><dt>분석 목적</dt><dd id="review-situation">농사를 시작할 곳 알아보기</dd><span></span></div>
+              <div class="summary-row"><dt>분석 위치</dt><dd id="review-region">위치 확인 필요</dd><button class="text-button" type="button" data-edit-step="1">수정</button></div>
+              <div class="summary-row"><dt>선택 작물</dt><dd id="review-crop">선택 전</dd><button class="text-button" type="button" data-edit-step="2">수정</button></div>
+              <div class="summary-row"><dt>작물별 조건</dt><dd id="review-season">선택 전</dd><button class="text-button" type="button" data-edit-step="3">수정</button></div>
+              <div class="summary-row" id="review-growth-row"><dt>생육 상태</dt><dd id="review-growth">선택 전</dd><button class="text-button" type="button" data-edit-step="4">수정</button></div>
             </dl>
             <div class="notice notice-warning" id="runtime-safety-notice">
               <p><strong>백엔드 운영 준비 상태를 확인하고 있습니다.</strong></p>
@@ -1218,13 +2328,13 @@
               <input id="save-consent" name="saveConsent" type="checkbox">
               <label for="save-consent">이 지역·작물 조합을 ‘내 분석’에 저장하는 데 동의합니다. <span class="muted">(선택, 기본 꺼짐)</span></label>
             </div>
-            <button class="button button-primary full-width" id="run-analysis" type="submit" disabled>주소 후보를 확인한 뒤 분석하기</button>
           </section>
         </div>
       </form>
       <footer class="wizard-footer">
         <button class="button button-quiet" type="button" id="wizard-prev" disabled>이전</button>
         <button class="button button-primary" type="button" id="wizard-next" disabled>다음</button>
+        <button class="button button-primary" id="run-analysis" type="submit" form="onboarding-form" disabled hidden>농장 위치를 확인한 뒤 분석하기</button>
       </footer>
     </div>
   </section>
@@ -1258,9 +2368,9 @@
         </div>
         <section aria-labelledby="calculation-rule-title">
           <h3 id="calculation-rule-title">어떻게 계산했나요?</h3>
-          <p id="calculation-rule-copy"><strong>점수는 AI가 만들지 않습니다.</strong> 감자 체험 규칙 예시의 범위 이탈거리·민감도·가중치로 계산합니다. 기후 68점과 토양 54점을 만든 뒤 55%와 45%를 반영한 체험 결과입니다.</p>
+          <p id="calculation-rule-copy"><strong>서로 다른 축을 종합점수로 합치지 않습니다.</strong> 감자 체험 규칙 예시의 범위 이탈거리·민감도·가중치는 각 기후·토양 축 안에서만 사용합니다. 예보 위험은 날짜와 지속기간이 있는 별도 신호로 표시합니다.</p>
           <table class="calc-table">
-            <caption class="sr-only">감자 재배환경 참고지수 변수별 계산표</caption>
+            <caption class="sr-only">감자 축별 환경 비교 체험 규칙 예시 변수별 계산표</caption>
             <thead><tr><th scope="col">항목</th><th scope="col">관측값</th><th scope="col">공식 범위 예시</th><th scope="col">이탈</th><th scope="col">민감도</th><th scope="col">가중치</th><th scope="col">감점</th></tr></thead>
             <tbody>
               <tr><td data-label="항목">생육기 평균기온</td><td data-label="관측값">13.8℃</td><td data-label="공식 범위 예시">12~18℃</td><td data-label="이탈">없음</td><td data-label="민감도">중간</td><td data-label="가중치">18%</td><td data-label="감점">0.0</td></tr>
@@ -1271,7 +2381,7 @@
               <tr><td data-label="항목">배수등급</td><td data-label="관측값">약간 불량</td><td data-label="공식 범위 예시">양호~보통</td><td data-label="이탈">1등급</td><td data-label="민감도">높음</td><td data-label="가중치">15%</td><td data-label="감점">-8.2</td></tr>
             </tbody>
           </table>
-          <p class="muted">감점은 분야 안에서 정규화한 뒤 기후 68점, 토양 54점으로 환산합니다. 68×0.55 + 54×0.45 = 61.7이며 반올림해 62점입니다.</p>
+          <p class="muted">감점과 가중치는 같은 의미의 분야 안에서만 비교합니다. 기후·토양·예보를 하나의 성공확률이나 종합점수로 합치지 않습니다.</p>
         </section>
 
         <section class="panel" aria-labelledby="trend-rule-title">
@@ -1316,45 +2426,31 @@
       const progressBar = document.querySelector('#wizard-progressbar');
       const previousButton = document.querySelector('#wizard-prev');
       const nextButton = document.querySelector('#wizard-next');
+      const submitButton = document.querySelector('#run-analysis');
       const regionInput = document.querySelector('#region-input');
-      const cultivationGroup = document.querySelector('#cultivation-group');
-      const growthGroup = document.querySelector('#growth-group');
-      const seasonOptions = document.querySelector('#season-options');
+      const cropSettings = document.querySelector('#crop-settings');
+      const growthSettings = document.querySelector('#growth-settings');
+      const growthPhoto = document.querySelector('#growth-photo');
+      const growthPhotoPreview = document.querySelector('#growth-photo-preview');
+      const growthPhotoImage = document.querySelector('#growth-photo-image');
       let currentStep = 1;
-      let broadRegion = false;
+      let photoPreviewUrl = null;
+      const cropSettingsState = {};
+      const cropGrowthState = {};
 
       const labels = {
         situation: { planning: '농지를 알아보는 중', growing: '이미 농사 중' },
         crop: { apple: '사과', pear: '배', cucumber: '오이', potato: '감자', lettuce: '상추' },
         cultivation: { outdoor: '노지', 'facility-soil': '시설흙', 'facility-water': '시설물', unknown: '잘 모름' },
-        growth: { before: '심기 전', early: '초기 생육', middle: '한창 자라는 중', harvest: '수확 무렵', unknown: '잘 모름' }
-      };
-
-      const seasonDefinitions = {
-        potato: [
-          ['spring', '봄 감자', '대체로 3~6월'],
-          ['highland-summer', '고랭지 여름 감자', '대체로 4~9월'],
-          ['autumn', '가을 감자', '대체로 7~11월'],
-          ['unknown', '잘 모름', '시기 위험은 참고만']
-        ],
-        apple: [
-          ['annual', '검수된 연간 기준', '개화·생육·수확 시기를 함께 보는 연간 프로필']
-        ],
-        pear: [
-          ['annual', '검수된 연간 기준', '개화·생육·수확 시기를 함께 보는 연간 프로필']
-        ],
-        cucumber: [
-          ['spring', '봄 작기 · 3~5월', '3~5월 기준'],
-          ['summer', '여름 작기 · 6~8월', '6~8월 기준'],
-          ['autumn-winter', '가을·겨울 작기 · 9~2월', '9~2월 기준'],
-          ['unknown', '잘 모름', '시기 위험은 참고만']
-        ],
-        lettuce: [
-          ['spring', '봄 작기 · 3~5월', '3~5월 기준'],
-          ['summer', '여름 작기 · 6~8월', '6~8월 기준'],
-          ['autumn-winter', '가을·겨울 작기 · 9~2월', '9~2월 기준'],
-          ['unknown', '잘 모름', '시기 위험은 참고만']
-        ]
+        growth: {
+          early: '초기 생육',
+          middle: '한창 자라는 중',
+          harvest: '수확 무렵',
+          unknown: '잘 모름',
+          flowering: '꽃이 피는 중',
+          'tuber-bulking': '감자알이 굵어지는 중',
+          'flower-differentiation': '꽃눈이 생기기 시작함'
+        }
       };
 
       const cropResults = {
@@ -1452,35 +2548,48 @@
         return form.querySelector(`input[name="${name}"]:checked`)?.value || '';
       }
 
+      function selectedValues(name) {
+        return [...form.querySelectorAll(`input[name="${name}"]:checked`)].map((input) => input.value);
+      }
+
       function setError(id, visible) {
         const element = document.querySelector(`#${id}`);
         if (element) element.hidden = !visible;
       }
 
-      function needsCultivation() {
-        return ['cucumber', 'lettuce'].includes(selectedValue('crop'));
+      function cropSettingsComplete() {
+        return selectedValues('crop').every((crop) => {
+          if (crop === 'cucumber' || crop === 'lettuce') {
+            return Boolean(selectedValue(`cultivation-${crop}`));
+          }
+          return true;
+        });
+      }
+
+      function growthSettingsComplete() {
+        if (selectedValue('situation') === 'planning') return true;
+        const crops = selectedValues('crop');
+        return crops.length > 0 && crops.every((crop) => Boolean(selectedValue(`growth-${crop}`)));
       }
 
       function isStepComplete(step) {
-        if (step === 1) return Boolean(selectedValue('situation'));
-        if (step === 2) return Boolean(regionInput.value.trim() || broadRegion);
-        if (step === 3) return Boolean(selectedValue('crop')) && (!needsCultivation() || Boolean(selectedValue('cultivation')));
-        if (step === 4) return Boolean(selectedValue('season')) && (selectedValue('situation') !== 'growing' || Boolean(selectedValue('growth')));
+        if (step === 1) return regionInput.dataset.candidateVerified === 'true';
+        if (step === 2) return selectedValues('crop').length > 0;
+        if (step === 3) return cropSettingsComplete();
+        if (step === 4) return growthSettingsComplete();
         return true;
       }
 
       function validateStep(step) {
         const complete = isStepComplete(step);
-        if (step === 1) setError('situation-error', !selectedValue('situation'));
-        if (step === 2) setError('region-error', !(regionInput.value.trim() || broadRegion));
+        if (step === 1) setError('region-error', regionInput.dataset.candidateVerified !== 'true');
+        if (step === 2) setError('crop-error', selectedValues('crop').length === 0);
         if (step === 3) {
-          setError('crop-error', !selectedValue('crop'));
-          setError('cultivation-error', needsCultivation() && !selectedValue('cultivation'));
+          const selectedCrops = selectedValues('crop');
+          setError('cultivation-error', selectedCrops.some((crop) =>
+            ['cucumber', 'lettuce'].includes(crop) && !selectedValue(`cultivation-${crop}`)));
         }
-        if (step === 4) {
-          setError('season-error', !selectedValue('season'));
-          setError('growth-error', selectedValue('situation') === 'growing' && !selectedValue('growth'));
-        }
+        if (step === 4) setError('growth-error', !growthSettingsComplete());
         if (!complete) announce('선택하지 않은 항목이 있습니다. 안내 문구를 확인해 주세요.');
         return complete;
       }
@@ -1490,32 +2599,57 @@
       }
 
       function updateReview() {
-        const situation = selectedValue('situation');
-        const crop = selectedValue('crop');
-        const cultivation = selectedValue('cultivation');
-        const seasonRadio = form.querySelector('input[name="season"]:checked');
-        const growth = selectedValue('growth');
-        document.querySelector('#review-situation').textContent = labels.situation[situation] || '선택 전';
-        document.querySelector('#review-region').textContent = `${regionInput.value.trim() || '평창군'}${broadRegion ? ' · 군 단위 기준' : ''}`;
-        document.querySelector('#review-crop').textContent = `${labels.crop[crop] || '선택 전'}${needsCultivation() ? ` · ${labels.cultivation[cultivation] || '환경 미선택'}` : ''}`;
-        document.querySelector('#review-season').textContent = `${seasonRadio?.dataset.label || '선택 전'}${situation === 'growing' ? ` · ${labels.growth[growth] || '단계 미선택'}` : ''}`;
+        const selectedCrops = selectedValues('crop');
+        const planning = selectedValue('situation') === 'planning';
+        document.querySelector('#review-growth-row').hidden = planning;
+        document.querySelector('#review-situation').textContent = planning
+          ? '농사를 시작할 곳 알아보기'
+          : '이미 재배 중인 농장 점검';
+        document.querySelector('#review-region').textContent =
+          regionInput.dataset.candidateVerified === 'true'
+            ? regionInput.value.trim()
+            : '위치 확인 필요';
+        document.querySelector('#review-crop').textContent =
+          selectedCrops.map((crop) => labels.crop[crop]).join(', ') || '선택 전';
+        document.querySelector('#review-season').textContent =
+          selectedCrops.map(cropSettingSummary).join(' · ') || '선택 전';
+        document.querySelector('#review-growth').textContent = planning
+          ? '후보지 분석 · 생육 단계 입력 없음'
+          : `${selectedCrops.map(growthSettingSummary).join(' · ') || '단계 미선택'}${growthPhoto.files?.length ? ' · 사진 추가됨' : ''}`;
+      }
+
+      function wizardRoute() {
+        return selectedValue('situation') === 'planning'
+          ? [1, 2, 3, 5]
+          : [1, 2, 3, 4, 5];
       }
 
       function setStep(step, shouldFocus = true) {
         currentStep = Math.max(1, Math.min(5, step));
+        const route = wizardRoute();
+        if (!route.includes(currentStep)) {
+          currentStep = route.find((itemStep) => itemStep > currentStep) ?? route.at(-1);
+        }
+        const routePosition = route.indexOf(currentStep) + 1;
         wizardSteps.forEach((section) => { section.hidden = Number(section.dataset.step) !== currentStep; });
         document.querySelectorAll('.wizard-step-list li').forEach((item, index) => {
           const itemStep = index + 1;
+          const visiblePosition = route.indexOf(itemStep);
+          item.hidden = visiblePosition === -1;
+          if (visiblePosition >= 0) item.dataset.stepNumber = String(visiblePosition + 1);
           item.classList.toggle('is-current', itemStep === currentStep);
           item.classList.toggle('is-complete', itemStep < currentStep);
           if (itemStep === currentStep) item.setAttribute('aria-current', 'step');
           else item.removeAttribute('aria-current');
         });
-        progressText.textContent = `${currentStep} / 5`;
-        progressBar.value = currentStep;
-        progressBar.textContent = `${currentStep} / 5`;
-        previousButton.disabled = currentStep === 1;
+        progressText.textContent = `${routePosition} / ${route.length}`;
+        progressBar.max = route.length;
+        progressBar.value = routePosition;
+        progressBar.textContent = `${routePosition} / ${route.length}`;
+        previousButton.disabled = routePosition === 1;
         nextButton.hidden = currentStep === 5;
+        submitButton.hidden = currentStep !== 5;
+        if (currentStep === 4) renderGrowthSettings();
         if (currentStep === 5) updateReview();
         updateNextState();
         if (shouldFocus) {
@@ -1525,14 +2659,15 @@
         }
       }
 
-      function createSeasonChoice(value, title, help) {
+      function createChoice(name, value, title, help, checked = false) {
         const label = document.createElement('label');
         label.className = 'choice-card';
         const input = document.createElement('input');
         input.type = 'radio';
-        input.name = 'season';
+        input.name = name;
         input.value = value;
         input.dataset.label = title;
+        input.checked = checked;
         const span = document.createElement('span');
         const strong = document.createElement('strong');
         strong.textContent = title;
@@ -1543,21 +2678,195 @@
         return label;
       }
 
-      function renderSeasonOptions() {
-        const crop = selectedValue('crop') || 'potato';
-        const previousSeason = selectedValue('season');
-        seasonOptions.replaceChildren(...seasonDefinitions[crop].map((item) => createSeasonChoice(...item)));
-        const matching = [...form.querySelectorAll('input[name="season"]')].find((input) => input.value === previousSeason);
-        if (matching) matching.checked = true;
-        document.querySelector('#season-unknown-note').hidden = selectedValue('season') !== 'unknown';
+      function createGrowthChoice(crop, value, title, help, recommended, checked) {
+        const label = createChoice(`growth-${crop}`, value, title, help, checked);
+        const strong = label.querySelector('strong');
+        const titleRow = document.createElement('span');
+        titleRow.className = 'choice-title-row';
+        strong.replaceWith(titleRow);
+        titleRow.append(strong);
+        if (recommended) {
+          const badge = document.createElement('span');
+          badge.className = 'choice-recommendation';
+          badge.textContent = '날짜 기준 AI 예상';
+          titleRow.append(badge);
+        }
+        return label;
       }
 
-      function updateConditionalQuestions() {
-        cultivationGroup.hidden = !needsCultivation();
-        growthGroup.hidden = selectedValue('situation') !== 'growing';
-        document.querySelector('#cultivation-unknown-note').hidden = selectedValue('cultivation') !== 'unknown';
-        document.querySelector('#season-unknown-note').hidden = selectedValue('season') !== 'unknown';
+      function rememberCropSettings() {
+        Object.keys(labels.crop).forEach((crop) => {
+          cropSettingsState[crop] = {
+            cultivation: selectedValue(`cultivation-${crop}`) || cropSettingsState[crop]?.cultivation || ''
+          };
+        });
+      }
+
+      function renderCropSettings() {
+        rememberCropSettings();
+        const planning = selectedValue('situation') === 'planning';
+        document.querySelector('#settings-step-help').textContent = planning
+          ? '오늘 날짜를 기준으로 후보 지역의 기후와 토양을 비교합니다.'
+          : '생육 상태는 날짜 기준 AI 예상으로 선택되며 필요할 때 직접 변경할 수 있습니다.';
+        const cards = selectedValues('crop').map((crop) => {
+          const card = document.createElement('section');
+          card.className = 'crop-setting-card';
+          const title = document.createElement('h2');
+          title.textContent = labels.crop[crop];
+          const help = document.createElement('p');
+          help.textContent = crop === 'cucumber' || crop === 'lettuce'
+            ? '재배 환경에 따라 기상·토양 판단 범위가 달라집니다.'
+            : '재배 환경은 노지로 적용합니다.';
+          card.append(title, help);
+          if (crop === 'cucumber' || crop === 'lettuce') {
+            const cultivation = document.createElement('fieldset');
+            cultivation.className = 'settings-group';
+            const legend = document.createElement('legend');
+            legend.textContent = '재배 환경';
+            const grid = document.createElement('div');
+            grid.className = 'choice-grid';
+            grid.append(
+              createChoice(`cultivation-${crop}`, 'outdoor', '노지', '야외 밭', !cropSettingsState[crop]?.cultivation || cropSettingsState[crop]?.cultivation === 'outdoor'),
+              createChoice(`cultivation-${crop}`, 'facility-soil', '시설흙', '비닐하우스 토양', cropSettingsState[crop]?.cultivation === 'facility-soil'),
+              createChoice(`cultivation-${crop}`, 'facility-water', '시설물', '양액·수경 시설', cropSettingsState[crop]?.cultivation === 'facility-water')
+            );
+            cultivation.append(legend, grid);
+            card.append(cultivation);
+          }
+          const dateNote = document.createElement('div');
+          dateNote.className = 'auto-date-note';
+          const dateLabel = new Intl.DateTimeFormat('ko-KR', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          }).format(new Date());
+          const dateCheck = document.createElement('span');
+          dateCheck.setAttribute('aria-hidden', 'true');
+          dateCheck.textContent = '✓';
+          const dateCopy = document.createElement('div');
+          const dateTitle = document.createElement('strong');
+          dateTitle.textContent = planning
+            ? `${dateLabel} · 분석 기준일`
+            : `${dateLabel} · 날짜 기준 AI 예상`;
+          const dateHelp = document.createElement('p');
+          dateHelp.textContent = planning
+            ? '이 날짜를 기준으로 기후와 토양을 비교합니다.'
+            : '현재 날짜와 다음 단계의 생육 상태를 함께 사용합니다.';
+          dateCopy.append(dateTitle, dateHelp);
+          dateNote.append(dateCheck, dateCopy);
+          card.append(dateNote);
+          return card;
+        });
+        cropSettings.replaceChildren(...cards);
         updateNextState();
+      }
+
+      function rememberCropGrowth() {
+        Object.keys(labels.crop).forEach((crop) => {
+          const growth = selectedValue(`growth-${crop}`);
+          if (growth) cropGrowthState[crop] = growth;
+        });
+      }
+
+      function recommendedGrowthStage(crop, month = new Date().getMonth() + 1) {
+        const profiles = {
+          apple: { early: [3, 4, 5], middle: [6, 7, 8], harvest: [9, 10, 11] },
+          pear: { early: [3, 4, 5], middle: [6, 7, 8], harvest: [9, 10, 11] },
+          cucumber: { early: [3, 4], middle: [5, 6, 7, 8], harvest: [9, 10] },
+          potato: { early: [3, 4], middle: [5, 6, 7, 8], harvest: [9, 10, 11] },
+          lettuce: { early: [2, 3, 4], middle: [5, 6, 7, 8, 9], harvest: [10, 11] }
+        };
+        const profile = profiles[crop] || {};
+        return Object.entries(profile).find(([, months]) => months.includes(month))?.[0] || 'unknown';
+      }
+
+      function renderGrowthSettings() {
+        rememberCropGrowth();
+        const planning = selectedValue('situation') === 'planning';
+        document.querySelector('#growth-planning-note').hidden = !planning;
+        document.querySelector('#growth-photo-card').hidden = planning;
+        document.querySelector('#growth-step-title').textContent = planning
+          ? '후보지 분석 조건을 확인해 주세요'
+          : '작물별 현재 상태를 확인해 주세요';
+        document.querySelector('#growth-step-help').textContent = planning
+          ? '후보지를 검토할 때는 아직 실제 생육 단계가 없으므로 별도로 묻지 않습니다.'
+          : '오늘 날짜로 예상한 단계가 기본 선택되어 있습니다. 실제 작물과 다르면 작물별로 바꿔 주세요.';
+        if (planning) {
+          growthSettings.replaceChildren();
+          updateNextState();
+          return;
+        }
+        const cards = selectedValues('crop').map((crop) => {
+          const recommendation = recommendedGrowthStage(crop);
+          const selected = cropGrowthState[crop] || recommendation;
+          cropGrowthState[crop] = selected;
+          const card = document.createElement('section');
+          card.className = 'crop-setting-card growth-crop-card';
+          const title = document.createElement('h2');
+          title.textContent = labels.crop[crop];
+          const help = document.createElement('p');
+          help.textContent = '오늘 날짜의 일반적인 생육 흐름을 기준으로 예상했습니다. 실제 상태가 다르면 바꿔 주세요.';
+          const fieldset = document.createElement('fieldset');
+          fieldset.className = 'settings-group';
+          const legend = document.createElement('legend');
+          legend.className = 'sr-only';
+          legend.textContent = `${labels.crop[crop]} 생육단계`;
+          const grid = document.createElement('div');
+          grid.className = 'choice-grid';
+          const choices = [
+            ['early', '초기 생육', '싹·어린 잎 시기'],
+            ['middle', '한창 자라는 중', '생육 중기'],
+            ['harvest', '수확 무렵', '수확 준비'],
+            ['unknown', '잘 모름', '단계 공통 안내']
+          ];
+          if (crop === 'pear') {
+            choices.splice(1, 0, ['flowering', '꽃이 피는 중', '개화기 저온 확인']);
+          }
+          if (crop === 'potato') {
+            choices.splice(2, 0, ['tuber-bulking', '감자알이 굵어지는 중', '고온 영향 확인']);
+          }
+          const cultivation = selectedValue(`cultivation-${crop}`);
+          if (
+            crop === 'lettuce' &&
+            ['facility-soil', 'facility-water'].includes(cultivation)
+          ) {
+            choices.splice(2, 0, [
+              'flower-differentiation',
+              '꽃눈이 생기기 시작함',
+              '고온·추대 가능성 확인'
+            ]);
+          }
+          choices.forEach(([value, choiceTitle, choiceHelp]) => {
+            grid.append(createGrowthChoice(
+              crop,
+              value,
+              choiceTitle,
+              choiceHelp,
+              value === recommendation,
+              value === selected
+            ));
+          });
+          fieldset.append(legend, grid);
+          card.append(title, help, fieldset);
+          return card;
+        });
+        growthSettings.replaceChildren(...cards);
+        updateNextState();
+      }
+
+      function cropSettingSummary(crop) {
+        if (!['cucumber', 'lettuce'].includes(crop)) {
+          return `${labels.crop[crop]} · 노지 · 날짜 기준 AI 예상`;
+        }
+        const cultivation = labels.cultivation[selectedValue(`cultivation-${crop}`)] || '환경 미선택';
+        return `${labels.crop[crop]} · ${cultivation} · 날짜 기준 AI 예상`;
+      }
+
+      function growthSettingSummary(crop) {
+        const growth = selectedValue(`growth-${crop}`) || cropGrowthState[crop];
+        const recommendation = recommendedGrowthStage(crop);
+        const suffix = growth === recommendation ? ' · 날짜 기준 AI 예상' : '';
+        return `${labels.crop[crop]} · ${labels.growth[growth] || '단계 미선택'}${suffix}`;
       }
 
       function replaceList(list, items) {
@@ -1569,19 +2878,16 @@
       }
 
       function currentResult() {
-        return cropResults[selectedValue('crop')] || cropResults.potato;
+        return cropResults[selectedValues('crop')[0]] || cropResults.potato;
       }
 
-      function setMeter(label, value) {
-        const meter = document.querySelector(`[role="meter"][aria-label="${label}"]`);
-        if (!meter) return;
-        meter.setAttribute('aria-valuenow', String(value));
-        const fill = meter.querySelector('.meter-fill');
-        if (fill) fill.style.width = `${value}%`;
-        const valueElement = label === '기후 점수'
-          ? document.querySelector('#climate-metric-value')
-          : document.querySelector('#soil-metric-value');
-        if (valueElement) valueElement.textContent = `${value}점`;
+      function setAxisSummary(result) {
+        const climateSummary = result.climate >= 65 ? '기온은 대체로 적정' : '기후 조건 추가 확인';
+        const soilSummary = result.soil >= 65 ? '지역 토양은 범위 안' : '내 밭의 pH·배수';
+        document.querySelector('#climate-metric-value').textContent = climateSummary;
+        document.querySelector('#soil-metric-value').textContent = soilSummary;
+        document.querySelector('#climate-axis-status').textContent = result.climate >= 65 ? '대체로 맞음' : '추가 확인';
+        document.querySelector('#soil-axis-status').textContent = result.soil >= 65 ? '자료상 범위 안' : '현장 확인 필요';
       }
 
       function renderEvidenceRows(rows) {
@@ -1602,10 +2908,10 @@
       function renderCalculationCopy(cropLabel, result) {
         const copy = document.querySelector('#calculation-rule-copy');
         const keySentence = document.createElement('strong');
-        keySentence.textContent = '점수는 AI가 만들지 않습니다.';
+        keySentence.textContent = '서로 다른 축을 종합점수로 합치지 않습니다.';
         copy.replaceChildren(
           keySentence,
-          document.createTextNode(` ${cropLabel} 체험 규칙 예시의 범위 이탈거리·민감도·가중치로 계산합니다. 기후 ${result.climate}점과 토양 ${result.soil}점을 만든 뒤 55%와 45%를 반영한 체험 결과입니다.`)
+          document.createTextNode(` ${cropLabel} 체험 규칙 예시의 범위 이탈거리·민감도·가중치는 기후와 토양 각 축 안에서만 사용합니다. 예보 위험은 날짜와 지속기간이 있는 별도 신호로 표시합니다.`)
         );
       }
 
@@ -1620,22 +2926,18 @@
         document.querySelector('#profile-region').textContent = compactRegion;
         document.querySelector('#sidebar-context-value').textContent = `${compactRegion} · ${cropLabel}`;
         document.querySelector('#topbar-context-value').textContent = `${compactRegion} · ${cropLabel}`;
-        document.querySelector('#dashboard-title').textContent = `${compactRegion.replace('군 ', ' ')} ${cropLabel} 브리핑`;
-        document.querySelector('#score-value').textContent = String(result.score);
-        document.querySelector('.score-number').setAttribute('aria-label', `100점 만점에 ${result.score}점`);
-        document.querySelector('#score-range').textContent = `추정 범위 ${result.range}`;
+        document.querySelector('#dashboard-title').textContent = `${compactRegion.replace('군 ', ' ')} · ${cropLabel} 농장 분석`;
         replaceList(document.querySelector('#score-reasons'), result.reasons);
         document.querySelector('#ai-summary').textContent = result.summary;
         replaceList(document.querySelector('#ai-actions'), result.actions);
-        setMeter('기후 점수', result.climate);
-        setMeter('토양 점수', result.soil);
+        setAxisSummary(result);
         renderEvidenceRows(result.evidenceRows);
         renderCalculationCopy(cropLabel, result);
         document.querySelector('#rule-version').textContent = `${cropLabel} 규칙 v1.0 · 체험 규칙 예시`;
-        document.querySelector('.calc-table caption').textContent = `${cropLabel} 재배환경 참고지수 체험 규칙 예시 변수별 계산표`;
+        document.querySelector('.calc-table caption').textContent = `${cropLabel} 축별 환경 비교 체험 규칙 예시 변수별 계산표`;
         const formula = document.querySelector('#evidence-dialog .calc-table + .muted');
         const weightTotal = result.evidenceRows.reduce((sum, row) => sum + Number.parseFloat(row[5]), 0);
-        if (formula) formula.textContent = `표는 대표 항목 ${result.evidenceRows.length}개이며 가중치 합은 ${weightTotal}%입니다. 분야 안에서 정규화한 기후 ${result.climate}점과 토양 ${result.soil}점에 55%와 45%를 반영해 ${result.score}점으로 표시합니다.`;
+        if (formula) formula.textContent = `표는 대표 항목 ${result.evidenceRows.length}개이며 각 항목 가중치 합은 ${weightTotal}%입니다. 같은 분야 안의 비교에만 사용하며 기후·토양·예보를 하나의 성공확률이나 종합점수로 합치지 않습니다.`;
       }
 
       function applyMode(mode) {
@@ -1647,8 +2949,8 @@
         });
         if (window.__BACKEND_INTEGRATION_ENABLED__) return;
         document.querySelector('#dashboard-mode-copy').textContent = growing
-          ? '재배 중인 분에게 오늘 할 일과 1~3일 위험부터 보여드립니다.'
-          : '농지를 알아보는 분에게 후보지 확인 순서로 보여드립니다.';
+          ? '현재 재배 조건 기준 1~3일 위험 및 점검 항목'
+          : '후보지 기준 기상·토양·예보 분석';
         document.querySelector('#headline-status').textContent = growing
           ? '현재 판단 · 오늘 확인, 4월 16일 비 18mm'
           : '현재 판단 · 계속 검토, 배수 확인 필요';
@@ -1698,15 +3000,6 @@
         message.replaceChildren(titleParagraph, detailParagraph);
       }
 
-      function rangeForState(state, result) {
-        if (state === 'partial') return result.range;
-        if (state === 'ready') return `${Math.max(0, result.score - 3)}~${Math.min(100, result.score + 3)}`;
-        if (state === 'stale') return `${Math.max(0, result.score - 8)}~${Math.min(100, result.score + 8)}`;
-        if (state === 'error') return `${Math.max(0, result.score - 9)}~${Math.min(100, result.score + 9)}`;
-        if (state === 'offline') return `${Math.max(0, result.score - 10)}~${Math.min(100, result.score + 10)}`;
-        return '';
-      }
-
       function setDataState(state, shouldAnnounce = true) {
         const config = dataStates[state] || dataStates.partial;
         const result = currentResult();
@@ -1735,14 +3028,11 @@
         if (state === 'hold') setSourceState('soil', '핵심자료 없음', 'danger');
 
         if (state === 'hold') {
-          document.querySelector('#score-value').textContent = '—';
-          document.querySelector('.score-number').setAttribute('aria-label', '핵심 자료 부족으로 계산 보류');
-          document.querySelector('#score-range').textContent = '핵심 자료 확보 후 계산';
+          document.querySelector('#soil-metric-value').textContent = '핵심 자료 없어 보류';
+          document.querySelector('#soil-axis-status').textContent = '판단 보류';
           replaceList(document.querySelector('#score-reasons'), ['토양 산도와 배수등급이 없어 공식 범위와 비교할 수 없습니다.', '결측값을 임의로 채우지 않았습니다.', '토양검정 또는 유효한 지역자료를 확보한 뒤 다시 계산합니다.']);
         } else {
-          document.querySelector('#score-value').textContent = String(result.score);
-          document.querySelector('.score-number').setAttribute('aria-label', `100점 만점에 ${result.score}점`);
-          document.querySelector('#score-range').textContent = `추정 범위 ${rangeForState(state, result)}`;
+          setAxisSummary(result);
           replaceList(document.querySelector('#score-reasons'), result.reasons);
         }
         document.querySelector('#score-state').textContent = config.scoreState;
@@ -1753,13 +3043,8 @@
         document.querySelector('#save-consent').checked = false;
         if (resetValues) {
           form.reset();
-          broadRegion = false;
-          regionInput.removeAttribute('data-broad-region');
-          document.querySelector('#region-unknown-note').hidden = true;
-          document.querySelector('#region-unknown').setAttribute('aria-expanded', 'false');
           document.querySelectorAll('.validation').forEach((error) => { error.hidden = true; });
-          renderSeasonOptions();
-          updateConditionalQuestions();
+          renderCropSettings();
         }
         onboarding.hidden = false;
         document.querySelector('.app-shell').inert = true;
@@ -1777,8 +3062,8 @@
 
       function addSavedAnalysis() {
         savedAnalysisCount += 1;
-        const crop = selectedValue('crop');
-        const seasonLabel = form.querySelector('input[name="season"]:checked')?.dataset.label || '시기 미정';
+        const crop = selectedValues('crop')[0];
+        const seasonLabel = cropSettingSummary(crop);
         const card = makeElement('article', 'analysis-card source-card');
         card.dataset.analysisCard = 'user';
         const info = makeElement('div');
@@ -1937,8 +3222,8 @@
           }
           if (action === 'remind') {
             button.setAttribute('aria-pressed', 'true');
-            status.textContent = '오늘 오후 5시에 다시 볼 항목으로 표시';
-            announce('배수로 확인 작업을 오늘 오후 5시에 다시 보도록 표시했습니다.');
+            status.textContent = '현재 화면에서 나중에 볼 항목으로 표시';
+            announce('배수로 확인 작업을 현재 화면에서 나중에 보도록 표시했습니다.');
           }
           if (action === 'different') {
             button.setAttribute('aria-pressed', 'true');
@@ -1972,14 +3257,11 @@
         if (!button) return;
         if (button.dataset.analysisAction === 'view') showView('dashboard');
         if (button.dataset.analysisAction === 'farm') {
-          const growingRadio = form.querySelector('input[name="situation"][value="growing"]');
-          growingRadio.checked = true;
-          updateConditionalQuestions();
           applyMode('growing');
           button.textContent = '농장으로 사용 중';
           button.disabled = true;
           showView('dashboard');
-          announce('저장한 분석을 실제 재배 중인 농장으로 전환했습니다. 오늘 할 일을 먼저 보여드립니다.');
+          announce('실제 재배 중인 농장으로 전환했습니다. 오늘의 점검 항목이 우선 표시됩니다.');
         }
       });
 
@@ -1992,42 +3274,69 @@
       document.querySelector('#new-analysis-button').addEventListener('click', () => openWizard(true));
 
       nextButton.addEventListener('click', () => {
-        if (validateStep(currentStep)) setStep(currentStep + 1);
+        if (!validateStep(currentStep)) return;
+        const route = wizardRoute();
+        const currentIndex = route.indexOf(currentStep);
+        setStep(route[Math.min(currentIndex + 1, route.length - 1)]);
       });
 
-      previousButton.addEventListener('click', () => setStep(currentStep - 1));
+      previousButton.addEventListener('click', () => {
+        const route = wizardRoute();
+        const currentIndex = route.indexOf(currentStep);
+        setStep(route[Math.max(currentIndex - 1, 0)]);
+      });
 
       form.addEventListener('change', (event) => {
-        if (event.target.name === 'crop') renderSeasonOptions();
-        if (event.target.name === 'situation' || event.target.name === 'crop' || event.target.name === 'cultivation' || event.target.name === 'season') updateConditionalQuestions();
-        if (event.target.name === 'situation') setError('situation-error', false);
+        if (event.target.name === 'situation') {
+          const growing = event.target.value === 'growing';
+          document.querySelector('#crop-step-title').textContent = growing
+            ? '지금 키우는 작물을 모두 골라 주세요'
+            : '검토할 작물을 모두 골라 주세요';
+          document.querySelector('#crop-step-help').textContent = growing
+            ? '여러 작물을 함께 재배한다면 복수로 선택할 수 있습니다. 분석 후 작물 탭에서 결과를 전환할 수 있습니다.'
+            : '여러 작물을 비교하려면 복수로 선택할 수 있습니다. 분석 후 작물 탭에서 결과를 전환할 수 있습니다.';
+          renderCropSettings();
+          renderGrowthSettings();
+          setStep(currentStep, false);
+        }
+        if (event.target.name === 'crop') {
+          renderCropSettings();
+          renderGrowthSettings();
+        }
         if (event.target.name === 'crop') setError('crop-error', false);
-        if (event.target.name === 'cultivation') setError('cultivation-error', false);
-        if (event.target.name === 'season') setError('season-error', false);
-        if (event.target.name === 'growth') setError('growth-error', false);
+        if (event.target.name.startsWith('cultivation-')) setError('cultivation-error', false);
+        if (event.target.name.startsWith('growth-')) {
+          const crop = event.target.name.slice('growth-'.length);
+          cropGrowthState[crop] = event.target.value;
+          setError('growth-error', false);
+        }
         updateNextState();
+      });
+
+      growthPhoto.addEventListener('change', () => {
+        if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+        const [file] = growthPhoto.files || [];
+        if (!file) {
+          photoPreviewUrl = null;
+          growthPhotoPreview.hidden = true;
+          growthPhotoImage.removeAttribute('src');
+          return;
+        }
+        if (!file.type.startsWith('image/') || file.size > 10 * 1024 * 1024) {
+          growthPhoto.value = '';
+          growthPhotoPreview.hidden = true;
+          announce('10MB 이하 이미지 파일만 추가할 수 있습니다.');
+          return;
+        }
+        photoPreviewUrl = URL.createObjectURL(file);
+        growthPhotoImage.src = photoPreviewUrl;
+        growthPhotoPreview.hidden = false;
+        announce('선택한 사진을 미리 봅니다.');
       });
 
       regionInput.addEventListener('input', () => {
-        broadRegion = false;
-        regionInput.removeAttribute('data-broad-region');
         setError('region-error', false);
         updateNextState();
-      });
-
-      document.querySelector('#region-unknown').addEventListener('click', (event) => {
-        const note = document.querySelector('#region-unknown-note');
-        note.hidden = !note.hidden;
-        event.currentTarget.setAttribute('aria-expanded', String(!note.hidden));
-        if (!note.hidden) document.querySelector('#use-broad-region').focus();
-      });
-
-      document.querySelector('#use-broad-region').addEventListener('click', () => {
-        broadRegion = false;
-        regionInput.removeAttribute('data-broad-region');
-        updateNextState();
-        regionInput.focus();
-        announce('알고 있는 시 또는 군 이름을 입력해 주세요. 특정 지역을 임의로 선택하지 않습니다.');
       });
 
       document.querySelectorAll('[data-edit-step]').forEach((button) => {
@@ -2037,7 +3346,7 @@
       form.addEventListener('submit', (event) => {
         event.preventDefault();
         if (window.__BACKEND_INTEGRATION_ENABLED__) return;
-        for (let step = 1; step <= 4; step += 1) {
+        for (const step of wizardRoute().filter((step) => step !== 5)) {
           if (!validateStep(step)) {
             setStep(step);
             return;
@@ -2057,7 +3366,8 @@
         announce('체험용 분석을 완료했습니다. 결과가 즉시 표시되었습니다.');
       });
 
-      renderSeasonOptions();
+      renderCropSettings();
+      renderGrowthSettings();
       renderResult();
       applyMode('planning');
       setDataState('partial', false);

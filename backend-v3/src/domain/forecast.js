@@ -366,6 +366,16 @@ function riskFromReadings(rule, readings, suffix) {
     sourceType: readings[0].day.sourceType,
     severity: rule.severity,
     actionId: rule.actionId,
+    trigger: {
+      metric: rule.metric,
+      unit: rule.unit,
+      comparison: structuredClone(rule.comparison),
+      readings: readings.map(({ day, value }) => ({
+        date: day.date,
+        value,
+      })),
+    },
+    guidance: structuredClone(rule.guidance),
     evidenceIds,
     sourceFreshness: "CURRENT",
   };

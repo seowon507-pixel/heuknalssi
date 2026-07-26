@@ -10,8 +10,16 @@ export const VERIFIED_KMA_SHORT_CONTRACT_VERSION =
   "fixture-kma-short-v1";
 export const VERIFIED_KMA_MID_CONTRACT_VERSION =
   "fixture-kma-mid-dual-v1";
+export const VERIFIED_KMA_ASOS_CONTRACT_VERSION =
+  "data-go-asos-daily-v1-2025-09-17";
+export const VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION =
+  "kma-api-hub-climate-normal-monthly-2021-v1";
 export const VERIFIED_SOIL_V2_CONTRACT_VERSION =
-  "fixture-soil-v2-2026-07";
+  "data-go-15144685-v1.0.0-2025-11-04";
+export const VERIFIED_SOIL_FIELD_CONTRACT_VERSION =
+  "data-go-15144225-v1.0.0-2025-11-04";
+export const VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION =
+  "smartfarm-reference-v1";
 export const PARTIAL_PROVIDER_FAILURE = "PARTIAL_PROVIDER_FAILURE";
 
 export function hasUsableCredential(value) {

@@ -1,0 +1,197 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  VERIFIED_SOIL_V2_CONTRACT,
+} from "../src/adapters/index.js";
+import {
+  resolveLocationKeys,
+  validateVerifiedLocationMappings,
+} from "../src/application/index.js";
+import {
+  createRuleRegistry,
+  validateRuleRegistry,
+} from "../src/domain/index.js";
+import { createBackend } from "../server/app.js";
+import { REVIEWED_CROP_RULES } from "../runtime/reviewed-crop-rules.js";
+import { REVIEWED_LOCATION_MAPPINGS } from "../runtime/reviewed-location-mappings.js";
+import { createRuntimeOptions } from "../runtime/reviewed-runtime.mjs";
+
+const REVIEW_CLOCK = () => new Date("2026-07-25T12:00:00.000Z");
+
+test("reviewed crop rules pass the strict activation gate", () => {
+  const validation = validateRuleRegistry(REVIEWED_CROP_RULES);
+
+  assert.equal(validation.invalidRules.length, 0);
+  assert.equal(validation.validRules.length, REVIEWED_CROP_RULES.length);
+  assert.deepEqual(
+    [...new Set(validation.validRules.map((rule) => rule.crop))].sort(),
+    ["APPLE", "CUCUMBER", "LETTUCE", "PEAR", "POTATO"],
+  );
+  assert.ok(
+    validation.validRules.every(
+      (rule) =>
+        rule.reviewedAt === "2026-07-25" &&
+        rule.sourceUrl.startsWith("https://"),
+    ),
+  );
+  assert.ok(
+    validation.validRules
+      .filter((rule) => rule.module === "FORECAST")
+      .every(
+        (rule) =>
+          rule.use === "FORECAST_RISK" &&
+          typeof rule.guidance?.headline === "string" &&
+          typeof rule.guidance?.reason === "string" &&
+          Array.isArray(rule.guidance?.actions) &&
+          rule.guidance.actions.length > 0 &&
+          rule.guidance.actions.every(
+            (action) => typeof action === "string" && action.length > 0,
+          ) &&
+          typeof rule.guidance.recheck === "string" &&
+          rule.guidance.recheck.length > 0 &&
+          rule.guidance.sourceUrl.startsWith("https://"),
+      ),
+  );
+});
+
+test("custom open-field climate rules activate only selected crop months", () => {
+  const registry = createRuleRegistry(REVIEWED_CROP_RULES);
+  const request = {
+    crop: "POTATO",
+    cultivationMode: "OPEN_FIELD",
+    growthStage: "UNSPECIFIED",
+    season: {
+      kind: "CUSTOM",
+      profileId: "CUSTOM",
+      months: [4, 5, 6],
+    },
+  };
+
+  const active = registry.resolve(request, "CLIMATE");
+
+  assert.deepEqual(
+    active.map((rule) => rule.evaluationPeriod.month),
+    [4, 5, 6],
+  );
+  assert.ok(active.every((rule) => rule.optimalRange.join(":") === "14:23"));
+});
+
+test("single targets and facility risks retain their evidence limitations", () => {
+  const registry = createRuleRegistry(REVIEWED_CROP_RULES);
+  const pearClimate = registry.resolve(
+    {
+      crop: "PEAR",
+      cultivationMode: "OPEN_FIELD",
+      season: {
+        kind: "PROFILE",
+        profileId: "PEAR_OPEN_FIELD_ANNUAL",
+      },
+    },
+    "CLIMATE",
+  );
+  const cucumberFacilityRisks = registry.resolve(
+    {
+      crop: "CUCUMBER",
+      cultivationMode: "FACILITY_SOIL",
+      growthStage: "UNSPECIFIED",
+      season: { kind: "NOT_APPLICABLE" },
+    },
+    "FORECAST",
+  );
+
+  assert.equal(pearClimate.length, 1);
+  assert.equal(pearClimate[0].use, "SINGLE_TARGET");
+  assert.equal(pearClimate[0].target, 20);
+  assert.deepEqual(
+    cucumberFacilityRisks.map((rule) => rule.comparison.threshold).sort((a, b) => a - b),
+    [5, 35],
+  );
+  assert.ok(
+    cucumberFacilityRisks.every(
+      (rule) => rule.actionId === "CHECK_FACILITY_WEATHER",
+    ),
+  );
+});
+
+test("six reviewed locations provide every P0 mapping and calculate ASOS distance from the confirmed address", () => {
+  const validation = validateVerifiedLocationMappings(
+    REVIEWED_LOCATION_MAPPINGS,
+    { now: REVIEW_CLOCK },
+  );
+
+  assert.equal(validation.valid, true);
+  assert.equal(validation.verifiedCount, 6);
+  assert.equal(validation.p0ReadyCount, 6);
+  assert.equal(validation.p0IncompleteAreaCodes.length, 0);
+
+  const resolved = resolveLocationKeys(
+    {
+      resolutionMode: "ADDRESS_RESOLVED",
+      adminAreaCode: "4717010100",
+      legalDongCode: "4717010100",
+      latitude: 36.5684,
+      longitude: 128.7294,
+    },
+    REVIEWED_LOCATION_MAPPINGS,
+    { now: REVIEW_CLOCK },
+  );
+
+  assert.equal(resolved.normalStationId, "136");
+  assert.equal(resolved.verifiedSoilAreaCode, "4717000000");
+  assert.deepEqual(resolved.midForecastRegionIds, {
+    temperatureRegId: "11H10501",
+    landRegId: "11H10000",
+  });
+  assert.equal(resolved.observationStationId, "136");
+  assert.equal(resolved.observationDistanceKm, 2);
+  assert.deepEqual(resolved.shortForecastGrid, { nx: 91, ny: 106 });
+});
+
+test("reviewed runtime exposes only rules, mappings, and the public frozen soil contract", async () => {
+  const options = await createRuntimeOptions();
+
+  assert.deepEqual(Object.keys(options).sort(), [
+    "rules",
+    "soilContract",
+    "verifiedLocationMappings",
+  ]);
+  assert.equal(options.rules, REVIEWED_CROP_RULES);
+  assert.equal(options.verifiedLocationMappings, REVIEWED_LOCATION_MAPPINGS);
+  assert.equal(options.soilContract, VERIFIED_SOIL_V2_CONTRACT);
+  assert.equal(JSON.stringify(options.soilContract).includes("serviceKey"), false);
+});
+
+test("preflight configures all five reviewed crops while preserving adapter and mapping HOLD gaps", async () => {
+  const options = await createRuntimeOptions();
+  const backend = createBackend({
+    ...options,
+    clock: () => Date.parse("2026-07-25T12:00:00.000Z"),
+  });
+
+  const preflight = await backend.services.getPreflight();
+  const potatoCustom = preflight.ruleRegistry.contextCoverage.find(
+    ({ contextId }) =>
+      contextId === "POTATO|OPEN_FIELD|CUSTOM|CUSTOM|UNSPECIFIED",
+  );
+  const cucumberFacility = preflight.ruleRegistry.contextCoverage.find(
+    ({ contextId }) =>
+      contextId ===
+      "CUCUMBER|FACILITY_SOIL|NOT_APPLICABLE|NOT_APPLICABLE|UNSPECIFIED",
+  );
+
+  assert.equal(preflight.serviceState, "HOLD");
+  assert.deepEqual(preflight.ruleRegistry.configuredCrops, [
+    "APPLE",
+    "PEAR",
+    "CUCUMBER",
+    "POTATO",
+    "LETTUCE",
+  ]);
+  assert.equal(potatoCustom.modules.CLIMATE.status, "CONFIGURED");
+  assert.equal(potatoCustom.modules.SOIL.status, "CONFIGURED");
+  assert.equal(potatoCustom.modules.FORECAST.status, "CONFIGURED");
+  assert.equal(cucumberFacility.status, "CONFIGURED");
+  assert.equal(preflight.locationMappings.verifiedCount, 6);
+  assert.equal(preflight.locationMappings.p0ReadyCount, 6);
+});

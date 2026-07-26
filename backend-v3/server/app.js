@@ -2,8 +2,12 @@ import { createServer } from 'node:http';
 
 import {
   VERIFIED_KAKAO_ADDRESS_CONTRACT_VERSION,
+  VERIFIED_KMA_ASOS_CONTRACT_VERSION,
+  VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
   VERIFIED_KMA_MID_CONTRACT_VERSION,
   VERIFIED_KMA_SHORT_CONTRACT_VERSION,
+  VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
+  VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION,
   createAdapterRegistry,
   validateSoilV2Contract,
 } from '../src/adapters/index.js';
@@ -24,7 +28,6 @@ export function createBackend({
   verifiedLocationMappings = {},
   runtimeStatus,
   soilContract = null,
-  soilDefaultYear = null,
 } = {}) {
   const config = loadConfig(env);
   const activeRuleRegistry = ruleRegistry ?? createRuleRegistry(rules);
@@ -60,15 +63,50 @@ export function createBackend({
         apiKey: config.adapterConfig.kmaMid.serviceKey,
         contractVersion: config.adapterConfig.kmaMid.contractVersion,
       },
+      kmaAsos: {
+        enabled:
+          config.adapterConfig.kmaAsos.enabled &&
+          config.adapterConfig.kmaAsos.contractVersion ===
+            VERIFIED_KMA_ASOS_CONTRACT_VERSION,
+        apiKey: config.adapterConfig.kmaAsos.serviceKey,
+        contractVersion: config.adapterConfig.kmaAsos.contractVersion,
+      },
+      kmaClimate: {
+        enabled:
+          config.adapterConfig.kmaClimate.enabled &&
+          config.adapterConfig.kmaClimate.contractVersion ===
+            VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
+        apiKey: config.adapterConfig.kmaClimate.authKey,
+        contractVersion: config.adapterConfig.kmaClimate.contractVersion,
+      },
       soilV2: {
         enabled: config.adapterConfig.soilV2.enabled,
         apiKey: config.adapterConfig.soilV2.serviceKey,
         contract: soilContract,
-        defaultYear:
-          soilDefaultYear ?? config.adapterConfig.soilV2.defaultYear,
         ...(config.adapterConfig.soilV2.endpoint
           ? { endpoint: config.adapterConfig.soilV2.endpoint }
           : {}),
+      },
+      soilField: {
+        enabled:
+          config.adapterConfig.soilField.enabled &&
+          config.adapterConfig.soilField.contractVersion ===
+            VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
+        apiKey: config.adapterConfig.soilField.serviceKey,
+        contractVersion:
+          config.adapterConfig.soilField.contractVersion,
+        ...(config.adapterConfig.soilField.endpoint
+          ? { endpoint: config.adapterConfig.soilField.endpoint }
+          : {}),
+      },
+      smartfarm: {
+        enabled:
+          config.adapterConfig.smartfarm.enabled &&
+          config.adapterConfig.smartfarm.contractVersion ===
+            VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION,
+        serviceKey: config.adapterConfig.smartfarm.serviceKey,
+        contractVersion:
+          config.adapterConfig.smartfarm.contractVersion,
       },
     });
   const activeRuntimeStatus =
@@ -76,8 +114,6 @@ export function createBackend({
     (adapters === undefined
       ? buildRuntimeStatus(config, {
           soilContract,
-          soilDefaultYear:
-            soilDefaultYear ?? config.adapterConfig.soilV2.defaultYear,
         })
       : null);
   const services = createApplicationServices({
@@ -91,7 +127,12 @@ export function createBackend({
     analysisTtlMs: config.analysisTtlMs,
     reportLockTtlMs: config.reportLockTtlMs,
     runtimeStatus: activeRuntimeStatus,
-    capabilities: config.capabilities,
+    capabilities: {
+      ...config.capabilities,
+      smartfarm:
+        activeRuntimeStatus?.adapters?.smartfarm ??
+        config.capabilities.smartfarm,
+    },
   });
   const handler = createHttpHandler({
     services,
@@ -126,16 +167,15 @@ export function createBackend({
 
 function buildRuntimeStatus(
   config,
-  { soilContract = null, soilDefaultYear = null } = {},
+  { soilContract = null } = {},
 ) {
-  const configured = (enabled, credential, actualVersion, expectedVersion) =>
-    enabled && credential && actualVersion === expectedVersion
+  const configured = (enabled, credential, actualVersion, expectedVersion) => {
+    if (!enabled) return 'UNSUPPORTED';
+    return credential && actualVersion === expectedVersion
       ? 'READY'
       : 'HOLD';
-  const soilContractReady = isVerifiedSoilContract(
-    soilContract,
-    soilDefaultYear,
-  );
+  };
+  const soilContractReady = isVerifiedSoilContract(soilContract);
   return Object.freeze({
     adapters: Object.freeze({
       kakao: configured(
@@ -144,14 +184,29 @@ function buildRuntimeStatus(
         config.adapterConfig.kakao.contractVersion,
         VERIFIED_KAKAO_ADDRESS_CONTRACT_VERSION,
       ),
-      climate: 'UNSUPPORTED',
-      observations: 'UNSUPPORTED',
-      soilV2:
-        config.adapterConfig.soilV2.enabled &&
-        config.adapterConfig.soilV2.serviceKey &&
-        soilContractReady
+      climate: configured(
+        config.adapterConfig.kmaClimate.enabled,
+        config.adapterConfig.kmaClimate.authKey,
+        config.adapterConfig.kmaClimate.contractVersion,
+        VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
+      ),
+      observations: configured(
+        config.adapterConfig.kmaAsos.enabled,
+        config.adapterConfig.kmaAsos.serviceKey,
+        config.adapterConfig.kmaAsos.contractVersion,
+        VERIFIED_KMA_ASOS_CONTRACT_VERSION,
+      ),
+      soilV2: !config.adapterConfig.soilV2.enabled
+        ? 'UNSUPPORTED'
+        : config.adapterConfig.soilV2.serviceKey && soilContractReady
           ? 'READY'
           : 'HOLD',
+      soilField: configured(
+        config.adapterConfig.soilField.enabled,
+        config.adapterConfig.soilField.serviceKey,
+        config.adapterConfig.soilField.contractVersion,
+        VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
+      ),
       kmaShort: configured(
         config.adapterConfig.kmaShort.enabled,
         config.adapterConfig.kmaShort.serviceKey,
@@ -164,30 +219,35 @@ function buildRuntimeStatus(
         config.adapterConfig.kmaMid.contractVersion,
         VERIFIED_KMA_MID_CONTRACT_VERSION,
       ),
+      smartfarm: configured(
+        config.adapterConfig.smartfarm.enabled,
+        config.adapterConfig.smartfarm.serviceKey,
+        config.adapterConfig.smartfarm.contractVersion,
+        VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION,
+      ),
     }),
     contracts: Object.freeze({
       kakao:
         config.adapterConfig.kakao.contractVersion ?? 'NOT_CONFIGURED',
-      climate: 'NOT_CONFIGURED',
-      observations: 'NOT_CONFIGURED',
+      climate:
+        config.adapterConfig.kmaClimate.contractVersion ?? 'NOT_CONFIGURED',
+      observations:
+        config.adapterConfig.kmaAsos.contractVersion ?? 'NOT_CONFIGURED',
       soilV2:
         soilContract?.version ?? 'NOT_CONFIGURED',
+      soilField:
+        config.adapterConfig.soilField.contractVersion ?? 'NOT_CONFIGURED',
       kmaShort:
         config.adapterConfig.kmaShort.contractVersion ?? 'NOT_CONFIGURED',
       kmaMid:
         config.adapterConfig.kmaMid.contractVersion ?? 'NOT_CONFIGURED',
+      smartfarm:
+        config.adapterConfig.smartfarm.contractVersion ?? 'NOT_CONFIGURED',
     }),
   });
 }
 
-function isVerifiedSoilContract(contract, defaultYear) {
-  if (
-    !Number.isInteger(defaultYear) ||
-    defaultYear < 1900 ||
-    defaultYear > 2200
-  ) {
-    return false;
-  }
+function isVerifiedSoilContract(contract) {
   try {
     validateSoilV2Contract(contract);
     return true;

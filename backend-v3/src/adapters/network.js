@@ -7,8 +7,13 @@ import {
 
 export const PROVIDER_HOST_ALLOWLIST = Object.freeze({
   KAKAO: Object.freeze(["dapi.kakao.com"]),
-  KMA: Object.freeze(["apis.data.go.kr"]),
-  SOIL_V2: Object.freeze(["apis.data.go.kr"])
+  KMA: Object.freeze(["apis.data.go.kr", "apihub.kma.go.kr"]),
+  SOIL_V2: Object.freeze(["apis.data.go.kr"]),
+  SOIL_FIELD_V3: Object.freeze(["apis.data.go.kr"]),
+  SMARTFARM: Object.freeze([
+    "smartfarmkorea.net",
+    "www.smartfarmkorea.net"
+  ])
 });
 export const DEFAULT_PROVIDER_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 

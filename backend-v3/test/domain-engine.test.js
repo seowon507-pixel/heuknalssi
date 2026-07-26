@@ -79,6 +79,17 @@ function forecastRule(overrides = {}) {
     severity: "WARNING",
     actionId: "check-heat",
     evidenceStatus: "RISK_ONLY",
+    guidance: {
+      headline: "고온 전에 생육 상태와 관수 준비 확인",
+      reason: "기준보다 높은 기온이 이어지면 생육이 저해될 수 있습니다.",
+      actions: [
+        "예보 날짜 전에 잎과 토양 수분 상태를 확인합니다.",
+        "기존 관수시설의 작동 상태를 확인합니다.",
+      ],
+      sourceTitle: "Reviewed field guide",
+      sourceUrl: "https://example.test/reviewed-field-guide",
+      reviewedAt: "2026-07-01",
+    },
     ...provenance,
     ...overrides,
   };
@@ -1027,6 +1038,28 @@ test("stale/sample forecasts never create current risk flags", () => {
   assert.equal(stale.risks.length, 0);
   assert.equal(stale.state, "HOLD");
   assert.equal(stale.noActiveRisksConfirmed, false);
+});
+
+test("forecast risk preserves reviewed trigger facts and action guidance", () => {
+  const result = evaluateForecastRisks({
+    days: [
+      forecastDay("2026-07-25", "SHORT_GRID", {
+        maxTemperature: 34,
+      }),
+    ],
+    rules: [forecastRule()],
+    crop: "CUCUMBER",
+    cultivationMode: "OPEN_FIELD",
+  });
+
+  assert.equal(result.risks.length, 1);
+  assert.deepEqual(result.risks[0].trigger, {
+    metric: "maxTemperature",
+    unit: "degC",
+    comparison: { operator: "GT", threshold: 30 },
+    readings: [{ date: "2026-07-25", value: 34 }],
+  });
+  assert.deepEqual(result.risks[0].guidance, forecastRule().guidance);
 });
 
 test("UNSPECIFIED stage never activates a stage-only forecast risk", () => {

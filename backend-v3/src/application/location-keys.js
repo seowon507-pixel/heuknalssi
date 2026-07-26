@@ -13,6 +13,32 @@ function isSupportedKoreanCoordinate(latitude, longitude) {
   return latitude >= 32 && latitude <= 39.5 && longitude >= 123 && longitude <= 132;
 }
 
+function distanceKmBetween(
+  latitude,
+  longitude,
+  stationLatitude,
+  stationLongitude,
+) {
+  if (
+    ![latitude, longitude, stationLatitude, stationLongitude].every(
+      isFiniteCoordinate,
+    )
+  ) {
+    return null;
+  }
+  const toRadians = (degrees) => (degrees * Math.PI) / 180;
+  const latitudeDelta = toRadians(stationLatitude - latitude);
+  const longitudeDelta = toRadians(stationLongitude - longitude);
+  const left = Math.sin(latitudeDelta / 2) ** 2;
+  const right =
+    Math.cos(toRadians(latitude)) *
+    Math.cos(toRadians(stationLatitude)) *
+    Math.sin(longitudeDelta / 2) ** 2;
+  const centralAngle =
+    2 * Math.atan2(Math.sqrt(left + right), Math.sqrt(1 - left - right));
+  return Math.round(6371.0088 * centralAngle * 10) / 10;
+}
+
 export function toKmaGrid(latitude, longitude) {
   if (
     !isFiniteCoordinate(latitude) ||
@@ -61,12 +87,26 @@ export function resolveLocationKeys(
   verifiedMappings = {},
   { now = () => new Date() } = {},
 ) {
-  const candidateMapping = verifiedMappings[location.adminAreaCode] ?? null;
-  const mapping = isActiveVerifiedMapping(candidateMapping, normalizeDate(now()))
-    ? candidateMapping
-    : null;
+  const mapping = findActiveVerifiedMapping(
+    location,
+    verifiedMappings,
+    normalizeDate(now()),
+  );
   const isAddressResolved = location.resolutionMode === 'ADDRESS_RESOLVED';
-  const grid = isAddressResolved ? toKmaGrid(location.latitude, location.longitude) : null;
+  const administrativeRepresentative =
+    location.resolutionMode === 'ADMIN_AREA_BROAD' &&
+    location.administrativeRepresentative?.purpose ===
+      'REGIONAL_FORECAST_ONLY'
+      ? location.administrativeRepresentative
+      : null;
+  const grid = isAddressResolved
+    ? toKmaGrid(location.latitude, location.longitude)
+    : administrativeRepresentative
+      ? toKmaGrid(
+          administrativeRepresentative.latitude,
+          administrativeRepresentative.longitude,
+        )
+      : null;
   const midForecastRegionIds =
     mapping?.midForecast?.verified === true &&
     validProviderKey(mapping.midForecast.temperatureRegId) &&
@@ -76,27 +116,70 @@ export function resolveLocationKeys(
           landRegId: mapping.midForecast.landRegId,
         })
       : null;
+  const legalDongCode10 =
+    typeof location.legalDongCode === 'string' &&
+    /^\d{10}$/.test(location.legalDongCode)
+      ? location.legalDongCode
+      : null;
+  const observationStation =
+    isAddressResolved && mapping?.observationStation?.verified === true
+      ? mapping.observationStation
+      : null;
+  const observationDistanceKm = observationStation
+    ? Number.isFinite(observationStation.latitude) &&
+      Number.isFinite(observationStation.longitude)
+      ? distanceKmBetween(
+          location.latitude,
+          location.longitude,
+          observationStation.latitude,
+          observationStation.longitude,
+        )
+      : Number.isFinite(observationStation.distanceKm)
+        ? observationStation.distanceKm
+        : null
+    : null;
 
   return Object.freeze({
-    legalDongCode10:
-      typeof location.legalDongCode === 'string' && /^\d{10}$/.test(location.legalDongCode)
-        ? location.legalDongCode
-        : null,
-    verifiedSoilAreaCode: mapping?.soil?.verified === true ? mapping.soil.code : null,
+    legalDongCode10,
+    verifiedSoilAreaCode:
+      mapping?.soil?.verified === true ? mapping.soil.code : legalDongCode10,
     shortForecastGrid: grid,
+    shortForecastScope: isAddressResolved
+      ? 'ADDRESS_GRID'
+      : grid
+        ? 'ADMIN_AREA_REPRESENTATIVE'
+        : null,
     midForecastRegionIds,
     normalStationId: mapping?.normalStation?.verified === true ? mapping.normalStation.id : null,
     observationStationId:
-      isAddressResolved && mapping?.observationStation?.verified === true
-        ? mapping.observationStation.id
+      observationStation
+        ? observationStation.id
         : null,
-    observationDistanceKm:
-      isAddressResolved &&
-      mapping?.observationStation?.verified === true &&
-      Number.isFinite(mapping.observationStation.distanceKm)
-        ? mapping.observationStation.distanceKm
-        : null,
+    observationDistanceKm,
   });
+}
+
+function findActiveVerifiedMapping(location, verifiedMappings, at) {
+  for (const areaCode of mappingAreaCodeCandidates(location)) {
+    const mapping = verifiedMappings[areaCode];
+    if (isActiveVerifiedMapping(mapping, at)) return mapping;
+  }
+  return null;
+}
+
+function mappingAreaCodeCandidates(location) {
+  const rawCodes = [
+    location?.adminAreaCode,
+    location?.legalDongCode,
+  ].filter((value) => typeof value === 'string' && /^\d{5,10}$/u.test(value));
+  const candidates = [];
+  for (const code of rawCodes) {
+    candidates.push(code);
+    if (code.length === 10) {
+      candidates.push(`${code.slice(0, 5)}00000`, code.slice(0, 5));
+    }
+  }
+  return [...new Set(candidates)];
 }
 
 function validProviderKey(value) {
@@ -191,7 +274,7 @@ function mappingErrors(mapping, at) {
   }
   if (
     mapping.soil?.verified === true &&
-    !validProviderKey(mapping.soil.code)
+    !/^\d{10}$/.test(mapping.soil.code)
   ) {
     errors.push('soil.code is invalid');
   }
@@ -212,18 +295,19 @@ function mappingErrors(mapping, at) {
     if (!validProviderKey(mapping.observationStation.id)) {
       errors.push('observationStation.id is invalid');
     }
-    if (
-      !Number.isFinite(mapping.observationStation.distanceKm) ||
-      mapping.observationStation.distanceKm < 0
-    ) {
-      errors.push('observationStation.distanceKm is invalid');
-    }
-    if (
-      mapping.observationStation.operationalVerified !== true ||
-      mapping.observationStation.periodDataVerified !== true
-    ) {
+    const hasVerifiedCoordinates =
+      isSupportedKoreanCoordinate(
+        mapping.observationStation.latitude,
+        mapping.observationStation.longitude,
+      ) && mapping.observationStation.stationMetadataVerified === true;
+    const hasLegacyVerifiedDistance =
+      Number.isFinite(mapping.observationStation.distanceKm) &&
+      mapping.observationStation.distanceKm >= 0 &&
+      mapping.observationStation.operationalVerified === true &&
+      mapping.observationStation.periodDataVerified === true;
+    if (!hasVerifiedCoordinates && !hasLegacyVerifiedDistance) {
       errors.push(
-        'observationStation operation and requested-period data must be verified',
+        'observationStation requires verified coordinates or a verified legacy distance',
       );
     }
   }

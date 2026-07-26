@@ -350,7 +350,49 @@ function validateForecastRule(rule) {
   requireEnum(rule, "evidenceStatus", ["RISK_ONLY"], errors);
   validateComparison(rule.comparison, errors);
   validateDuration(rule.duration, errors);
+  if (rule.guidance !== undefined) {
+    validateGuidance(rule.guidance, errors);
+  }
   return errors;
+}
+
+function validateGuidance(guidance, errors) {
+  if (
+    guidance === null ||
+    typeof guidance !== "object" ||
+    Array.isArray(guidance)
+  ) {
+    errors.push("guidance must be an object");
+    return;
+  }
+  requireText(guidance, "headline", errors);
+  requireText(guidance, "reason", errors);
+  if (
+    !Array.isArray(guidance.actions) ||
+    guidance.actions.length === 0 ||
+    guidance.actions.some(
+      (action) => typeof action !== "string" || action.trim() === "",
+    )
+  ) {
+    errors.push("guidance.actions must contain non-empty action text");
+  }
+  requireText(guidance, "sourceTitle", errors);
+  requireText(guidance, "sourceUrl", errors);
+  if (
+    typeof guidance.sourceUrl === "string" &&
+    guidance.sourceUrl.trim() !== "" &&
+    !isHttpUrl(guidance.sourceUrl)
+  ) {
+    errors.push("guidance.sourceUrl must be an absolute HTTP(S) URL");
+  }
+  requireText(guidance, "reviewedAt", errors);
+  if (
+    typeof guidance.reviewedAt === "string" &&
+    guidance.reviewedAt.trim() !== "" &&
+    !isIsoDate(guidance.reviewedAt)
+  ) {
+    errors.push("guidance.reviewedAt must be an ISO calendar date");
+  }
 }
 
 function validateCropAndMode(rule, errors) {

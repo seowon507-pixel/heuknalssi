@@ -1,73 +1,118 @@
 import {
   VERIFIED_SOIL_V2_CONTRACT_VERSION,
-  runCachedAdapterCall
+  runCachedAdapterCall,
 } from "./adapter-call.js";
 import {
   InMemoryAdapterCache,
   SingleFlight,
-  makeAdapterCacheKey
+  makeAdapterCacheKey,
 } from "./cache.js";
+import { createUnavailableEnvelope } from "./data-envelope.js";
 import {
-  createUnavailableEnvelope
-} from "./data-envelope.js";
-import {
+  AdapterError,
   NoDataError,
   SchemaChangedError,
-  UnsupportedContractError
+  UnsupportedContractError,
 } from "./errors.js";
 import {
   providerDisclosureUrl,
-  requestProviderText
+  requestProviderText,
 } from "./network.js";
 import { ProviderExecutionGuard } from "./provider-control.js";
 import {
-  parseStrictBoolean,
   requireFiniteNumber,
-  requireNonEmptyString
+  requireNonEmptyString,
 } from "./strict-values.js";
 
 const DEFAULT_ENDPOINT =
-  "https://apis.data.go.kr/1390802/SoilEnviron/SoilExam/getSoilExam";
+  "https://apis.data.go.kr/1390802/SoilEnviron/SoilExamStat/V2/getFarmExamPhInfo";
 const MAX_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-// Provider request/response semantics are code-reviewed and fixed here.
-// Credentials, endpoint selection, and dataset year remain separate inputs.
+
+const PH_OPEN_FIELD_INTERVALS = Object.freeze([
+  Object.freeze({ lower: 0, upper: 4.5, lowerInclusive: true, upperInclusive: true }),
+  Object.freeze({ lower: 4.5, upper: 5.0, lowerInclusive: false, upperInclusive: true }),
+  Object.freeze({ lower: 5.0, upper: 5.5, lowerInclusive: false, upperInclusive: true }),
+  Object.freeze({ lower: 5.5, upper: 6.0, lowerInclusive: false, upperInclusive: true }),
+  Object.freeze({ lower: 6.0, upper: 6.5, lowerInclusive: false, upperInclusive: true }),
+  Object.freeze({ lower: 6.5, upper: 14, lowerInclusive: false, upperInclusive: true }),
+]);
+
+const PH_FACILITY_INTERVALS = Object.freeze([
+  Object.freeze({ lower: 0, upper: 5.0, lowerInclusive: true, upperInclusive: true }),
+  Object.freeze({ lower: 5.0, upper: 5.5, lowerInclusive: false, upperInclusive: true }),
+  Object.freeze({ lower: 5.5, upper: 6.0, lowerInclusive: false, upperInclusive: true }),
+  Object.freeze({ lower: 6.0, upper: 6.5, lowerInclusive: false, upperInclusive: true }),
+  Object.freeze({ lower: 6.5, upper: 7.0, lowerInclusive: false, upperInclusive: true }),
+  Object.freeze({ lower: 7.0, upper: 14, lowerInclusive: false, upperInclusive: true }),
+]);
+
 const CANONICAL_SOIL_V2_CONTRACT = Object.freeze({
   frozen: true,
   version: VERIFIED_SOIL_V2_CONTRACT_VERSION,
   rowTag: "item",
-  fields: Object.freeze({
-    metric: "metric",
-    lower: "lower",
-    upper: "upper",
-    lowerInclusive: "lowerInclusive",
-    upperInclusive: "upperInclusive",
-    area: "area",
-    areaUnit: "areaUnit",
-    totalValidArea: "totalValidArea"
+  responseFields: Object.freeze({
+    resultCode: "result_Code",
+    areaCode: "stdg_Cd",
+    areaName: "bjd_Nm",
+  }),
+  landUses: Object.freeze({
+    PFLD: Object.freeze({
+      areaFields: Object.freeze([
+        "acid_Pfld1_Area",
+        "acid_Pfld2_Area",
+        "acid_Pfld3_Area",
+        "acid_Pfld4_Area",
+        "acid_Pfld5_Area",
+        "acid_Pfld6_Area",
+      ]),
+      intervals: PH_OPEN_FIELD_INTERVALS,
+    }),
+    FACHS: Object.freeze({
+      areaFields: Object.freeze([
+        "acid_Fachs1_Area",
+        "acid_Fachs2_Area",
+        "acid_Fachs3_Area",
+        "acid_Fachs4_Area",
+        "acid_Fachs5_Area",
+        "acid_Fachs6_Area",
+      ]),
+      intervals: PH_FACILITY_INTERVALS,
+    }),
+    FRUIT: Object.freeze({
+      areaFields: Object.freeze([
+        "acid_Fruit1_Area",
+        "acid_Fruit2_Area",
+        "acid_Fruit3_Area",
+        "acid_Fruit4_Area",
+        "acid_Fruit5_Area",
+        "acid_Fruit6_Area",
+      ]),
+      intervals: PH_OPEN_FIELD_INTERVALS,
+    }),
   }),
   supportedMetrics: Object.freeze(["PH"]),
-  metricUnits: Object.freeze({
-    PH: "pH"
+  metricUnits: Object.freeze({ PH: "pH" }),
+  requestFields: Object.freeze({ areaCode: "STDG_CD" }),
+  areaUnit: "ha",
+  areaSumTolerance: 0,
+  provenance: Object.freeze({
+    datasetId: "15144685",
+    specificationVersion: "1.0.0",
+    providerUpdatedAt: "2025-11-04",
   }),
-  requestFields: Object.freeze({
-    areaCode: "areaCode",
-    year: "year"
-  }),
-  allowedAreaUnits: Object.freeze(["ha"]),
-  areaSumTolerance: 0
 });
+
+export const VERIFIED_SOIL_V2_CONTRACT = CANONICAL_SOIL_V2_CONTRACT;
 
 function hasExactCanonicalValue(value, canonical) {
   if (Object.is(value, canonical)) return true;
   if (Array.isArray(canonical)) {
-    if (!Array.isArray(value) || value.length !== canonical.length) {
-      return false;
-    }
+    if (!Array.isArray(value) || value.length !== canonical.length) return false;
     if (Reflect.ownKeys(value).length !== Reflect.ownKeys(canonical).length) {
       return false;
     }
     return canonical.every((entry, index) =>
-      hasExactCanonicalValue(value[index], entry)
+      hasExactCanonicalValue(value[index], entry),
     );
   }
   if (
@@ -80,10 +125,7 @@ function hasExactCanonicalValue(value, canonical) {
     return false;
   }
   const valuePrototype = Object.getPrototypeOf(value);
-  if (
-    valuePrototype !== Object.prototype &&
-    valuePrototype !== null
-  ) {
+  if (valuePrototype !== Object.prototype && valuePrototype !== null) {
     return false;
   }
   const canonicalKeys = Reflect.ownKeys(canonical);
@@ -108,12 +150,12 @@ export function validateSoilV2Contract(contract) {
   }
   if (contract.version !== VERIFIED_SOIL_V2_CONTRACT_VERSION) {
     throw new UnsupportedContractError(
-      "Soil V2 contract version is not in the verified allowlist."
+      "Soil V2 contract version is not in the verified allowlist.",
     );
   }
   if (!hasExactCanonicalValue(contract, CANONICAL_SOIL_V2_CONTRACT)) {
     throw new UnsupportedContractError(
-      "Soil V2 contract does not match the verified canonical fixture."
+      "Soil V2 contract does not match the verified official schema.",
     );
   }
   return CANONICAL_SOIL_V2_CONTRACT;
@@ -132,7 +174,7 @@ function ensureSafeXml(xml) {
   }
   if (/<!DOCTYPE|<!ENTITY|\0/i.test(xml)) {
     throw new SchemaChangedError(
-      "Soil V2 XML contains a forbidden DTD or entity declaration."
+      "Soil V2 XML contains a forbidden DTD or entity declaration.",
     );
   }
 }
@@ -154,7 +196,7 @@ function extractRows(xml, rowTag) {
   const tag = escapeRegex(rowTag);
   const regex = new RegExp(
     `<(?:[A-Za-z_][\\w.-]*:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[A-Za-z_][\\w.-]*:)?${tag}\\s*>`,
-    "gi"
+    "gi",
   );
   return [...xml.matchAll(regex)].map((match) => match[1]);
 }
@@ -163,174 +205,130 @@ function extractField(row, tagName, field) {
   const tag = escapeRegex(tagName);
   const regex = new RegExp(
     `<(?:[A-Za-z_][\\w.-]*:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[A-Za-z_][\\w.-]*:)?${tag}\\s*>`,
-    "i"
+    "i",
   );
   const match = regex.exec(row);
   if (!match) return null;
   return decodeXmlText(match[1], field);
 }
 
-function intervalFromRow(row, contract, index) {
-  const get = (field) =>
-    extractField(
-      row,
-      contract.fields[field],
-      `Soil V2 row ${index} ${field}`
-    );
-  const metric = requireNonEmptyString(
-    get("metric"),
-    `Soil V2 row ${index} metric`
+function validateProviderResult(xml, contract) {
+  const code = extractField(
+    xml,
+    contract.responseFields.resultCode,
+    "Soil V2 result code",
   );
-  if (!contract.supportedMetrics.includes(metric)) {
-    throw new SchemaChangedError(
-      `Soil V2 row ${index} contains an unsupported metric.`
-    );
+  if (code === "200") return;
+  if (code === "301") {
+    throw new NoDataError("Soil V2 returned no regional pH data.");
   }
-  const lower = requireFiniteNumber(get("lower"), {
-    field: `Soil V2 row ${index} lower`
-  });
-  const upper = requireFiniteNumber(get("upper"), {
-    field: `Soil V2 row ${index} upper`
-  });
-  if (lower >= upper) {
-    throw new SchemaChangedError(
-      `Soil V2 row ${index} has an empty or inverted interval.`
-    );
+  if (code === "101") {
+    throw new AdapterError("Soil V2 rejected the service key.", {
+      adapterState: "AUTH_ERROR",
+      code: "PROVIDER_AUTH_ERROR",
+      retryable: false,
+    });
   }
-  const area = requireFiniteNumber(get("area"), {
-    field: `Soil V2 row ${index} area`,
-    min: 0
+  if (code === null) {
+    throw new SchemaChangedError("Soil V2 response is missing its result code.");
+  }
+  throw new AdapterError("Soil V2 returned a provider status error.", {
+    adapterState: "INTERNAL_ERROR",
+    code: "PROVIDER_STATUS_ERROR",
+    retryable: ["500", "600"].includes(code),
   });
-  const areaUnit = requireNonEmptyString(
-    get("areaUnit"),
-    `Soil V2 row ${index} areaUnit`
-  );
-  const totalValidArea = requireFiniteNumber(get("totalValidArea"), {
-    field: `Soil V2 row ${index} totalValidArea`,
-    min: 0
-  });
-
-  return {
-    metric,
-    totalValidArea,
-    interval: {
-      lower,
-      upper,
-      lowerInclusive: parseStrictBoolean(
-        get("lowerInclusive"),
-        `Soil V2 row ${index} lowerInclusive`
-      ),
-      upperInclusive: parseStrictBoolean(
-        get("upperInclusive"),
-        `Soil V2 row ${index} upperInclusive`
-      ),
-      area,
-      areaUnit
-    }
-  };
 }
 
-function validateMetricDistribution(metric, group, contract) {
-  const totals = [...new Set(group.map((row) => row.totalValidArea))];
-  if (totals.length !== 1) {
-    throw new SchemaChangedError(
-      `Soil V2 ${metric} rows disagree on total valid area.`
-    );
+function parsePhMetric(row, contract, landUse) {
+  const profile = contract.landUses[landUse];
+  if (!profile) {
+    throw new UnsupportedContractError("Soil V2 land use is unsupported.");
   }
-  const totalValidArea = totals[0];
+  const intervals = profile.areaFields.map((field, index) => {
+    const area = requireFiniteNumber(extractField(row, field, field), {
+      field: `Soil V2 ${field}`,
+      min: 0,
+    });
+    return {
+      ...profile.intervals[index],
+      area,
+      areaUnit: contract.areaUnit,
+    };
+  });
+  const totalValidArea = intervals.reduce(
+    (sum, interval) => sum + interval.area,
+    0,
+  );
   if (totalValidArea === 0) {
-    throw new NoDataError(`Soil V2 ${metric} has zero valid area.`);
+    throw new NoDataError("Soil V2 pH distribution has zero valid area.");
   }
-  const units = [...new Set(group.map((row) => row.interval.areaUnit))];
-  if (units.length !== 1) {
-    throw new SchemaChangedError(`Soil V2 ${metric} mixes area units.`);
-  }
-  if (
-    Array.isArray(contract.allowedAreaUnits) &&
-    !contract.allowedAreaUnits.includes(units[0])
-  ) {
-    throw new SchemaChangedError(`Soil V2 ${metric} has an unexpected area unit.`);
-  }
-
-  const seen = new Set();
-  for (const row of group) {
-    const interval = row.interval;
-    const key = [
-      interval.lower,
-      interval.upper,
-      interval.lowerInclusive,
-      interval.upperInclusive
-    ].join("|");
-    if (seen.has(key)) {
-      throw new SchemaChangedError(`Soil V2 ${metric} has a duplicate interval.`);
-    }
-    seen.add(key);
-  }
-  const sorted = group
-    .map((row) => row.interval)
-    .sort(
-      (left, right) =>
-        left.lower - right.lower || left.upper - right.upper
-    );
-  for (let index = 1; index < sorted.length; index += 1) {
-    const previous = sorted[index - 1];
-    const current = sorted[index];
-    if (
-      current.lower < previous.upper ||
-      (current.lower === previous.upper &&
-        current.lowerInclusive &&
-        previous.upperInclusive)
-    ) {
-      throw new SchemaChangedError(
-        `Soil V2 ${metric} has overlapping intervals.`
-      );
-    }
-  }
-
-  const areaSum = group.reduce((sum, row) => sum + row.interval.area, 0);
-  if (Math.abs(areaSum - totalValidArea) > contract.areaSumTolerance) {
-    throw new SchemaChangedError(
-      `Soil V2 ${metric} interval area sum does not match total valid area.`
-    );
-  }
-
   return {
-    metric,
-    unit: contract.metricUnits[metric],
-    intervals: group.map((row) => ({ ...row.interval })),
+    metric: "PH",
+    unit: contract.metricUnits.PH,
+    intervals,
     totalValidArea,
-    areaUnit: units[0],
+    areaUnit: contract.areaUnit,
     boundarySemanticsVerified: true,
     areaToleranceVerified: true,
-    areaTolerance: contract.areaSumTolerance
+    areaTolerance: contract.areaSumTolerance,
   };
 }
 
 /**
- * Parses only a caller-supplied, explicitly frozen XML contract. There are no
- * default field guesses and no representative scalar is ever synthesized.
+ * Parses the official data.go.kr 15144685 pH area distribution. It keeps the
+ * provider's six intervals and never manufactures a representative field pH.
  */
-export function parseSoilV2(xml, { contract } = {}) {
+export function parseSoilV2(
+  xml,
+  { contract, landUse, requestedAreaCode } = {},
+) {
   const frozenContract = validateSoilV2Contract(contract);
   ensureSafeXml(xml);
+  validateProviderResult(xml, frozenContract);
   const rows = extractRows(xml, frozenContract.rowTag);
   if (rows.length === 0) {
-    throw new NoDataError("Soil V2 response contains no interval rows.");
+    throw new NoDataError("Soil V2 response contains no pH distribution row.");
   }
-
-  const byMetric = new Map();
-  rows.forEach((row, index) => {
-    const parsed = intervalFromRow(row, frozenContract, index);
-    const group = byMetric.get(parsed.metric) ?? [];
-    group.push(parsed);
-    byMetric.set(parsed.metric, group);
-  });
+  if (rows.length !== 1) {
+    throw new SchemaChangedError(
+      "Soil V2 regional pH response must contain exactly one row.",
+    );
+  }
+  const row = rows[0];
+  const areaCode = requireNonEmptyString(
+    extractField(
+      row,
+      frozenContract.responseFields.areaCode,
+      "Soil V2 legal area code",
+    ),
+    "Soil V2 legal area code",
+  );
+  if (!/^\d{10}$/.test(areaCode)) {
+    throw new SchemaChangedError("Soil V2 legal area code must be 10 digits.");
+  }
+  if (
+    typeof requestedAreaCode === "string" &&
+    areaCode !== requestedAreaCode.trim()
+  ) {
+    throw new SchemaChangedError(
+      "Soil V2 response area does not match the requested legal area.",
+    );
+  }
+  const areaName = requireNonEmptyString(
+    extractField(
+      row,
+      frozenContract.responseFields.areaName,
+      "Soil V2 legal area name",
+    ),
+    "Soil V2 legal area name",
+  );
 
   return {
     contractVersion: frozenContract.version,
-    metrics: [...byMetric.entries()].map(([metric, group]) =>
-      validateMetricDistribution(metric, group, frozenContract)
-    )
+    areaCode,
+    areaName,
+    landUse,
+    metrics: [parsePhMetric(row, frozenContract, landUse)],
   };
 }
 
@@ -341,14 +339,13 @@ export function createSoilV2Adapter({
   fetchImpl = globalThis.fetch,
   endpoint = DEFAULT_ENDPOINT,
   timeoutMs = 3000,
-  adapterVersion = "1",
-  defaultYear = null,
+  adapterVersion = "2",
   cache,
   singleFlight,
   executionGuard,
   providerControl = {},
   cacheFreshForMs = MAX_CACHE_TTL_MS,
-  now = () => new Date()
+  now = () => new Date(),
 } = {}) {
   if (
     !Number.isFinite(cacheFreshForMs) ||
@@ -356,7 +353,7 @@ export function createSoilV2Adapter({
     cacheFreshForMs > MAX_CACHE_TTL_MS
   ) {
     throw new TypeError(
-      "Soil V2 cacheFreshForMs must be between 0 and 604800000."
+      "Soil V2 cacheFreshForMs must be between 0 and 604800000.",
     );
   }
   const cacheClock = () => new Date(now()).getTime();
@@ -365,7 +362,7 @@ export function createSoilV2Adapter({
     new InMemoryAdapterCache({
       maxEntries: 100,
       maxTtlMs: MAX_CACHE_TTL_MS,
-      now: cacheClock
+      now: cacheClock,
     });
   const liveSingleFlight = singleFlight ?? new SingleFlight();
   const liveExecutionGuard =
@@ -377,60 +374,57 @@ export function createSoilV2Adapter({
       circuitCooldownMs: 1000,
       ...providerControl,
       provider: "SOIL_V2",
-      now: providerControl.now ?? cacheClock
+      now: providerControl.now ?? cacheClock,
     });
   const envelopeBase = {
     sourceId: "soil-v2",
-    sourceName: "농경지 토양화학성 V2",
+    sourceName: "농경지화학성 통계정보 V2",
     sourceUrl: providerDisclosureUrl(endpoint, "SOIL_V2"),
     observedAt: null,
     issuedAt: null,
     validFrom: null,
     validTo: null,
     spatialLevel: "REGIONAL_SOIL_STAT",
-    spatialLabel: "지역 토양 면적통계",
+    spatialLabel: "법정동 토양 pH 면적통계",
     distanceKm: null,
     unit: null,
     provenance: {
       adapterId: "soil-v2",
       adapterVersion,
-      operationId: "get-regional-soil-distribution",
+      operationId: "getFarmExamPhInfo",
       contractVersion: contract?.version ?? null,
-      providerIssueTime: null
-    }
+      providerIssueTime: null,
+    },
   };
 
   return Object.freeze({
     id: "soilV2",
     async getDistribution(
-      { verifiedSoilAreaCode, year } = {},
-      { signal, deadlineAt } = {}
+      { verifiedSoilAreaCode, landUse } = {},
+      { signal, deadlineAt } = {},
     ) {
       if (
         enabled === true &&
         (typeof verifiedSoilAreaCode !== "string" ||
-          verifiedSoilAreaCode.trim() === "")
+          !/^\d{10}$/.test(verifiedSoilAreaCode.trim()))
       ) {
         return createUnavailableEnvelope(envelopeBase, {
           adapterState: "UNSUPPORTED",
           qualityFlags: ["VERIFIED_SOIL_AREA_CODE_MISSING"],
-          now
+          now,
         });
       }
-      const requestedYear = year ?? defaultYear;
       if (
         enabled === true &&
-        (!Number.isInteger(requestedYear) ||
-          requestedYear < 1900 ||
-          requestedYear > 2200)
+        (typeof landUse !== "string" ||
+          !Object.hasOwn(CANONICAL_SOIL_V2_CONTRACT.landUses, landUse))
       ) {
         return createUnavailableEnvelope(envelopeBase, {
           adapterState: "UNSUPPORTED",
-          qualityFlags: ["SOIL_DATASET_YEAR_UNAVAILABLE"],
-          now
+          qualityFlags: ["SOIL_LAND_USE_UNSUPPORTED"],
+          now,
         });
       }
-
       if (enabled === true) {
         try {
           validateSoilV2Contract(contract);
@@ -439,7 +433,7 @@ export function createSoilV2Adapter({
             return createUnavailableEnvelope(envelopeBase, {
               adapterState: "UNSUPPORTED",
               qualityFlags: ["PROVIDER_CONTRACT_UNSUPPORTED"],
-              now
+              now,
             });
           }
           throw error;
@@ -452,13 +446,14 @@ export function createSoilV2Adapter({
           : null;
       const cacheKey = makeAdapterCacheKey({
         adapterVersion,
-        operationId: "get-regional-soil-distribution",
+        operationId: "getFarmExamPhInfo",
         verifiedLocationKey: { soilAreaCode: normalizedAreaCode },
-        requestedPeriod: { year: requestedYear },
+        requestedPeriod: null,
         providerIssueTime: null,
         normalizedParameters: {
-          contractVersion: contract?.version ?? null
-        }
+          contractVersion: contract?.version ?? null,
+          landUse,
+        },
       });
 
       return runCachedAdapterCall({
@@ -477,47 +472,42 @@ export function createSoilV2Adapter({
         now,
         operation: async ({
           signal: upstreamSignal,
-          deadlineAt: upstreamDeadlineAt
+          deadlineAt: upstreamDeadlineAt,
         }) => {
           const frozenContract = validateSoilV2Contract(contract);
           const areaCode = requireNonEmptyString(
             verifiedSoilAreaCode,
-            "verifiedSoilAreaCode"
+            "verifiedSoilAreaCode",
           );
           const url = new URL(endpoint);
           url.searchParams.set("serviceKey", apiKey.trim());
           url.searchParams.set(
             frozenContract.requestFields.areaCode,
-            areaCode
-          );
-          url.searchParams.set(
-            frozenContract.requestFields.year,
-            String(requestedYear)
+            areaCode,
           );
           const xml = await requestProviderText({
             fetchImpl,
             url,
             provider: "SOIL_V2",
             requestInit: {
-              headers: {
-                Accept: "application/xml, text/xml"
-              }
+              headers: { Accept: "application/xml, text/xml" },
             },
             signal: upstreamSignal,
             timeoutMs,
             deadlineAt: upstreamDeadlineAt,
-            now: cacheClock
+            now: cacheClock,
           });
-          const data = parseSoilV2(xml, { contract: frozenContract });
+          const data = parseSoilV2(xml, {
+            contract: frozenContract,
+            landUse,
+            requestedAreaCode: areaCode,
+          });
           return {
             adapterState: "SUCCESS",
-            data: {
-              requestedYear,
-              ...data
-            }
+            data,
           };
-        }
+        },
       });
-    }
+    },
   });
 }

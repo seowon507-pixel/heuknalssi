@@ -85,13 +85,27 @@ const SOURCE_BASES = Object.freeze({
   soil: Object.freeze({
     sourceId: 'soil-v2',
     sourceName: '농경지화학성 통계 V2',
-    sourceUrl: 'https://www.data.go.kr/',
+    sourceUrl: 'https://www.data.go.kr/data/15144685/openapi.do',
     spatialLevel: 'REGIONAL_SOIL_STAT',
     spatialLabel: '지역 토양 면적통계',
     provenance: {
       adapterId: 'soil-v2',
       adapterVersion: 'unconfigured',
       operationId: 'soil-distribution',
+      contractVersion: null,
+      providerIssueTime: null,
+    },
+  }),
+  fieldSoil: Object.freeze({
+    sourceId: 'soil-field-v3',
+    sourceName: '토양도 기반 토양특성 상세정보 V3',
+    sourceUrl: 'https://www.data.go.kr/data/15144225/openapi.do',
+    spatialLevel: 'FIELD',
+    spatialLabel: '선택 필지 1:5,000 토양도',
+    provenance: {
+      adapterId: 'soil-field-v3',
+      adapterVersion: 'unconfigured',
+      operationId: 'getSoilCharacter',
       contractVersion: null,
       providerIssueTime: null,
     },
@@ -121,6 +135,21 @@ const SOURCE_BASES = Object.freeze({
       adapterId: 'kma-mid-forecast',
       adapterVersion: 'unconfigured',
       operationId: 'get-mid-forecast',
+      contractVersion: null,
+      providerIssueTime: null,
+    },
+  }),
+  smartfarm: Object.freeze({
+    sourceId: 'smartfarm-reference',
+    sourceName: '스마트팜코리아 공개 비교자료',
+    sourceUrl:
+      'https://smartfarmkorea.net/openApi/openApiList.do?menuId=M1104030101',
+    spatialLevel: 'REFERENCE_DATASET',
+    spatialLabel: '동종 작물 공개 농가 코호트',
+    provenance: {
+      adapterId: 'smartfarm-reference',
+      adapterVersion: 'unconfigured',
+      operationId: 'public-peer-cohort',
       contractVersion: null,
       providerIssueTime: null,
     },
@@ -186,6 +215,40 @@ export function createApplicationServices({
   async function searchLocations({ ownerSessionId, query, signal }) {
     const envelope = await callLocationAdapter(adapters.kakao, query, signal, clock);
     if (signal?.aborted) throw signal.reason;
+    return issueLocationCandidates(ownerSessionId, envelope);
+  }
+
+  async function resolveCurrentLocation({
+    ownerSessionId,
+    latitude,
+    longitude,
+    signal,
+  }) {
+    if (
+      !Number.isFinite(latitude) ||
+      latitude < 32 ||
+      latitude > 39.5 ||
+      !Number.isFinite(longitude) ||
+      longitude < 123 ||
+      longitude > 133
+    ) {
+      throw serviceError(
+        'CURRENT_LOCATION_INVALID',
+        'Current location must be finite coordinates within the supported area.',
+        400,
+      );
+    }
+    const envelope = await callCurrentLocationAdapter(
+      adapters.kakao,
+      { latitude, longitude },
+      signal,
+      clock,
+    );
+    if (signal?.aborted) throw signal.reason;
+    return issueLocationCandidates(ownerSessionId, envelope);
+  }
+
+  function issueLocationCandidates(ownerSessionId, envelope) {
     const expiresAtMs = clock() + candidateTtlMs;
     const candidates = [];
     const insertedTokens = [];
@@ -270,10 +333,16 @@ export function createApplicationServices({
       adapters,
       locationKeys,
       request,
+      regionLabel: generalizeRegionLabel(resolvedLocation.displayName),
+      fieldParcelLookupKey: resolvedLocation.fieldParcelLookupKey,
       signal,
       clock,
       coreDeadlineMs,
     });
+    envelopes.shortForecast = attachForecastScope(
+      envelopes.shortForecast,
+      locationKeys.shortForecastScope,
+    );
     envelopes.observations = attachVerifiedDistance(
       envelopes.observations,
       locationKeys.observationDistanceKm,
@@ -290,7 +359,7 @@ export function createApplicationServices({
       moduleRules.climate,
       envelopes.climate,
     );
-    const soil = withEvidence(
+    let soil = withEvidence(
       evaluateSoil({
         request,
         rules: moduleRules.soil,
@@ -300,6 +369,7 @@ export function createApplicationServices({
       moduleRules.soil,
       envelopes.soil,
     );
+    soil = attachFieldSoilProfile(soil, envelopes.fieldSoil);
     const shortDays = decorateForecastDays(
       envelopes.shortForecast.data?.days ?? [],
       envelopes.shortForecast,
@@ -417,9 +487,7 @@ export function createApplicationServices({
       soil,
       observations,
       forecast,
-      smartfarm: request.options.includeSmartfarmBenchmark
-        ? unavailableModule('SMARTFARM_P1_NOT_ENABLED', 'UNSUPPORTED')
-        : null,
+      smartfarm: smartfarmModule(request, envelopes.smartfarm),
       satellite: request.options.includeSatelliteObservation
         ? unavailableModule('SATELLITE_P2_NOT_ENABLED', 'UNSUPPORTED')
         : null,
@@ -552,6 +620,11 @@ export function createApplicationServices({
         'getForecast',
       ),
     };
+    const smartfarmState = adapterCapability(
+      adapters.smartfarm,
+      runtimeStatus?.adapters?.smartfarm,
+      'getReference',
+    );
     const activeRuleCount = ruleRegistry.rules.length;
     const decisionRules = ruleRegistry.rules.filter(isDecisionCapableRule);
     const decisionRuleCount = decisionRules.length;
@@ -605,9 +678,17 @@ export function createApplicationServices({
         status: mappingsReady ? 'CONFIGURED' : 'HOLD',
       },
       adapters: adapterStates,
+      optionalAdapters: {
+        soilField: adapterCapability(
+          adapters.soilField,
+          runtimeStatus?.adapters?.soilField,
+          'getFieldProfile',
+        ),
+        smartfarm: smartfarmState,
+      },
       contracts: sanitizeRuntimeContracts(runtimeStatus?.contracts),
       capabilities: {
-        smartfarm: capabilities.smartfarm ?? 'DISABLED',
+        smartfarm: smartfarmState,
         satellite: capabilities.satellite ?? 'DISABLED',
         persistence: capabilities.persistence ?? 'NOT_AVAILABLE',
         report: 'DETERMINISTIC_TEMPLATE',
@@ -641,6 +722,7 @@ export function createApplicationServices({
 
   return Object.freeze({
     searchLocations,
+    resolveCurrentLocation,
     normalizeAnalysisInput,
     createAnalysis,
     getAnalysis,
@@ -653,6 +735,8 @@ async function collectCoreEnvelopes({
   adapters,
   locationKeys,
   request,
+  regionLabel,
+  fieldParcelLookupKey,
   signal,
   clock,
   coreDeadlineMs,
@@ -695,13 +779,28 @@ async function collectCoreEnvelopes({
       adapters.soilV2?.getDistribution,
       adapters.soilV2,
       locationKeys.verifiedSoilAreaCode
-        ? { verifiedSoilAreaCode: locationKeys.verifiedSoilAreaCode }
+        ? {
+            verifiedSoilAreaCode: locationKeys.verifiedSoilAreaCode,
+            landUse: soilLandUseFor(request),
+          }
         : null,
       SOURCE_BASES.soil,
       signal,
       deadlineAt,
       clock,
       'VERIFIED_SOIL_AREA_KEY_UNAVAILABLE',
+    ),
+    fieldSoil: callSource(
+      adapters.soilField?.getFieldProfile,
+      adapters.soilField,
+      fieldParcelLookupKey
+        ? { pnuCode: fieldParcelLookupKey }
+        : null,
+      SOURCE_BASES.fieldSoil,
+      signal,
+      deadlineAt,
+      clock,
+      'FIELD_PNU_UNAVAILABLE',
     ),
     shortForecast: callSource(
       adapters.kmaShort?.getForecast,
@@ -727,12 +826,53 @@ async function collectCoreEnvelopes({
       clock,
       'VERIFIED_MID_FORECAST_REGION_UNAVAILABLE',
     ),
+    ...(request.options.includeSmartfarmBenchmark &&
+    smartfarmContextSupported(request)
+      ? {
+          smartfarm: callSource(
+            adapters.smartfarm?.getReference,
+            adapters.smartfarm,
+            {
+              crop: request.crop,
+              cultivationMode: request.cultivationMode,
+              growthStage: request.growthStage,
+              regionLabel,
+            },
+            SOURCE_BASES.smartfarm,
+            signal,
+            deadlineAt,
+            clock,
+            'SMARTFARM_REFERENCE_UNAVAILABLE',
+          ),
+        }
+      : {}),
   };
   const entries = await Promise.all(
     Object.entries(calls).map(async ([key, promise]) => [key, await promise]),
   );
   if (signal?.aborted) throw signal.reason;
   return Object.fromEntries(entries);
+}
+
+function attachFieldSoilProfile(module, envelope) {
+  if (!module || typeof module !== 'object') return module;
+  const fieldProfile = envelopeHasUsableData(envelope)
+    ? structuredClone(envelope.data)
+    : null;
+  return {
+    ...module,
+    result: {
+      ...(module.result ?? {}),
+      fieldProfile,
+      fieldProfileState: envelope?.adapterState ?? 'UNAVAILABLE',
+    },
+  };
+}
+
+function soilLandUseFor(request) {
+  if (request.cultivationMode === 'FACILITY_SOIL') return 'FACHS';
+  if (['APPLE', 'PEAR'].includes(request.crop)) return 'FRUIT';
+  return 'PFLD';
 }
 
 async function callLocationAdapter(adapter, query, signal, clock) {
@@ -783,6 +923,62 @@ async function callLocationAdapter(adapter, query, signal, clock) {
       locationSource,
       'INTERNAL_ERROR',
       'LOCATION_ADAPTER_ERROR',
+      clock,
+    );
+  }
+}
+
+async function callCurrentLocationAdapter(adapter, coordinates, signal, clock) {
+  const locationSource = {
+    sourceId: 'kakao-location',
+    sourceName: 'Kakao Local',
+    sourceUrl:
+      'https://dapi.kakao.com/v2/local/geo/coord2regioncode.json',
+    spatialLevel: 'FIELD',
+    spatialLabel: '현재 위치의 법정동',
+    provenance: {
+      adapterId: 'kakao-location',
+      adapterVersion: 'unconfigured',
+      operationId: 'reverse-region',
+      contractVersion: null,
+      providerIssueTime: null,
+    },
+  };
+  if (!adapter || typeof adapter.resolveCurrentLocation !== 'function') {
+    return unavailableEnvelope(
+      locationSource,
+      'UNSUPPORTED',
+      'CURRENT_LOCATION_ADAPTER_UNAVAILABLE',
+      clock,
+    );
+  }
+  try {
+    const returned = await adapter.resolveCurrentLocation(coordinates, {
+      signal,
+    });
+    if (returned === null || returned === undefined) {
+      return unavailableEnvelope(
+        locationSource,
+        'INTERNAL_ERROR',
+        'ADAPTER_RETURNED_NO_ENVELOPE',
+        clock,
+      );
+    }
+    if (!validateDataEnvelope(returned).valid) {
+      return unavailableEnvelope(
+        locationSource,
+        'SCHEMA_CHANGED',
+        'ADAPTER_ENVELOPE_SCHEMA_CHANGED',
+        clock,
+      );
+    }
+    return returned;
+  } catch (error) {
+    if (signal?.aborted) throw signal.reason;
+    return unavailableEnvelope(
+      locationSource,
+      'INTERNAL_ERROR',
+      'CURRENT_LOCATION_ADAPTER_ERROR',
       clock,
     );
   }
@@ -916,14 +1112,43 @@ function attachVerifiedDistance(envelope, distanceKm) {
   });
 }
 
+function attachForecastScope(envelope, scope) {
+  if (!envelope || scope !== 'ADMIN_AREA_REPRESENTATIVE') {
+    return envelope;
+  }
+  return Object.freeze({
+    ...envelope,
+    spatialLabel: '시·군 대표 예보 격자',
+    qualityFlags: Object.freeze([
+      ...new Set([
+        ...(envelope.qualityFlags ?? []),
+        'ADMIN_AREA_REPRESENTATIVE',
+      ]),
+    ]),
+  });
+}
+
 function normalizeResolvedLocation(candidate) {
   const broad = candidate.resolutionMode === 'ADMIN_AREA_BROAD';
+  const administrativeRepresentative =
+    broad &&
+    candidate.administrativeRepresentative?.purpose ===
+      'REGIONAL_FORECAST_ONLY' &&
+    Number.isFinite(candidate.administrativeRepresentative.latitude) &&
+    Number.isFinite(candidate.administrativeRepresentative.longitude)
+      ? Object.freeze({
+          latitude: candidate.administrativeRepresentative.latitude,
+          longitude: candidate.administrativeRepresentative.longitude,
+          purpose: 'REGIONAL_FORECAST_ONLY',
+        })
+      : null;
   return Object.freeze({
     resolutionMode: broad ? 'ADMIN_AREA_BROAD' : 'ADDRESS_RESOLVED',
     provider: 'KAKAO',
     displayName: candidate.displayName,
     latitude: broad ? null : candidate.latitude,
     longitude: broad ? null : candidate.longitude,
+    administrativeRepresentative,
     legalDongCode:
       candidate.legalDongCode10 ?? candidate.legalDongCode ?? null,
     adminAreaCode:
@@ -931,6 +1156,11 @@ function normalizeResolvedLocation(candidate) {
       candidate.legalDongCode10 ??
       candidate.legalDongCode ??
       '',
+    fieldParcelLookupKey:
+      typeof candidate.fieldParcelLookupKey === 'string' &&
+      /^\d{19}$/u.test(candidate.fieldParcelLookupKey)
+        ? candidate.fieldParcelLookupKey
+        : null,
   });
 }
 
@@ -951,6 +1181,39 @@ function moduleFromEnvelope(envelope, result, reason) {
     qualityFlags: [...(envelope.qualityFlags ?? [])],
     result,
     evidence: [],
+  };
+}
+
+function smartfarmContextSupported(request) {
+  if (
+    request.crop === 'CUCUMBER' &&
+    ['FACILITY_SOIL', 'FACILITY_HYDRO'].includes(
+      request.cultivationMode,
+    )
+  ) {
+    return true;
+  }
+  return (
+    ['APPLE', 'POTATO'].includes(request.crop) &&
+    request.cultivationMode === 'OPEN_FIELD'
+  );
+}
+
+function smartfarmModule(request, envelope) {
+  if (!request.options.includeSmartfarmBenchmark) return null;
+  if (!smartfarmContextSupported(request)) {
+    return notApplicableModule();
+  }
+  const module = moduleFromEnvelope(
+    envelope,
+    envelope?.data ?? null,
+    'SMARTFARM_REFERENCE_UNAVAILABLE',
+  );
+  return {
+    ...module,
+    decisionUse: 'REFERENCE_ONLY',
+    affectsDecision: false,
+    affectsScore: false,
   };
 }
 
@@ -1628,6 +1891,15 @@ function decisionActionFor(code, evidenceContext) {
       evidenceStrength: 'UNCONFIRMED',
       sourceFreshness: 'NOT_APPLICABLE',
     };
+  } else if (code === 'FACILITY_DATA_NEEDED') {
+    action = {
+      actionId: 'CHECK_INTERNAL_SENSORS',
+      blocking: false,
+      severity: 'CAUTION',
+      dueWindow: 'NOW',
+      evidenceStrength: 'UNCONFIRMED',
+      sourceFreshness: 'NOT_APPLICABLE',
+    };
   } else if (code === 'CHECK_FIRST') {
     action = {
       actionId: 'REVIEW_CONDITION_EVIDENCE',
@@ -1727,8 +1999,8 @@ function collectLimitations({ request, decision, modules, envelopes }) {
   const values = [
     ...decision.limitations,
     ...Object.values(modules).flatMap((module) => module?.blockingReasons ?? []),
-    ...Object.values(envelopes).flatMap((envelope) =>
-      envelope.adapterState === 'SUCCESS'
+    ...Object.entries(envelopes).flatMap(([key, envelope]) =>
+      key === 'smartfarm' || envelope.adapterState === 'SUCCESS'
         ? []
         : [`${envelope.sourceId}:${envelope.adapterState}`],
     ),

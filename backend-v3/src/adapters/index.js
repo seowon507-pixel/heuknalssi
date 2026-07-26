@@ -3,8 +3,14 @@ import {
   createKmaMidForecastAdapter,
   createKmaShortForecastAdapter
 } from "./kma.js";
+import {
+  createKmaAsosObservationAdapter,
+  createKmaClimateNormalAdapter
+} from "./kma-observation.js";
 import { ProviderExecutionGuard } from "./provider-control.js";
 import { createSoilV2Adapter } from "./soil-v2.js";
+import { createSoilFieldAdapter } from "./soil-field.js";
+import { createSmartfarmAdapter } from "./smartfarm.js";
 
 export {
   ADAPTER_STATES,
@@ -48,8 +54,12 @@ export {
   PARTIAL_PROVIDER_FAILURE,
   VERIFIED_KAKAO_ADDRESS_CONTRACT_VERSION,
   VERIFIED_KMA_MID_CONTRACT_VERSION,
+  VERIFIED_KMA_ASOS_CONTRACT_VERSION,
+  VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
   VERIFIED_KMA_SHORT_CONTRACT_VERSION,
   VERIFIED_SOIL_V2_CONTRACT_VERSION,
+  VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
+  VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION,
   hasFrozenContractVersion,
   hasUsableCredential,
   runAdapterCall,
@@ -62,7 +72,17 @@ export {
   makeAdapterCacheKey
 } from "./cache.js";
 export { ProviderExecutionGuard } from "./provider-control.js";
-export { createKakaoAdapter, parseKakaoCandidates } from "./kakao.js";
+export {
+  createKakaoAdapter,
+  parseKakaoCandidates,
+  parseKakaoRegionCandidates
+} from "./kakao.js";
+export {
+  createKmaAsosObservationAdapter,
+  createKmaClimateNormalAdapter,
+  parseKmaAsosDaily,
+  parseKmaClimateNormals
+} from "./kma-observation.js";
 export {
   createKmaMidForecastAdapter,
   createKmaShortForecastAdapter,
@@ -76,14 +96,29 @@ export {
 export {
   createSoilV2Adapter,
   parseSoilV2,
+  VERIFIED_SOIL_V2_CONTRACT,
   validateSoilV2Contract
 } from "./soil-v2.js";
+export {
+  createSoilFieldAdapter,
+  parseSoilFieldCharacteristics
+} from "./soil-field.js";
+export {
+  createSmartfarmAdapter,
+  parseSmartfarmFacilityReference,
+  parseSmartfarmOutdoorReference,
+  resolveSmartfarmReferenceProfile
+} from "./smartfarm.js";
 
 export const adapterFactories = Object.freeze({
   kakao: createKakaoAdapter,
   kmaShort: createKmaShortForecastAdapter,
   kmaMid: createKmaMidForecastAdapter,
-  soilV2: createSoilV2Adapter
+  kmaAsos: createKmaAsosObservationAdapter,
+  kmaClimate: createKmaClimateNormalAdapter,
+  soilV2: createSoilV2Adapter,
+  soilField: createSoilFieldAdapter,
+  smartfarm: createSmartfarmAdapter
 });
 
 /**
@@ -95,19 +130,32 @@ export function createAdapterRegistry({
   kakao = {},
   kmaShort = {},
   kmaMid = {},
-  soilV2 = {}
+  kmaAsos = {},
+  kmaClimate = {},
+  soilV2 = {},
+  soilField = {},
+  smartfarm = {}
 } = {}) {
   const kmaProviderControl = {
     ...(common.providerControl ?? {}),
     ...(kmaShort.providerControl ?? {}),
-    ...(kmaMid.providerControl ?? {})
+    ...(kmaMid.providerControl ?? {}),
+    ...(kmaAsos.providerControl ?? {}),
+    ...(kmaClimate.providerControl ?? {})
   };
   const registryNow =
-    kmaMid.now ?? kmaShort.now ?? common.now ?? (() => Date.now());
+    kmaMid.now ??
+    kmaShort.now ??
+    kmaAsos.now ??
+    kmaClimate.now ??
+    common.now ??
+    (() => Date.now());
   const commonKmaExecutionGuard =
     common.executionGuard ??
     kmaShort.executionGuard ??
     kmaMid.executionGuard ??
+    kmaAsos.executionGuard ??
+    kmaClimate.executionGuard ??
     new ProviderExecutionGuard({
       maxConcurrency: 4,
       maxQueue: 8,
@@ -136,6 +184,18 @@ export function createAdapterRegistry({
       ...kmaMid,
       executionGuard: kmaMid.executionGuard ?? commonKmaExecutionGuard
     }),
-    soilV2: createSoilV2Adapter({ ...common, ...soilV2 })
+    observations: createKmaAsosObservationAdapter({
+      ...common,
+      ...kmaAsos,
+      executionGuard: kmaAsos.executionGuard ?? commonKmaExecutionGuard
+    }),
+    climate: createKmaClimateNormalAdapter({
+      ...common,
+      ...kmaClimate,
+      executionGuard: kmaClimate.executionGuard ?? commonKmaExecutionGuard
+    }),
+    soilV2: createSoilV2Adapter({ ...common, ...soilV2 }),
+    soilField: createSoilFieldAdapter({ ...common, ...soilField }),
+    smartfarm: createSmartfarmAdapter({ ...common, ...smartfarm })
   });
 }

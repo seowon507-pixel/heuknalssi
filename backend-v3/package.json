@@ -10,6 +10,9 @@
   "scripts": {
     "start": "node server/index.js",
     "test": "node --test",
-    "check": "node scripts/check-project.js"
+    "check": "node scripts/check-project.js",
+    "verify:backtest": "node scripts/verify-backtests.js",
+    "verify:live": "node scripts/verify-live-providers.js",
+    "verify:flow": "node scripts/verify-natural-flow.js"
   }
 }

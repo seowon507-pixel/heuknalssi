@@ -55,6 +55,7 @@ export async function createRuntimeOptions({ clock = Date.now } = {}) {
         soilV2: "SAMPLE",
         kmaShort: "SAMPLE",
         kmaMid: "SAMPLE",
+        smartfarm: "SAMPLE",
       },
     },
   };
@@ -74,6 +75,29 @@ function createSampleAdapters(clock) {
               candidates: [
                 {
                   displayName: "경기도 수원시 영통구 원천동 · 개발 샘플",
+                  resolutionMode: "ADDRESS_RESOLVED",
+                  latitude: 37.285,
+                  longitude: 127.045,
+                  legalDongCode10: SAMPLE_AREA_CODE,
+                  adminAreaCode: SAMPLE_AREA_CODE,
+                },
+              ],
+            },
+          },
+          clock,
+        );
+      },
+      async resolveCurrentLocation() {
+        return sampleEnvelope(
+          {
+            sourceId: "sample-location",
+            sourceName: "개발 샘플 현재 위치",
+            spatialLevel: "FIELD",
+            spatialLabel: "기기 위치 변환 흐름 검증용 고정 위치",
+            data: {
+              candidates: [
+                {
+                  displayName: "경기도 수원시 영통구 원천동 · 현재 위치 샘플",
                   resolutionMode: "ADDRESS_RESOLVED",
                   latitude: 37.285,
                   longitude: 127.045,
@@ -187,7 +211,26 @@ function createSampleAdapters(clock) {
     },
     kmaShort: {
       async getForecast() {
-        const day = forecastDay(clock, 1, "SHORT_GRID");
+        const days = [
+          forecastDay(clock, 0, "SHORT_GRID", {
+            minTemperature: 20,
+            maxTemperature: 28,
+            precipitationProbability: 20,
+            precipitationAmount: 0,
+          }),
+          forecastDay(clock, 1, "SHORT_GRID", {
+            minTemperature: 21,
+            maxTemperature: 30,
+            precipitationProbability: 60,
+            precipitationAmount: 8,
+          }),
+          forecastDay(clock, 2, "SHORT_GRID", {
+            minTemperature: 22,
+            maxTemperature: 31,
+            precipitationProbability: 70,
+            precipitationAmount: 14,
+          }),
+        ];
         return sampleEnvelope(
           {
             sourceId: "sample-short-forecast",
@@ -195,9 +238,9 @@ function createSampleAdapters(clock) {
             spatialLevel: "FORECAST_GRID",
             spatialLabel: "UI 연결 검증용 격자",
             issuedAt: currentDate(clock).toISOString(),
-            validFrom: day.validFrom,
-            validTo: day.validTo,
-            data: { days: [day] },
+            validFrom: days[0].validFrom,
+            validTo: days.at(-1).validTo,
+            data: { days },
           },
           clock,
         );
@@ -205,7 +248,32 @@ function createSampleAdapters(clock) {
     },
     kmaMid: {
       async getForecast() {
-        const day = forecastDay(clock, 2, "MID_REGIONAL");
+        const days = [
+          forecastDay(clock, 3, "MID_REGIONAL", {
+            minTemperature: 21,
+            maxTemperature: 29,
+            precipitationProbability: 40,
+            precipitationAmount: 3,
+          }),
+          forecastDay(clock, 4, "MID_REGIONAL", {
+            minTemperature: 20,
+            maxTemperature: 27,
+            precipitationProbability: 20,
+            precipitationAmount: 0,
+          }),
+          forecastDay(clock, 5, "MID_REGIONAL", {
+            minTemperature: 19,
+            maxTemperature: 26,
+            precipitationProbability: 10,
+            precipitationAmount: 0,
+          }),
+          forecastDay(clock, 6, "MID_REGIONAL", {
+            minTemperature: 20,
+            maxTemperature: 28,
+            precipitationProbability: 30,
+            precipitationAmount: 0,
+          }),
+        ];
         return sampleEnvelope(
           {
             sourceId: "sample-mid-forecast",
@@ -213,9 +281,100 @@ function createSampleAdapters(clock) {
             spatialLevel: "FORECAST_REGION",
             spatialLabel: "UI 연결 검증용 예보구역",
             issuedAt: currentDate(clock).toISOString(),
-            validFrom: day.validFrom,
-            validTo: day.validTo,
-            data: { days: [day] },
+            validFrom: days[0].validFrom,
+            validTo: days.at(-1).validTo,
+            data: { days },
+          },
+          clock,
+        );
+      },
+    },
+    smartfarm: {
+      async getReference({ crop, cultivationMode, regionLabel }) {
+        const facility = crop === "CUCUMBER";
+        const cropName =
+          crop === "APPLE" ? "사과" : crop === "POTATO" ? "감자" : "오이";
+        return sampleEnvelope(
+          {
+            sourceId: "sample-smartfarm-reference",
+            sourceName: "개발 샘플 SmartFarm 공개 비교자료",
+            spatialLevel: "REFERENCE_DATASET",
+            spatialLabel: "UI 연결 검증용 공개 농가 코호트",
+            data: {
+              referenceType: "PUBLIC_PEER_COHORT",
+              decisionUse: "REFERENCE_ONLY",
+              affectsDecision: false,
+              affectsScore: false,
+              selectedCrop: cropName,
+              requestedRegion: regionLabel,
+              comparisonLevel: "SAME_PROVINCE",
+              sameProvinceCount: facility ? 18 : 27,
+              sameDistrictCount: 0,
+              farmCount: facility ? 64 : 93,
+              recordCount: facility ? 81 : 93,
+              seasonCount: facility ? 81 : null,
+              privacy: {
+                individualFarmIdsExposed: false,
+                individualFarmSelected: false,
+                aggregation: "COHORT_ONLY",
+              },
+              datasetType: facility
+                ? "FACILITY_ITEM_DATA"
+                : "OUTDOOR_BIG_DATA",
+              datasetName: facility
+                ? "스마트팜코리아 품목별 시설원예 데이터"
+                : "스마트팜코리아 노지 빅데이터",
+              datasetPeriod: facility
+                ? { fromYear: 2015, toYear: 2024 }
+                : { fromYear: 2019, toYear: 2026 },
+              datasetUpdateCycle: facility
+                ? "ANNUAL_AFTER_SEASON"
+                : "REAL_TIME_COLLECTION",
+              regions: [
+                { name: "경기도", count: facility ? 18 : 27 },
+                { name: "전라북도", count: facility ? 14 : 21 },
+              ],
+              cultivationMethods: [
+                {
+                  name:
+                    cultivationMode === "FACILITY_HYDRO" ? "수경" : "노지",
+                  count: facility ? 64 : 93,
+                },
+              ],
+              facilityTypes: facility
+                ? [{ name: "비닐", count: 49 }]
+                : [],
+              greenhouseStructures: facility
+                ? [{ name: "연동", count: 37 }]
+                : [],
+              sizeBands: [],
+              varieties: [],
+              fetchedDataTypes: [
+                facility
+                  ? "FARM_SEASON_METADATA"
+                  : "FARM_IDENTITY_METADATA",
+              ],
+              availableDataTypes: facility
+                ? [
+                    "CROP_SEASON",
+                    "ENVIRONMENT",
+                    "CONTROL",
+                    "GROWTH",
+                    "GROWTH_IMAGE",
+                    "CONSULTING_REPORT",
+                    "PRODUCTION",
+                    "COST",
+                  ]
+                : [
+                    "CROP_SEASON",
+                    "ENVIRONMENT",
+                    ...(crop === "APPLE" ? ["GROWTH"] : []),
+                  ],
+              limitations: [
+                "PUBLIC_COHORT_NOT_USER_FARM",
+                "NO_ENVIRONMENT_VALUE_USED_AS_OPTIMUM",
+              ],
+            },
           },
           clock,
         );
@@ -374,7 +533,7 @@ function createSampleMapping() {
   };
 }
 
-function forecastDay(clock, dayOffset, sourceType) {
+function forecastDay(clock, dayOffset, sourceType, overrides = {}) {
   const date = currentDate(clock);
   date.setUTCDate(date.getUTCDate() + dayOffset);
   const dateText = isoDate(date);
@@ -392,6 +551,7 @@ function forecastDay(clock, dayOffset, sourceType) {
     precipitationAmount: 0,
     windSpeed: 1.5,
     risks: [],
+    ...overrides,
   };
 }
 

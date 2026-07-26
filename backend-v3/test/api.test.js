@@ -93,6 +93,7 @@ function makeFlowServices() {
   const analyses = new Map();
   const calls = {
     search: [],
+    current: [],
     create: [],
     get: [],
     report: [],
@@ -117,6 +118,26 @@ function makeFlowServices() {
           {
             candidateToken,
             displayName: input.query,
+            resolutionMode: "ADDRESS_RESOLVED",
+            expiresAt: "2026-07-23T01:10:00.000Z",
+          },
+        ],
+      };
+    },
+
+    async resolveCurrentLocation(input) {
+      calls.current.push(input);
+      candidateSequence += 1;
+      const candidateToken = `candidate_${String(candidateSequence).padStart(16, "0")}`;
+      candidates.set(candidateToken, {
+        ownerSessionId: input.ownerSessionId,
+        regionLabel: "경기도 수원시 영통구 원천동",
+      });
+      return {
+        candidates: [
+          {
+            candidateToken,
+            displayName: "경기도 수원시 영통구 원천동",
             resolutionMode: "ADDRESS_RESOLVED",
             expiresAt: "2026-07-23T01:10:00.000Z",
           },
@@ -241,6 +262,25 @@ test("ephemeral HTTP server supports the complete owner-bound API flow", async (
   assert.match(started.session.csrfToken, /^[A-Za-z0-9_-]+$/);
   assert.ok(Date.parse(started.session.expiresAt));
 
+  const currentLocationResponse = await fetch(
+    `${baseUrl}/api/locations/current`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: started.cookie,
+        Origin: ALLOWED_ORIGIN,
+        "X-CSRF-Token": started.session.csrfToken,
+      },
+      body: JSON.stringify({ latitude: 37.285, longitude: 127.045 }),
+    },
+  );
+  assert.equal(currentLocationResponse.status, 200);
+  const currentLocationBody = await currentLocationResponse.json();
+  assert.equal(currentLocationBody.candidates.length, 1);
+  assert.equal("latitude" in currentLocationBody.candidates[0], false);
+  assert.equal("longitude" in currentLocationBody.candidates[0], false);
+
   const locationResponse = await fetch(
     `${baseUrl}/api/locations?q=${encodeURIComponent("FULL_ADDRESS_SENTINEL")}`,
     {
@@ -338,6 +378,7 @@ test("ephemeral HTTP server supports the complete owner-bound API flow", async (
   assert.equal(/secret|token|https?:\/\//i.test(JSON.stringify(preflight)), false);
 
   const ownerIds = [
+    services.calls.current[0].ownerSessionId,
     services.calls.search[0].ownerSessionId,
     services.calls.create[0].ownerSessionId,
     services.calls.get[0].ownerSessionId,

@@ -10,7 +10,6 @@ const ALLOWED_RUNTIME_OPTION_KEYS = Object.freeze(
     'verifiedLocationMappings',
     'runtimeStatus',
     'soilContract',
-    'soilDefaultYear',
   ]),
 );
 

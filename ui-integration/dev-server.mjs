@@ -5,10 +5,17 @@ import { createServer } from "node:http";
 import { dirname, extname, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { buildBackendEnvironment } from "./runtime-env.mjs";
+
 const integrationDirectory = dirname(fileURLToPath(import.meta.url));
 const projectDirectory = resolve(integrationDirectory, "..");
 const backendDirectory = join(projectDirectory, "backend-v3");
 const sampleRuntimePath = join(integrationDirectory, "sample-runtime.mjs");
+const reviewedRuntimePath = join(
+  backendDirectory,
+  "runtime",
+  "reviewed-runtime.mjs",
+);
 const frontendPort = parsePort(process.env.UI_PORT, 3000);
 const backendPort = parsePort(process.env.BACKEND_PORT, 3100);
 const frontendOrigin = `http://localhost:${frontendPort}`;
@@ -160,28 +167,14 @@ async function proxyApi(request, response, url) {
 }
 
 function startBackend() {
-  const env = {
-    ...process.env,
-    NODE_ENV: "development",
-    PORT: String(backendPort),
-    ALLOWED_ORIGINS: frontendOrigin,
-    SESSION_SECRET:
-      process.env.SESSION_SECRET ??
-      "local-ui-integration-session-secret-at-least-32-characters",
-  };
-  if (runtimeMode === "sample") {
-    env.TRUSTED_BACKEND_RUNTIME_MODULE = sampleRuntimePath;
-    env.ENABLE_LIVE_KAKAO = "false";
-    env.ENABLE_LIVE_KMA_SHORT = "false";
-    env.ENABLE_LIVE_KMA_MID = "false";
-    env.ENABLE_LIVE_SOIL = "false";
-  } else if (runtimeMode === "safe") {
-    env.TRUSTED_BACKEND_RUNTIME_MODULE = "";
-    env.ENABLE_LIVE_KAKAO = "false";
-    env.ENABLE_LIVE_KMA_SHORT = "false";
-    env.ENABLE_LIVE_KMA_MID = "false";
-    env.ENABLE_LIVE_SOIL = "false";
-  }
+  const env = buildBackendEnvironment({
+    baseEnv: process.env,
+    runtimeMode,
+    backendPort,
+    frontendOrigin,
+    sampleRuntimePath,
+    reviewedRuntimePath,
+  });
   return spawn(process.execPath, ["server/index.js"], {
     cwd: backendDirectory,
     env,

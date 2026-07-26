@@ -12,12 +12,17 @@ const CULTIVATION_BY_UI_VALUE = Object.freeze({
   "facility-water": "FACILITY_HYDRO",
 });
 
-const GROWTH_STAGE_BY_UI_VALUE = Object.freeze({
-  before: "BEFORE",
-  early: "EARLY",
-  middle: "MIDDLE",
-  harvest: "HARVEST",
-  unknown: "UNSPECIFIED",
+const GENERIC_GROWTH_VALUES = Object.freeze(
+  new Set(["early", "middle", "harvest", "unknown"]),
+);
+
+const REVIEWED_GROWTH_STAGE_BY_CONTEXT = Object.freeze({
+  "pear:OPEN_FIELD:flowering": "FLOWERING",
+  "potato:OPEN_FIELD:tuber-bulking": "TUBER_BULKING",
+  "lettuce:FACILITY_SOIL:flower-differentiation":
+    "FLOWER_DIFFERENTIATION",
+  "lettuce:FACILITY_HYDRO:flower-differentiation":
+    "FLOWER_DIFFERENTIATION",
 });
 
 const CUSTOM_SEASON_MONTHS = Object.freeze({
@@ -45,6 +50,35 @@ export class ContractValidationError extends Error {
     this.code = code;
     this.field = field;
   }
+}
+
+export function buildAnalysisRequests(values, candidateToken) {
+  const crops = Array.isArray(values?.crops)
+    ? [...new Set(values.crops.filter((crop) => typeof crop === "string"))]
+    : [];
+  if (crops.length === 0) {
+    throw new ContractValidationError(
+      "CROP_REQUIRED",
+      "재배 중인 작물을 하나 이상 선택해 주세요.",
+      "crop",
+    );
+  }
+
+  return crops.map((crop) => {
+    const cropSettings = values?.cropSettings?.[crop] ?? {};
+    return buildAnalysisRequest(
+      {
+        situation: values?.situation ?? "planning",
+        crop,
+        cultivation: cropSettings.cultivation,
+        season: cropSettings.season ?? "current",
+        analysisMonth: values?.analysisMonth,
+        growth: cropSettings.growth ?? values?.growth,
+        saveConsent: values?.saveConsent,
+      },
+      candidateToken,
+    );
+  });
 }
 
 export function buildAnalysisRequest(values, candidateToken) {
@@ -75,7 +109,7 @@ export function buildAnalysisRequest(values, candidateToken) {
   }
 
   const cultivationMode = cultivationModeFor(cropValue, values?.cultivation);
-  const season = seasonFor(cropValue, values?.season);
+  const season = seasonFor(cropValue, values?.season, values?.analysisMonth);
   const request = {
     usageMode,
     location: {
@@ -86,7 +120,10 @@ export function buildAnalysisRequest(values, candidateToken) {
     cultivationMode,
     ...(season ? { season } : {}),
     options: {
-      includeSmartfarmBenchmark: false,
+      includeSmartfarmBenchmark: smartfarmReferenceAvailable(
+        crop,
+        cultivationMode,
+      ),
       includeSatelliteObservation: false,
       saveConsent: values?.saveConsent === true,
     },
@@ -98,7 +135,11 @@ export function buildAnalysisRequest(values, candidateToken) {
       "GROWTH_STAGE_REQUIRED",
       "growth",
     );
-    const growthStage = GROWTH_STAGE_BY_UI_VALUE[growthValue];
+    const growthStage = growthStageForContext(
+      cropValue,
+      cultivationMode,
+      growthValue,
+    );
     if (!growthStage) {
       throw new ContractValidationError(
         "GROWTH_STAGE_UNSUPPORTED",
@@ -112,6 +153,17 @@ export function buildAnalysisRequest(values, candidateToken) {
   return request;
 }
 
+function growthStageForContext(crop, cultivationMode, growthValue) {
+  if (GENERIC_GROWTH_VALUES.has(growthValue)) {
+    return "UNSPECIFIED";
+  }
+  return (
+    REVIEWED_GROWTH_STAGE_BY_CONTEXT[
+      `${crop}:${cultivationMode}:${growthValue}`
+    ] ?? null
+  );
+}
+
 export function createIdempotencyKey(randomUUID = globalThis.crypto?.randomUUID?.bind(globalThis.crypto)) {
   if (typeof randomUUID !== "function") {
     throw new Error("secure randomUUID support is required");
@@ -121,6 +173,19 @@ export function createIdempotencyKey(randomUUID = globalThis.crypto?.randomUUID?
 
 export function requestFingerprint(request) {
   return JSON.stringify(request);
+}
+
+function smartfarmReferenceAvailable(crop, cultivationMode) {
+  if (
+    crop === "CUCUMBER" &&
+    ["FACILITY_SOIL", "FACILITY_HYDRO"].includes(cultivationMode)
+  ) {
+    return true;
+  }
+  return (
+    ["APPLE", "POTATO"].includes(crop) &&
+    cultivationMode === "OPEN_FIELD"
+  );
 }
 
 function cultivationModeFor(crop, cultivationValue) {
@@ -150,11 +215,27 @@ function cultivationModeFor(crop, cultivationValue) {
   return cultivationMode;
 }
 
-function seasonFor(crop, seasonValue) {
+function seasonFor(crop, seasonValue, analysisMonth) {
   if (crop === "apple" || crop === "pear") {
     return null;
   }
   const value = requiredString(seasonValue, "SEASON_REQUIRED", "season");
+  if (value === "current") {
+    if (!Number.isInteger(analysisMonth) || analysisMonth < 1 || analysisMonth > 12) {
+      throw new ContractValidationError(
+        "ANALYSIS_MONTH_INVALID",
+        "현재 날짜를 확인하지 못했습니다. 기기 날짜 설정을 확인해 주세요.",
+        "season",
+      );
+    }
+    return {
+      kind: "CUSTOM",
+      profileId: "CUSTOM",
+      startMonth: analysisMonth,
+      endMonth: analysisMonth,
+      userConfirmed: true,
+    };
+  }
   if (value === "unknown") {
     return {
       kind: "UNKNOWN",

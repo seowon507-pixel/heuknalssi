@@ -43,8 +43,8 @@ const ACTION_TITLES = Object.freeze({
   REVIEW_CONDITION_EVIDENCE: '주의 근거 우선 확인',
   REQUEST_FIELD_SOIL_TEST: '필지 토양검정 진행',
   CHECK_CURRENT_FORECAST_RISK: '가까운 기상위험 확인',
-  CHECK_FACILITY_WEATHER: '시설 외기 운영위험 확인',
-  CHECK_INTERNAL_SENSORS: '시설 내부 센서 확인',
+  CHECK_FACILITY_WEATHER: '시설 외기와 내부 온도·환기 상태 확인',
+  CHECK_INTERNAL_SENSORS: '시설 내부 온도 센서와 환기 상태 확인',
 });
 
 export function renderDecisionMessage(request, decisionCode) {
@@ -79,6 +79,7 @@ export function buildDeterministicReport(analysis) {
       : [
           {
             text:
+              risk.guidance?.reason ??
               risk.renderedText ??
               risk.title ??
               '예보 위험 근거를 확인하세요.',
@@ -87,6 +88,19 @@ export function buildDeterministicReport(analysis) {
           },
         ];
   });
+  const guidedActionItems = (analysis.forecast?.result?.risks ?? []).flatMap(
+    (risk) => {
+      const factIds = resolveEvidenceIds(analysis, [risk.riskId]);
+      if (factIds.length === 0 || !Array.isArray(risk.guidance?.actions)) {
+        return [];
+      }
+      return risk.guidance.actions.map((text) => ({
+        text,
+        factIds,
+        actionIds: risk.actionId ? [risk.actionId] : [],
+      }));
+    },
+  );
   const limitationItems = (analysis.limitations ?? []).map((text) => ({
     text,
     factIds: [],
@@ -107,9 +121,20 @@ export function buildDeterministicReport(analysis) {
     },
     strengths: [],
     risks: riskItems,
-    nextActions: actionItems,
+    nextActions: dedupeReportItems([...guidedActionItems, ...actionItems]),
     limitations: limitationItems,
   });
+}
+
+function dedupeReportItems(items) {
+  return [
+    ...new Map(
+      items.map((item) => [
+        `${item.text}|${item.actionIds.join(",")}`,
+        item,
+      ]),
+    ).values(),
+  ];
 }
 
 function resolveEvidenceIds(analysis, triggerIds = []) {

@@ -32,6 +32,7 @@ export const SPATIAL_LEVELS = Object.freeze([
   "REGIONAL_SOIL_STAT",
   "FORECAST_GRID",
   "FORECAST_REGION",
+  "REFERENCE_DATASET",
   "FIELD"
 ]);
 

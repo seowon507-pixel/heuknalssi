@@ -20,6 +20,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 
 const DEFAULT_RATE_LIMITS = Object.freeze({
   "locations.search": { limit: 30, windowMs: 60_000 },
+  "locations.current": { limit: 10, windowMs: 60_000 },
   "analyses.create": { limit: 10, windowMs: 60_000 },
   "analyses.report": { limit: 5, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
@@ -28,6 +29,7 @@ const DEFAULT_RATE_LIMITS = Object.freeze({
 const DEFAULT_IP_RATE_LIMITS = Object.freeze({
   "session.get": { limit: 30, windowMs: 60_000 },
   "locations.search": { limit: 30, windowMs: 60_000 },
+  "locations.current": { limit: 10, windowMs: 60_000 },
   "analyses.create": { limit: 10, windowMs: 60_000 },
   "analyses.get": { limit: 60, windowMs: 60_000 },
   "analyses.report": { limit: 5, windowMs: 60_000 },
@@ -44,6 +46,11 @@ const ROUTES = Object.freeze([
     name: "locations.search",
     pattern: /^\/api\/locations$/,
     methods: ["GET"],
+  },
+  {
+    name: "locations.current",
+    pattern: /^\/api\/locations\/current$/,
+    methods: ["POST"],
   },
   {
     name: "analyses.create",
@@ -656,6 +663,44 @@ export function createHttpHandler({
           services.searchLocations,
           services,
           { ...serviceContext, query },
+          abortContext.signal,
+        );
+        assertServiceResult(
+          result,
+          (value) => value && Array.isArray(value.candidates),
+        );
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (route.name === "locations.current") {
+        const body = await readJsonBody(
+          req,
+          config.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES,
+          abortContext.signal,
+        );
+        const { latitude, longitude } = body;
+        if (
+          typeof latitude !== "number" ||
+          !Number.isFinite(latitude) ||
+          latitude < 32 ||
+          latitude > 39.5 ||
+          typeof longitude !== "number" ||
+          !Number.isFinite(longitude) ||
+          longitude < 123 ||
+          longitude > 133
+        ) {
+          throw new ApiError("INVALID_INPUT", {
+            fieldErrors: {
+              location:
+                "Provide finite latitude and longitude within the supported area.",
+            },
+          });
+        }
+        const result = await invokeService(
+          services.resolveCurrentLocation,
+          services,
+          { ...serviceContext, latitude, longitude },
           abortContext.signal,
         );
         assertServiceResult(
