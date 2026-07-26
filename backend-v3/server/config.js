@@ -6,6 +6,11 @@ function enabled(value) {
   return String(value).toLowerCase() === 'true';
 }
 
+function enabledWhenConfigured(value, credential) {
+  if (String(value).toLowerCase() === 'false') return false;
+  return enabled(value) || Boolean(credential);
+}
+
 function parseOrigins(value, nodeEnv) {
   const origins = String(value ?? '')
     .split(',')
@@ -86,6 +91,11 @@ export function loadConfig(env = process.env) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('PORT must be an integer from 1 to 65535');
   }
+  const googleAiApiKey =
+    env.GOOGLE_AI_API_KEY ||
+    env.GEMINI_API_KEY ||
+    env.GOOGLE_API_KEY ||
+    null;
 
   return Object.freeze({
     nodeEnv,
@@ -145,11 +155,19 @@ export function loadConfig(env = process.env) {
         contractVersion: env.SMARTFARM_CONTRACT_VERSION || null,
       },
     },
+    assistantConfig: {
+      enabled: enabledWhenConfigured(env.ENABLE_GOOGLE_AI, googleAiApiKey),
+      apiKey: googleAiApiKey,
+      model: env.GOOGLE_AI_MODEL || 'gemini-3.5-flash-lite',
+    },
     capabilities: {
       smartfarm: enabled(env.ENABLE_SMARTFARM) ? 'HOLD' : 'DISABLED',
       satellite: enabled(env.ENABLE_SATELLITE) ? 'UNSUPPORTED' : 'DISABLED',
       persistence: 'NOT_AVAILABLE',
       llmReport: enabled(env.ENABLE_LLM_REPORT) ? 'UNSUPPORTED' : 'DISABLED',
+      assistant: enabledWhenConfigured(env.ENABLE_GOOGLE_AI, googleAiApiKey)
+        ? 'READY'
+        : 'FALLBACK',
     },
   });
 }

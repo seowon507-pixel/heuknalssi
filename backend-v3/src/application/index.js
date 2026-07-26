@@ -3,6 +3,12 @@ export {
   createApplicationServices,
 } from './services.js';
 export {
+  answerGroundedQuestion,
+  buildAssistantCatalog,
+  classifyAssistantIntent,
+  normalizeQuestion,
+} from './assistant.js';
+export {
   calculateIssuedForecastMetrics,
   replayAsosRiskRules,
 } from './backtest.js';

@@ -13,7 +13,8 @@ export const PROVIDER_HOST_ALLOWLIST = Object.freeze({
   SMARTFARM: Object.freeze([
     "smartfarmkorea.net",
     "www.smartfarmkorea.net"
-  ])
+  ]),
+  GOOGLE_AI: Object.freeze(["generativelanguage.googleapis.com"])
 });
 export const DEFAULT_PROVIDER_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 

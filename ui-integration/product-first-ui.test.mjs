@@ -102,7 +102,30 @@ test("HOLD 상태는 부분 분석으로 정직하게 표시한다", async () =>
   assert.match(client, /runtimeModeLabel\.textContent = "부분 분석 가능"/);
   assert.match(client, /serviceBanner\.hidden = false/);
   assert.doesNotMatch(client, /runtimeModeLabel\.textContent = ready \? "실시간 분석" : "분석 준비됨"/);
-  assert.match(client, /"\.overview-score",[\s\S]*"\.metric-strip",[\s\S]*"\.insight-grid",[\s\S]*"\.evidence-workspace"/);
+  assert.match(client, /renderStateOverview\(analysis\)/);
+  assert.match(client, /current-state-ring/);
+  assert.doesNotMatch(
+    client,
+    /\[\s*"\.overview-score",\s*"\.metric-strip"/,
+  );
+});
+
+test("농장 분석 도우미는 데스크톱 패널과 모바일 전체 화면으로 제공된다", async () => {
+  const html = await readProductUi();
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(html, /id="assistant-launcher"/);
+  assert.match(html, /id="assistant-panel"/);
+  assert.match(html, /width: clamp\(320px, 20vw, 380px\)/);
+  assert.match(html, /height: clamp\(340px, 34vh, 440px\)/);
+  assert.match(html, /width: 100vw/);
+  assert.match(html, /height: 100dvh/);
+  assert.match(client, /async askAssistant\(analysisId, question\)/);
+  assert.match(client, /function submitAssistantQuestion/);
+  assert.match(client, /현재 분석 근거를 확인하고 있습니다/);
 });
 
 test("결과 첫 화면은 실제 예보 배열을 가까운 예보 시각 자료로 렌더링한다", async () => {

@@ -81,6 +81,26 @@ if (!analysisResponse.ok) {
   fail("ANALYSIS_FAILED", analysisResponse.status, analysis);
 }
 
+const assistantResponse = await fetch(
+  `${baseUrl}/api/analyses/${encodeURIComponent(analysis.analysisId)}/assistant`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: cookie,
+      Origin: origin,
+      "X-CSRF-Token": session.csrfToken,
+    },
+    body: JSON.stringify({
+      question: "현재 상태의 이유와 먼저 할 일을 알려줘",
+    }),
+  },
+);
+const assistant = await readJson(assistantResponse);
+if (!assistantResponse.ok) {
+  fail("ASSISTANT_FAILED", assistantResponse.status, assistant);
+}
+
 console.log(
   JSON.stringify(
     {
@@ -107,6 +127,26 @@ console.log(
           observations: analysis.observations?.state ?? null,
           forecast: analysis.forecast?.state ?? null,
         },
+      },
+      assistant: {
+        httpStatus: assistantResponse.status,
+        mode: assistant.mode ?? null,
+        fallbackReason: assistant.fallbackReason ?? null,
+        grounded: assistant.grounded === true,
+        answerSections:
+          typeof assistant.answer === "string"
+            ? assistant.answer
+                .split("\n")
+                .filter(Boolean)
+                .filter((line) =>
+                  [
+                    "확인된 내용",
+                    "필요한 행동",
+                    "다시 확인할 때",
+                    "자료 확인",
+                  ].includes(line),
+                )
+            : [],
       },
       sources: (analysis.dataSources ?? []).map((source) => ({
         sourceId: source.sourceId,

@@ -79,6 +79,24 @@ SMARTFARM_CONTRACT_VERSION=smartfarm-reference-v1
 
 실호출에서 `SMARTFARM_SERVICE_KEY_NOT_REGISTERED`가 반환되면 키 문자열이 존재하더라도 해당 SmartFarm Open API 신청이 등록·승인되지 않은 상태입니다. 스마트팜코리아의 `Open API 신청/확인`에서 승인된 서비스 키를 확인한 뒤 다시 실행해야 하며, 이때 핵심 분석은 유지하고 공개 비교자료만 보류합니다.
 
+### 농장 분석 도우미
+
+Google AI 키가 있으면 분석별 질문 API가 자동으로 활성화됩니다. 아래 변수 중
+하나만 사용하며 `GOOGLE_AI_API_KEY`, `GEMINI_API_KEY`,
+`GOOGLE_API_KEY` 순서로 확인합니다.
+
+```text
+GOOGLE_AI_API_KEY=<Google AI Studio에서 발급한 키>
+ENABLE_GOOGLE_AI=true
+GOOGLE_AI_MODEL=gemini-3.5-flash-lite
+```
+
+`ENABLE_GOOGLE_AI`는 생략해도 키가 있으면 활성화되며, 명시적으로
+`false`를 지정하면 외부 호출 없이 결정형 설명으로 동작합니다. 키와 모델은
+브라우저로 전달하지 않습니다. 질문 원문·주소·좌표도 Google AI에 보내지
+않고, 서버가 분류한 질문 주제와 검증된 사실·행동 목록만 전달합니다.
+Google AI는 허용된 항목 ID만 선택하며 최종 문장은 서버가 작성합니다.
+
 ## API 흐름
 
 1. `GET /api/session`으로 서명 익명 세션과 CSRF 토큰을 받습니다.
@@ -88,6 +106,8 @@ SMARTFARM_CONTRACT_VERSION=smartfarm-reference-v1
 4. `POST /api/analyses`에 후보 토큰과 확인된 농업 입력만 보냅니다.
 5. `GET /api/analyses/:id`로 소유자 범위 결과를 조회합니다.
 6. `POST /api/analyses/:id/report`로 결정론적 보고서를 요청합니다.
+7. `POST /api/analyses/:id/assistant`에 질문을 보내 현재 분석의 검증된
+   근거와 행동만 설명받습니다.
 
 현재 위치 좌표는 후보 변환 요청에서만 받고 응답·로그에 반환하지 않습니다.
 분석 요청의 위치에는 좌표를 보내지 않습니다.

@@ -11,6 +11,7 @@ import { ProviderExecutionGuard } from "./provider-control.js";
 import { createSoilV2Adapter } from "./soil-v2.js";
 import { createSoilFieldAdapter } from "./soil-field.js";
 import { createSmartfarmAdapter } from "./smartfarm.js";
+import { createGoogleAiSelector } from "./google-ai.js";
 
 export {
   ADAPTER_STATES,
@@ -109,6 +110,7 @@ export {
   parseSmartfarmOutdoorReference,
   resolveSmartfarmReferenceProfile
 } from "./smartfarm.js";
+export { createGoogleAiSelector } from "./google-ai.js";
 
 export const adapterFactories = Object.freeze({
   kakao: createKakaoAdapter,

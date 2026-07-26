@@ -97,6 +97,7 @@ function makeFlowServices() {
     create: [],
     get: [],
     report: [],
+    assistant: [],
     preflight: [],
   };
 
@@ -208,6 +209,20 @@ function makeFlowServices() {
       return {
         analysis: structuredClone(record.result),
         started: true,
+      };
+    },
+
+    async answerAnalysisQuestion(input) {
+      calls.assistant.push(input);
+      const record = analyses.get(input.analysisId);
+      if (!record || record.ownerSessionId !== input.ownerSessionId) {
+        return null;
+      }
+      return {
+        mode: "FALLBACK",
+        grounded: true,
+        answer: "확인된 내용\n현재 분석 근거만 설명합니다.",
+        itemIds: ["ITEM_1"],
       };
     },
 
@@ -337,6 +352,25 @@ test("ephemeral HTTP server supports the complete owner-bound API flow", async (
   assert.equal(getResponse.status, 200);
   assert.equal((await getResponse.json()).analysisId, created.analysisId);
 
+  const assistantResponse = await fetch(
+    `${baseUrl}/api/analyses/${created.analysisId}/assistant`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: started.cookie,
+        Origin: ALLOWED_ORIGIN,
+        "X-CSRF-Token": started.session.csrfToken,
+      },
+      body: JSON.stringify({ question: "오늘 무엇을 해야 하나요?" }),
+    },
+  );
+  assert.equal(assistantResponse.status, 200);
+  const assistantBody = await assistantResponse.json();
+  assert.equal(assistantBody.grounded, true);
+  assert.equal(assistantBody.mode, "FALLBACK");
+  assert.doesNotMatch(assistantBody.answer, /FULL_ADDRESS_SENTINEL/);
+
   const reportResponse = await fetch(
     `${baseUrl}/api/analyses/${created.analysisId}/report`,
     {
@@ -383,6 +417,7 @@ test("ephemeral HTTP server supports the complete owner-bound API flow", async (
     services.calls.create[0].ownerSessionId,
     services.calls.get[0].ownerSessionId,
     services.calls.report[0].ownerSessionId,
+    services.calls.assistant[0].ownerSessionId,
   ];
   assert.equal(new Set(ownerIds).size, 1);
   assert.ok(services.calls.create[0].signal instanceof AbortSignal);

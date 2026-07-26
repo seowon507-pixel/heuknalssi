@@ -169,6 +169,17 @@ class BackendApi {
     );
   }
 
+  async askAssistant(analysisId, question) {
+    return this.request(
+      `/api/analyses/${encodeURIComponent(analysisId)}/assistant`,
+      {
+        method: "POST",
+        body: { question },
+        csrf: true,
+      },
+    );
+  }
+
   async request(path, options = {}, canRefreshSession = true) {
     if (options.csrf && !this.csrfToken) await this.startSession();
     const controller = new AbortController();
@@ -242,6 +253,14 @@ const runtimeModeLabel = document.querySelector("#runtime-mode-label");
 const runtimeSafetyNotice = document.querySelector("#runtime-safety-notice");
 const liveRegion = document.querySelector("#live-region");
 const wizardNextButton = document.querySelector("#wizard-next");
+const assistantLauncher = document.querySelector("#assistant-launcher");
+const assistantPanel = document.querySelector("#assistant-panel");
+const assistantClose = document.querySelector("#assistant-close");
+const assistantForm = document.querySelector("#assistant-form");
+const assistantInput = document.querySelector("#assistant-input");
+const assistantSend = document.querySelector("#assistant-send");
+const assistantMessages = document.querySelector("#assistant-messages");
+const assistantContext = document.querySelector("#assistant-context");
 
 let connected = false;
 let sampleData = false;
@@ -252,10 +271,12 @@ let currentAnalyses = new Map();
 let currentUiContexts = new Map();
 let pendingAttempt = null;
 let connectionPromise = null;
+let assistantAnalysisId = null;
 
 scrubLegacyMockSurfaces();
 setDashboardResultVisibility(false);
 resetDashboard();
+syncAssistantContext(null);
 wireInteractions();
 void connectBackend();
 
@@ -265,6 +286,22 @@ function wireInteractions() {
   });
   wizardRetryConnectionButton.addEventListener("click", () => {
     void connectBackend(true);
+  });
+  assistantLauncher?.addEventListener("click", openAssistant);
+  assistantClose?.addEventListener("click", closeAssistant);
+  assistantForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitAssistantQuestion(assistantInput?.value ?? "");
+  });
+  document.querySelectorAll("[data-assistant-question]").forEach((button) => {
+    button.addEventListener("click", () => {
+      void submitAssistantQuestion(button.dataset.assistantQuestion ?? "");
+    });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && assistantPanel && !assistantPanel.hidden) {
+      closeAssistant();
+    }
   });
   searchLocationButton.addEventListener("click", () => {
     void searchLocations();
@@ -753,10 +790,12 @@ function renderAnalysis(analysis) {
 
   renderLiveOutlook(analysis);
   renderDecisionPanel(analysis);
+  renderStateOverview(analysis);
   renderActionsAndReport(analysis);
   renderSmartfarmReference(analysis);
   renderExplanation(analysis);
   renderEvidenceDialog(analysis);
+  syncAssistantContext(analysis);
   setDashboardResultVisibility(true);
 }
 
@@ -1326,12 +1365,40 @@ function renderStateOverview(analysis) {
   const overview = document.querySelector(".overview-score");
   const inner = element("div", "overview-score-inner");
   const heading = element("div", "overview-heading");
-  const title = element("h2", "", "항목별 분석 상태");
+  const title = element("h2", "", "현재 농장 상태");
   title.id = "readiness-title";
   heading.append(
-    element("span", "overview-kicker", "판단 준비 상태"),
+    element("span", "overview-kicker", "현재 확인 결과"),
     title,
   );
+  const currentState = analysis?.state ?? "UNAVAILABLE";
+  const stateVisual = element("div", "current-state-visual");
+  const stateRing = element(
+    "div",
+    `current-state-ring ${
+      ["COMPLETE", "READY"].includes(currentState)
+        ? "is-good"
+        : currentState === "PARTIAL"
+          ? ""
+          : "is-hold"
+    }`.trim(),
+  );
+  stateRing.setAttribute("role", "img");
+  stateRing.setAttribute(
+    "aria-label",
+    `현재 농장 상태 ${stateLabel(currentState)}`,
+  );
+  stateRing.append(element("span", "", stateLabel(currentState)));
+  const stateCopy = element("div", "current-state-copy");
+  stateCopy.append(
+    element("strong", "", stateLabel(currentState)),
+    element(
+      "span",
+      "",
+      "기상·토양·예보를 각각 확인한 현재 상태입니다.",
+    ),
+  );
+  stateVisual.append(stateRing, stateCopy);
   const axes = element("div", "axis-status-list");
   [
     ["기후 조건", analysis?.climate?.state, "작물·작기별 규칙과 비교"],
@@ -1353,9 +1420,9 @@ function renderStateOverview(analysis) {
   const overall = element(
     "p",
     "score-state",
-    `전체 ${stateLabel(analysis?.state)} · 부족한 값은 임의로 채우지 않음`,
+    "확인되지 않은 항목은 아래에서 별도로 표시합니다.",
   );
-  inner.append(heading, axes, overall);
+  inner.append(heading, stateVisual, axes, overall);
 
   const button = element("button", "button button-secondary score-evidence-button", "분석 근거 보기");
   button.type = "button";
@@ -2526,12 +2593,12 @@ function setDashboardResultVisibility(visible) {
     "#live-outlook",
     ".decision-flow",
     ".action-workspace",
+    ".overview-score",
   ].forEach((selector) => {
     const target = document.querySelector(selector);
     if (target) target.hidden = !visible;
   });
   [
-    ".overview-score",
     ".metric-strip",
     ".insight-grid",
     ".evidence-workspace",
@@ -2542,6 +2609,103 @@ function setDashboardResultVisibility(visible) {
     },
   );
   document.querySelector(".decision-flow")?.classList.add("is-user-focused");
+}
+
+function openAssistant() {
+  if (!assistantPanel || !assistantLauncher) return;
+  assistantPanel.hidden = false;
+  assistantLauncher.setAttribute("aria-expanded", "true");
+  assistantPanel.setAttribute(
+    "aria-modal",
+    String(window.matchMedia("(max-width: 620px)").matches),
+  );
+  document.body.classList.add("assistant-open");
+  requestAnimationFrame(() => assistantInput?.focus());
+}
+
+function closeAssistant() {
+  if (!assistantPanel || !assistantLauncher) return;
+  assistantPanel.hidden = true;
+  assistantLauncher.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("assistant-open");
+  assistantLauncher.focus();
+}
+
+function syncAssistantContext(analysis) {
+  if (!assistantInput || !assistantSend || !assistantContext) return;
+  const analysisId = analysis?.analysisId ?? null;
+  const crop = CROP_LABELS[analysis?.inputSummary?.crop] ?? "현재 작물";
+  const region = analysis?.inputSummary?.regionLabel ?? "농장 분석 전";
+  const available = Boolean(analysisId && connected);
+  assistantInput.disabled = !available;
+  assistantSend.disabled = !available;
+  document.querySelectorAll("[data-assistant-question]").forEach((button) => {
+    button.disabled = !available;
+  });
+  assistantContext.textContent = available
+    ? `${region} · ${crop} 분석 기준`
+    : "농장 분석을 먼저 실행해 주세요";
+  if (assistantAnalysisId !== analysisId) {
+    assistantAnalysisId = analysisId;
+    assistantMessages?.replaceChildren();
+    appendAssistantMessage(
+      available
+        ? `${crop} 분석에서 확인된 날씨·토양 근거와 필요한 행동만 설명합니다.`
+        : "농장 분석을 실행하면 확인된 근거를 쉽게 설명합니다.",
+    );
+  }
+}
+
+async function submitAssistantQuestion(rawQuestion) {
+  const question = String(rawQuestion ?? "").trim();
+  const expectedAnalysisId = currentAnalysis?.analysisId;
+  if (!question || !expectedAnalysisId || !assistantInput || !assistantSend) {
+    if (!expectedAnalysisId) {
+      appendAssistantMessage("농장 분석을 먼저 실행해 주세요.");
+    }
+    return;
+  }
+  appendAssistantMessage(question, { user: true });
+  assistantInput.value = "";
+  assistantInput.disabled = true;
+  assistantSend.disabled = true;
+  assistantSend.textContent = "확인 중";
+  const pending = appendAssistantMessage("현재 분석 근거를 확인하고 있습니다.");
+  try {
+    const response = await api.askAssistant(expectedAnalysisId, question);
+    if (expectedAnalysisId !== currentAnalysis?.analysisId) return;
+    pending?.remove();
+    appendAssistantMessage(response?.answer ?? "설명할 근거를 찾지 못했습니다.", {
+      note: response?.notice,
+    });
+  } catch (error) {
+    pending?.remove();
+    appendAssistantMessage(
+      error?.code === "ANALYSIS_NOT_FOUND"
+        ? "분석 세션이 만료되었습니다. 농장 분석을 다시 실행해 주세요."
+        : "설명을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.",
+    );
+  } finally {
+    if (expectedAnalysisId === currentAnalysis?.analysisId) {
+      assistantInput.disabled = false;
+      assistantSend.disabled = false;
+      assistantSend.textContent = "전송";
+      assistantInput.focus();
+    }
+  }
+}
+
+function appendAssistantMessage(text, { user = false, note = null } = {}) {
+  if (!assistantMessages) return null;
+  const message = element(
+    "p",
+    `assistant-message${user ? " is-user" : ""}`,
+    text,
+  );
+  if (note && !user) message.append(element("small", "", note));
+  assistantMessages.append(message);
+  assistantMessages.scrollTop = assistantMessages.scrollHeight;
+  return message;
 }
 
 function updateLocationSearchAvailability() {

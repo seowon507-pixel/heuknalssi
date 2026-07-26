@@ -23,6 +23,7 @@ const DEFAULT_RATE_LIMITS = Object.freeze({
   "locations.current": { limit: 10, windowMs: 60_000 },
   "analyses.create": { limit: 10, windowMs: 60_000 },
   "analyses.report": { limit: 5, windowMs: 60_000 },
+  "analyses.assistant": { limit: 20, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
 });
 
@@ -33,6 +34,7 @@ const DEFAULT_IP_RATE_LIMITS = Object.freeze({
   "analyses.create": { limit: 10, windowMs: 60_000 },
   "analyses.get": { limit: 60, windowMs: 60_000 },
   "analyses.report": { limit: 5, windowMs: 60_000 },
+  "analyses.assistant": { limit: 20, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
 });
 
@@ -60,6 +62,12 @@ const ROUTES = Object.freeze([
   {
     name: "analyses.report",
     pattern: /^\/api\/analyses\/([^/]+)\/report$/,
+    methods: ["POST"],
+    parameter: "analysisId",
+  },
+  {
+    name: "analyses.assistant",
+    pattern: /^\/api\/analyses\/([^/]+)\/assistant$/,
     methods: ["POST"],
     parameter: "analysisId",
   },
@@ -860,6 +868,57 @@ export function createHttpHandler({
         sendJson(res, result.started ? 202 : 200, result.analysis, {
           Location: `/api/analyses/${route.parameters.analysisId}`,
         });
+        return;
+      }
+
+      if (route.name === "analyses.assistant") {
+        if (typeof services.answerAnalysisQuestion !== "function") {
+          throw new ApiError("INTERNAL_ERROR");
+        }
+        const body = await readJsonBody(
+          req,
+          bodyLimitBytes,
+          abortContext.signal,
+        );
+        const question =
+          body && !Array.isArray(body) ? body.question : undefined;
+        if (
+          !body ||
+          Array.isArray(body) ||
+          Object.keys(body).some((key) => key !== "question") ||
+          typeof question !== "string" ||
+          question.trim().length === 0 ||
+          question.length > 400
+        ) {
+          throw new ApiError("INVALID_INPUT", {
+            fieldErrors: {
+              question:
+                "Provide one non-empty question of at most 400 characters.",
+            },
+          });
+        }
+        const result = await invokeService(
+          services.answerAnalysisQuestion,
+          services,
+          {
+            ...serviceContext,
+            analysisId: route.parameters.analysisId,
+            question,
+          },
+          abortContext.signal,
+        );
+        if (result === null || result === undefined) {
+          throw new ApiError("ANALYSIS_NOT_FOUND");
+        }
+        assertServiceResult(
+          result,
+          (value) =>
+            value &&
+            typeof value.answer === "string" &&
+            typeof value.mode === "string" &&
+            value.grounded === true,
+        );
+        sendJson(res, 200, result);
         return;
       }
 

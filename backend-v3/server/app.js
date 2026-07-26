@@ -9,6 +9,7 @@ import {
   VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
   VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION,
   createAdapterRegistry,
+  createGoogleAiSelector,
   validateSoilV2Contract,
 } from '../src/adapters/index.js';
 import { createHttpHandler } from '../src/api/index.js';
@@ -116,8 +117,17 @@ export function createBackend({
           soilContract,
         })
       : null);
+  const assistant = createGoogleAiSelector({
+    enabled: config.assistantConfig.enabled,
+    apiKey: config.assistantConfig.apiKey,
+    model: config.assistantConfig.model,
+    fetchImpl,
+    timeoutMs: Math.min(config.sourceTimeoutMs, 8_000),
+    now: clock,
+  });
   const services = createApplicationServices({
     adapters: activeAdapters,
+    assistant,
     ruleRegistry: activeRuleRegistry,
     verifiedLocationMappings,
     clock,
@@ -132,6 +142,7 @@ export function createBackend({
       smartfarm:
         activeRuntimeStatus?.adapters?.smartfarm ??
         config.capabilities.smartfarm,
+      assistant: assistant.state,
     },
   });
   const handler = createHttpHandler({
@@ -148,6 +159,7 @@ export function createBackend({
         'locations.search': { limit: 30, windowMs: 60_000 },
         'analyses.create': { limit: 10, windowMs: 60_000 },
         'analyses.report': { limit: 5, windowMs: 60_000 },
+        'analyses.assistant': { limit: 20, windowMs: 60_000 },
         'health.preflight': { limit: 30, windowMs: 60_000 },
       },
     },

@@ -1831,6 +1831,243 @@
       .summary-meta { grid-template-columns: 1fr; }
       .summary-meta > div:last-child { text-align: left; }
     }
+
+    .assistant-launcher {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 89;
+      display: grid;
+      width: 60px;
+      height: 60px;
+      padding: 0;
+      place-items: center;
+      border: 1px solid rgb(255 255 255 / 34%);
+      border-radius: 50%;
+      background: #17683F;
+      color: #FFFFFF;
+      box-shadow: 0 12px 30px rgb(15 66 39 / 28%);
+      cursor: pointer;
+    }
+    .assistant-launcher:hover { background: #105632; }
+    .assistant-launcher:focus-visible {
+      outline: 3px solid #9ED6B4;
+      outline-offset: 3px;
+    }
+    .assistant-launcher svg { width: 28px; height: 28px; }
+    .assistant-launcher[aria-expanded="true"] { background: #123D28; }
+
+    .assistant-panel {
+      position: fixed;
+      right: 24px;
+      bottom: 96px;
+      z-index: 90;
+      display: grid;
+      width: clamp(320px, 20vw, 380px);
+      height: clamp(340px, 34vh, 440px);
+      overflow: hidden;
+      grid-template-rows: auto minmax(0, 1fr) auto auto;
+      border: 1px solid #CEDBD2;
+      border-radius: 18px;
+      background: #FFFFFF;
+      box-shadow: 0 22px 60px rgb(18 39 26 / 24%);
+    }
+    .assistant-panel[hidden] { display: none; }
+    .assistant-panel-header {
+      display: flex;
+      min-width: 0;
+      padding: 15px 16px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid #E0E8E2;
+      background: #F7FAF8;
+    }
+    .assistant-panel-title { min-width: 0; }
+    .assistant-panel-title strong,
+    .assistant-panel-title span { display: block; }
+    .assistant-panel-title strong { font-size: 16px; }
+    .assistant-panel-title span {
+      margin-top: 2px;
+      overflow: hidden;
+      color: #67736B;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .assistant-close {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      flex: 0 0 auto;
+      padding: 0;
+      place-items: center;
+      border: 1px solid #D6DFD9;
+      border-radius: 50%;
+      background: #FFFFFF;
+      color: #243A2C;
+      font-size: 22px;
+      cursor: pointer;
+    }
+    .assistant-messages {
+      min-height: 0;
+      padding: 15px 14px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      background: #FCFDFC;
+    }
+    .assistant-message {
+      max-width: 91%;
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border-radius: 13px 13px 13px 4px;
+      background: #EAF5EE;
+      color: #20342A;
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre-line;
+    }
+    .assistant-message.is-user {
+      margin-left: auto;
+      border-radius: 13px 13px 4px;
+      background: #1B6942;
+      color: #FFFFFF;
+    }
+    .assistant-message small {
+      display: block;
+      margin-top: 6px;
+      color: #5F7166;
+      font-size: 10px;
+    }
+    .assistant-quick-questions {
+      display: flex;
+      padding: 8px 12px;
+      overflow-x: auto;
+      gap: 6px;
+      border-top: 1px solid #E6ECE8;
+      background: #FFFFFF;
+      scrollbar-width: none;
+    }
+    .assistant-quick-questions::-webkit-scrollbar { display: none; }
+    .assistant-quick-questions button {
+      min-height: 34px;
+      padding: 7px 10px;
+      flex: 0 0 auto;
+      border: 1px solid #CBD9CF;
+      border-radius: 999px;
+      background: #FFFFFF;
+      color: #2F4B3A;
+      font-size: 11px;
+      font-weight: 620;
+      cursor: pointer;
+    }
+    .assistant-form {
+      display: grid;
+      padding: 10px 12px 12px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      border-top: 1px solid #E0E8E2;
+      background: #FFFFFF;
+    }
+    .assistant-form input {
+      min-width: 0;
+      min-height: 42px;
+      padding: 9px 11px;
+      border: 1px solid #BFCBC3;
+      border-radius: 10px;
+      background: #FFFFFF;
+      color: #17261D;
+      font-size: 13px;
+    }
+    .assistant-form button {
+      min-width: 56px;
+      min-height: 42px;
+      padding: 8px 12px;
+      border: 0;
+      border-radius: 10px;
+      background: #17683F;
+      color: #FFFFFF;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .assistant-form button:disabled {
+      background: #DDE4DF;
+      color: #87928A;
+      cursor: default;
+    }
+
+    .current-state-visual {
+      display: grid;
+      margin: 18px 0 4px;
+      grid-template-columns: 86px minmax(0, 1fr);
+      align-items: center;
+      gap: 15px;
+    }
+    .current-state-ring {
+      display: grid;
+      width: 86px;
+      height: 86px;
+      place-items: center;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at center, #F7F9F7 0 57%, transparent 59%),
+        conic-gradient(#2B8A57 0 40%, #D69A35 40% 68%, #DDE4DF 68% 100%);
+    }
+    .current-state-ring.is-good {
+      background:
+        radial-gradient(circle at center, #F7F9F7 0 57%, transparent 59%),
+        conic-gradient(#2B8A57 0 86%, #DDE4DF 86% 100%);
+    }
+    .current-state-ring.is-hold {
+      background:
+        radial-gradient(circle at center, #F7F9F7 0 57%, transparent 59%),
+        conic-gradient(#D69A35 0 48%, #DDE4DF 48% 100%);
+    }
+    .current-state-ring span {
+      max-width: 62px;
+      color: #263A2E;
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.25;
+      text-align: center;
+    }
+    .current-state-copy strong,
+    .current-state-copy span { display: block; }
+    .current-state-copy strong {
+      color: #17261D;
+      font-size: 22px;
+      letter-spacing: -.025em;
+    }
+    .current-state-copy span {
+      margin-top: 5px;
+      color: #69756D;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 620px) {
+      .assistant-launcher {
+        right: 16px;
+        bottom: calc(80px + env(safe-area-inset-bottom));
+      }
+      .assistant-panel {
+        inset: 0;
+        z-index: 90;
+        width: 100vw;
+        height: 100dvh;
+        max-width: none;
+        max-height: none;
+        border: 0;
+        border-radius: 0;
+      }
+      .assistant-panel-header {
+        padding-top: calc(14px + env(safe-area-inset-top));
+      }
+      .assistant-form {
+        padding-bottom: calc(12px + env(safe-area-inset-bottom));
+      }
+      body.assistant-open .assistant-launcher { display: none; }
+    }
   </style>
 </head>
 <body data-integration="pending">
@@ -2206,6 +2443,35 @@
       <button class="nav-button" type="button" data-view="mypage">마이페이지</button>
     </nav>
   </div>
+
+  <button class="assistant-launcher" id="assistant-launcher" type="button" aria-label="농장 분석 도우미 열기" aria-controls="assistant-panel" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5.5 5.5h13a2.5 2.5 0 0 1 2.5 2.5v7a2.5 2.5 0 0 1-2.5 2.5h-7L7 21v-3.5H5.5A2.5 2.5 0 0 1 3 15V8a2.5 2.5 0 0 1 2.5-2.5Z"/>
+      <path d="M7.5 10h9M7.5 13.5h6"/>
+    </svg>
+  </button>
+  <aside class="assistant-panel" id="assistant-panel" role="dialog" aria-modal="false" aria-labelledby="assistant-title" hidden>
+    <header class="assistant-panel-header">
+      <div class="assistant-panel-title">
+        <strong id="assistant-title">농장 분석 도우미</strong>
+        <span id="assistant-context">현재 분석에서 확인된 내용만 설명</span>
+      </div>
+      <button class="assistant-close" id="assistant-close" type="button" aria-label="농장 분석 도우미 닫기">×</button>
+    </header>
+    <div class="assistant-messages" id="assistant-messages" role="log" aria-live="polite" aria-relevant="additions">
+      <p class="assistant-message">현재 분석에서 확인된 날씨·토양 근거와 필요한 행동만 설명합니다. 새로운 진단이나 농약·비료 처방은 만들지 않습니다.</p>
+    </div>
+    <div class="assistant-quick-questions" aria-label="빠른 질문">
+      <button type="button" data-assistant-question="왜 주의 상태인가요?">왜 주의인가요?</button>
+      <button type="button" data-assistant-question="토양은 무엇을 확인해야 하나요?">토양 확인</button>
+      <button type="button" data-assistant-question="오늘 무엇을 해야 하나요?">오늘 할 일</button>
+    </div>
+    <form class="assistant-form" id="assistant-form">
+      <label class="sr-only" for="assistant-input">농장 분석 질문</label>
+      <input id="assistant-input" name="question" type="text" maxlength="400" autocomplete="off" placeholder="현재 분석에 대해 질문" required>
+      <button id="assistant-send" type="submit">전송</button>
+    </form>
+  </aside>
 
   <section class="wizard-overlay" id="onboarding" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
     <div class="wizard-shell">

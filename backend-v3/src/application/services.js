@@ -37,6 +37,10 @@ import {
   renderDecisionMessage,
   resolveEligibleEvidence,
 } from './templates.js';
+import {
+  answerGroundedQuestion,
+  normalizeQuestion,
+} from './assistant.js';
 
 const CANDIDATE_TTL_MS = 10 * 60 * 1000;
 const ANALYSIS_TTL_MS = 60 * 60 * 1000;
@@ -158,6 +162,7 @@ const SOURCE_BASES = Object.freeze({
 
 export function createApplicationServices({
   adapters = {},
+  assistant = null,
   rules = [],
   ruleRegistry = createRuleRegistry(rules),
   verifiedLocationMappings = {},
@@ -181,6 +186,7 @@ export function createApplicationServices({
     smartfarm: 'DISABLED',
     satellite: 'DISABLED',
     persistence: 'NOT_AVAILABLE',
+    assistant: 'FALLBACK',
   },
 } = {}) {
   validateDependencies({
@@ -537,6 +543,31 @@ export function createApplicationServices({
     return structuredClone(record.result);
   }
 
+  async function answerAnalysisQuestion({
+    ownerSessionId,
+    analysisId,
+    question,
+    signal,
+  }) {
+    const record = analysisStore.get(analysisId);
+    if (!record || record.ownerSessionId !== ownerSessionId) return null;
+    const normalizedQuestion = normalizeQuestion(question);
+    if (!normalizedQuestion) {
+      throw serviceError(
+        'INVALID_INPUT',
+        'Assistant question must not be empty.',
+        400,
+      );
+    }
+    return answerGroundedQuestion({
+      analysis: record.result,
+      question: normalizedQuestion,
+      assistant,
+      signal,
+      deadlineAt: clock() + Math.min(coreDeadlineMs, 8_000),
+    });
+  }
+
   async function requestReport({ ownerSessionId, analysisId }) {
     const record = analysisStore.get(analysisId);
     if (!record || record.ownerSessionId !== ownerSessionId) return null;
@@ -692,6 +723,7 @@ export function createApplicationServices({
         satellite: capabilities.satellite ?? 'DISABLED',
         persistence: capabilities.persistence ?? 'NOT_AVAILABLE',
         report: 'DETERMINISTIC_TEMPLATE',
+        assistant: capabilities.assistant ?? assistant?.state ?? 'FALLBACK',
       },
       guarantees: {
         singleCompositeScore: false,
@@ -726,6 +758,7 @@ export function createApplicationServices({
     normalizeAnalysisInput,
     createAnalysis,
     getAnalysis,
+    answerAnalysisQuestion,
     requestReport,
     getPreflight,
   });
