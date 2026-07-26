@@ -27,14 +27,16 @@ const SOIL_TEST_NUMERIC_FIELDS = Object.freeze([
   "exchangeableCa",
   "exchangeableMg",
 ]);
+// 전문 용어에는 쉬운 설명을 함께 붙인다. 초보 귀농인이 단위만 보고
+// 뜻을 짐작하게 두지 않는다. [표기, 단위, 쉬운 설명]
 const SOIL_TEST_LABELS = Object.freeze({
-  ph: ["산도 pH", ""],
-  electricalConductivity: ["전기전도도", "dS/m"],
-  organicMatter: ["유기물", "g/kg"],
-  availablePhosphate: ["유효인산", "mg/kg"],
-  exchangeableK: ["칼륨 K", "cmol⁺/kg"],
-  exchangeableCa: ["칼슘 Ca", "cmol⁺/kg"],
-  exchangeableMg: ["마그네슘 Mg", "cmol⁺/kg"],
+  ph: ["산도 pH", "", "흙이 산성인지 알칼리성인지"],
+  electricalConductivity: ["전기전도도 EC", "dS/m", "흙에 녹아 있는 비료 기운(짠기)"],
+  organicMatter: ["유기물", "g/kg", "썩은 낙엽·퇴비처럼 흙을 기름지게 하는 성분"],
+  availablePhosphate: ["유효인산", "mg/kg", "뿌리와 열매에 쓰이는 양분"],
+  exchangeableK: ["칼륨(칼리)", "cmol⁺/kg", "열매를 굵게 하는 양분"],
+  exchangeableCa: ["칼슘", "cmol⁺/kg", "흙의 산성을 눅여 주는 양분"],
+  exchangeableMg: ["마그네슘", "cmol⁺/kg", "잎을 푸르게 하는 양분"],
 });
 
 const REQUEST_TIMEOUT_MS = 14_000;
@@ -1504,16 +1506,35 @@ function renderStateOverview(analysis) {
     "aria-label",
     `현재 농장 상태 ${stateLabel(currentState)}`,
   );
-  stateRing.append(element("span", "", stateLabel(currentState)));
-  const stateCopy = element("div", "current-state-copy");
-  stateCopy.append(
-    element("strong", "", stateLabel(currentState)),
-    element(
-      "span",
-      "",
-      "기상·토양·예보를 각각 확인한 현재 상태입니다.",
-    ),
+  // 생육 적합도 점수. 자료가 모자라 점수를 못 내면 숫자 대신 상태를 보여 준다.
+  const suitability = analysis?.suitability ?? null;
+  const scored = suitability?.scored === true;
+  stateRing.append(
+    element("span", "", scored ? `${suitability.score}점` : stateLabel(currentState)),
   );
+  const stateCopy = element("div", "current-state-copy");
+  if (scored) {
+    stateCopy.append(
+      element("strong", "", `생육 적합도 ${suitability.score}점 · ${suitability.grade}`),
+      element(
+        "span",
+        "",
+        suitability.modules
+          .map((item) => `${item.label} ${item.score}점`)
+          .join(" · "),
+      ),
+    );
+  } else {
+    stateCopy.append(
+      element("strong", "", stateLabel(currentState)),
+      element(
+        "span",
+        "",
+        suitability?.blockedReason ??
+          "기상·토양·예보를 각각 확인한 현재 상태입니다.",
+      ),
+    );
+  }
   stateVisual.append(stateRing, stateCopy);
   const axes = element("div", "axis-status-list");
   [
@@ -1536,9 +1557,46 @@ function renderStateOverview(analysis) {
   const overall = element(
     "p",
     "score-state",
-    "확인되지 않은 항목은 아래에서 별도로 표시합니다.",
+    scored
+      ? `${suitability.modules.map((m) => `${m.label} ${m.itemCount}개 항목`).join(" · ")} 비교 결과입니다. 확인되지 않은 항목은 아래에서 별도로 표시합니다.`
+      : "확인되지 않은 항목은 아래에서 별도로 표시합니다.",
   );
   inner.append(heading, stateVisual, axes, overall);
+
+  // 점수를 어떻게 냈는지 감추지 않는다.
+  if (scored) {
+    const how = element("details", "score-method");
+    how.append(element("summary", "", "점수는 어떻게 계산했나요"));
+    const body = element("div", "details-body");
+    const list = element("ul", "reason-list");
+    list.append(
+      element(
+        "li",
+        "",
+        `항목 편차 = ${suitability.method.itemDeviation}`,
+      ),
+      element(
+        "li",
+        "",
+        `항목 중요도 = 매우 중요 ${suitability.method.weights.CRITICAL} · 중요 ${suitability.method.weights.IMPORTANT} · 보조 ${suitability.method.weights.SUPPORTING}`,
+      ),
+      element("li", "", `항목별 점수 = ${suitability.method.moduleScore}`),
+      element("li", "", `종합 점수 = ${suitability.method.totalScore}`),
+      element("li", "", suitability.method.note),
+    );
+    body.append(list);
+    if (suitability.nearTermRiskDays > 0) {
+      body.append(
+        element(
+          "p",
+          "formula-note",
+          `가까운 예보 위험 ${suitability.nearTermRiskDays}건은 지금 당장의 주의 사항이라 적합도 점수에 섞지 않고 따로 표시합니다.`,
+        ),
+      );
+    }
+    how.append(body);
+    inner.append(how);
+  }
 
   const button = element("button", "button button-secondary score-evidence-button", "분석 근거 보기");
   button.type = "button";
@@ -3533,12 +3591,12 @@ function setupSoilTestPanel() {
 // 검정 지표 ↔ 화면 표기. 서버가 쓰는 지표 이름과 짝을 맞춘다.
 const SOIL_METRIC_LABELS = Object.freeze({
   PH: "산도 pH",
-  EC: "전기전도도",
+  EC: "전기전도도(짠기)",
   ORGANIC_MATTER: "유기물",
   AVAILABLE_PHOSPHATE: "유효인산",
-  EXCHANGEABLE_K: "칼륨 K",
-  EXCHANGEABLE_CA: "칼슘 Ca",
-  EXCHANGEABLE_MG: "마그네슘 Mg",
+  EXCHANGEABLE_K: "칼륨(칼리)",
+  EXCHANGEABLE_CA: "칼슘",
+  EXCHANGEABLE_MG: "마그네슘",
 });
 const SOIL_METRIC_FIELDS = Object.freeze({
   PH: "ph",
@@ -3581,15 +3639,20 @@ function renderDashboardSoilTest() {
     const nodes = [];
     for (const field of SOIL_TEST_NUMERIC_FIELDS) {
       if (stored[field] === undefined) continue;
-      const [label, unit] = SOIL_TEST_LABELS[field];
-      nodes.push(element("dt", "condition-fact-label", label));
-      nodes.push(
+      const [label, unit, plain] = SOIL_TEST_LABELS[field];
+      const term = element("dt", "condition-fact-label", label);
+      if (plain) term.title = plain;
+      nodes.push(term);
+      const value = element("dd", "condition-fact-title");
+      value.append(
         element(
-          "dd",
-          "condition-fact-title",
+          "span",
+          "",
           unit === "" ? String(stored[field]) : `${stored[field]} ${unit}`,
         ),
       );
+      if (plain) value.append(element("small", "muted", plain));
+      nodes.push(value);
     }
     list.replaceChildren(...nodes);
   }

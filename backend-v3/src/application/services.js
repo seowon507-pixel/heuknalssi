@@ -1,6 +1,7 @@
 import { randomBytes as nodeRandomBytes } from 'node:crypto';
 
 import {
+  calculateSuitability,
   ALLOWED_CULTIVATION_MODES,
   createRuleRegistry,
   Crop,
@@ -514,6 +515,13 @@ export function createApplicationServices({
       soil,
       observations,
       forecast,
+      // 검수된 규칙 가중치와 이미 계산된 편차만으로 산출한다. 산식도 함께 싣는다.
+      suitability: calculateSuitability({
+        climate,
+        soil,
+        forecast,
+        rules: moduleRules.soil,
+      }),
       smartfarm: smartfarmModule(request, envelopes.smartfarm),
       satellite: request.options.includeSatelliteObservation
         ? unavailableModule('SATELLITE_P2_NOT_ENABLED', 'UNSUPPORTED')
@@ -747,7 +755,8 @@ export function createApplicationServices({
         assistant: capabilities.assistant ?? assistant?.state ?? 'FALLBACK',
       },
       guarantees: {
-        singleCompositeScore: false,
+        // 종합 점수를 제공하되 가중치와 산식을 응답에 공개한다.
+        compositeScoreWeightsPublished: true,
         missingValueReweighting: false,
         unverifiedSoilRepresentativeValue: false,
         freeFormLlm: false,

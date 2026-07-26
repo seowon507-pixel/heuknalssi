@@ -620,7 +620,7 @@ test('field soil profile is attached without exposing the private parcel lookup 
   assert.equal(JSON.stringify(result).includes(privatePnu), false);
 });
 
-test('application integrates verified modules without a composite score or hidden reweighting', async () => {
+test('application integrates verified modules and exposes a transparent suitability score', async () => {
   const calls = {
     climate: [],
     observations: [],
@@ -654,7 +654,24 @@ test('application integrates verified modules without a composite score or hidde
   assert.equal(result.forecast.state, 'READY');
   assert.equal(result.forecast.result.noActiveRisksConfirmed, true);
   assert.equal(result.inputSummary.regionLabel, '경기도 수원시');
-  assert.equal(JSON.stringify(result).match(/"(?:score|penalty)"/giu), null);
+  // 점수는 제공하되 숨은 재가중치가 없어야 한다. 산식과 가중치를 응답에 싣고,
+  // 검수된 민감도 등급(3/2/1) 외의 값을 쓰지 않는지 확인한다.
+  assert.equal(JSON.stringify(result).match(/"penalty"/giu), null);
+  assert.equal(typeof result.suitability.score, 'number');
+  assert.ok(result.suitability.score >= 0 && result.suitability.score <= 100);
+  assert.equal(result.suitability.scored, true);
+  assert.deepEqual(result.suitability.method.weights, {
+    CRITICAL: 3,
+    IMPORTANT: 2,
+    SUPPORTING: 1,
+  });
+  assert.match(result.suitability.method.itemDeviation, /적정범위 폭/);
+  assert.ok(result.suitability.modules.length > 0);
+  assert.ok(
+    result.suitability.modules.every(
+      (item) => typeof item.score === 'number' && item.label.length > 0,
+    ),
+  );
   assert.deepEqual(calls.soil[0], {
     verifiedSoilAreaCode: '4111710500',
     landUse: 'PFLD',
