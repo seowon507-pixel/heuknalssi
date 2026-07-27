@@ -40,13 +40,23 @@ export function evaluateAnalysisStates(input = {}) {
     summaries.shortForecast,
     summaries.midForecast,
   ];
-  const riskState = riskSummaries.every(
-    (summary) => effectiveState(summary) === "READY",
+  const evaluatedForecastRiskState = modules.forecast?.result?.riskState;
+  const riskState = ["READY", "PARTIAL", "HOLD"].includes(
+    evaluatedForecastRiskState,
   )
-    ? "READY"
-    : riskSummaries.some(isUsable)
-      ? "PARTIAL"
-      : "HOLD";
+    ? evaluatedForecastRiskState === "READY"
+      ? cultivationMode !== "OPEN_FIELD" ||
+        effectiveState(summaries.observations) === "READY"
+        ? "READY"
+        : "PARTIAL"
+      : evaluatedForecastRiskState
+    : riskSummaries.every(
+          (summary) => effectiveState(summary) === "READY",
+        )
+      ? "READY"
+      : riskSummaries.some(isUsable)
+        ? "PARTIAL"
+        : "HOLD";
 
   return {
     analysisState,

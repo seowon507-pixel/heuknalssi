@@ -17,15 +17,6 @@ let backendPromise = null;
 export default async function handler(request, response) {
   const pathname = restoreRequestUrl(request);
 
-  if (pathname === "/api/__integration/config") {
-    sendJson(response, 200, {
-      runtimeMode: "external",
-      sampleData: false,
-      apiBase: "/api",
-    });
-    return;
-  }
-
   let backend;
   try {
     backend = await loadBackend();

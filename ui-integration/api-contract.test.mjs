@@ -192,23 +192,52 @@ test("multiple planning crops remain LAND_SEARCH without a growth-stage requirem
   );
 });
 
-test("SmartFarm 참고자료는 어떤 작물에서도 요청하지 않는다", () => {
-  const contexts = [
+test("SmartFarm 참고자료는 사전점검 READY와 지원 조합을 모두 만족할 때만 요청한다", () => {
+  const supportedContexts = [
     { crop: "cucumber", cultivation: "facility-soil", season: "spring" },
-    { crop: "cucumber", cultivation: "outdoor", season: "spring" },
     { crop: "apple" },
     { crop: "potato", season: "spring" },
+  ];
+  for (const context of supportedContexts) {
+    const disabledRequest = buildAnalysisRequest(
+      { situation: "planning", ...context },
+      TOKEN,
+    );
+    assert.equal(disabledRequest.options.includeSmartfarmBenchmark, false);
+
+    const enabledRequest = buildAnalysisRequest(
+      {
+        situation: "planning",
+        ...context,
+        smartfarmAvailable: true,
+      },
+      TOKEN,
+    );
+    assert.equal(
+      enabledRequest.options.includeSmartfarmBenchmark,
+      true,
+      `${context.crop} 지원 조합은 READY일 때 SmartFarm을 요청해야 한다`,
+    );
+  }
+
+  const unsupportedContexts = [
+    { crop: "cucumber", cultivation: "outdoor", season: "spring" },
+    { crop: "pear" },
     { crop: "lettuce", cultivation: "facility-soil", season: "spring" },
   ];
-  for (const context of contexts) {
+  for (const context of unsupportedContexts) {
     const request = buildAnalysisRequest(
-      { situation: "planning", ...context },
+      {
+        situation: "planning",
+        ...context,
+        smartfarmAvailable: true,
+      },
       TOKEN,
     );
     assert.equal(
       request.options.includeSmartfarmBenchmark,
       false,
-      `${context.crop} 요청에 SmartFarm이 포함되면 안 된다`,
+      `${context.crop} 미지원 조합에 SmartFarm이 포함되면 안 된다`,
     );
   }
 });

@@ -54,6 +54,28 @@ test('production configuration requires a strong secret and HTTPS origins', () =
   assert.deepEqual(config.allowedOrigins, ['https://app.example.test']);
 });
 
+test('device backup is unavailable without both server-side values and accepts a secret key', () => {
+  const disabled = loadConfig({});
+  assert.equal(disabled.capabilities.deviceBackup, 'NOT_AVAILABLE');
+  assert.deepEqual(disabled.deviceBackupConfig, {
+    url: null,
+    secretKey: null,
+  });
+
+  const enabled = loadConfig({
+    SUPABASE_URL: 'https://project.supabase.co',
+    SUPABASE_SECRET_KEY: 'server-side-secret-for-test',
+  });
+  assert.equal(
+    enabled.capabilities.deviceBackup,
+    'CONFIGURED_UNVERIFIED',
+  );
+  assert.equal(
+    enabled.deviceBackupConfig.secretKey,
+    'server-side-secret-for-test',
+  );
+});
+
 test('default server preflight reports deployment HOLD without verified assets', async () => {
   const backend = createBackend({
     env: {

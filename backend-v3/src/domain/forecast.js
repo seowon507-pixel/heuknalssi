@@ -169,6 +169,7 @@ export function evaluateForecast(input = {}) {
       risks: riskResult.risks,
       riskState: riskResult.state,
       noActiveRisksConfirmed: riskResult.noActiveRisksConfirmed,
+      missingMetrics: riskResult.missingMetrics,
       ruleEvaluations: riskResult.ruleEvaluations,
     },
   };

@@ -1150,6 +1150,24 @@ test("Soil V2 empty, '-', and missing required numeric tags never become zero", 
   }
 });
 
+test("Soil V2 classifies an official all-dash land-use distribution as NO_DATA", () => {
+  const xml = SOIL_XML
+    .replaceAll("acid_Pfld", "acid_Fruit")
+    .replace(
+      /(<acid_Fruit[1-6]_Area>)\d+(<\/acid_Fruit[1-6]_Area>)/gu,
+      "$1-$2",
+    );
+  assert.throws(
+    () =>
+      parseSoilV2(xml, {
+        contract: SOIL_CONTRACT,
+        landUse: "FRUIT",
+        requestedAreaCode: SOIL_AREA_CODE
+      }),
+    (error) => error.adapterState === "NO_DATA"
+  );
+});
+
 test("Soil V2 rejects DTDs, provider no-data, and a mismatched legal area", () => {
   assert.throws(
     () =>

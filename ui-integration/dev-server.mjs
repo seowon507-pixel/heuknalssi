@@ -10,7 +10,6 @@ import { buildBackendEnvironment } from "./runtime-env.mjs";
 const integrationDirectory = dirname(fileURLToPath(import.meta.url));
 const projectDirectory = resolve(integrationDirectory, "..");
 const backendDirectory = join(projectDirectory, "backend-v3");
-const sampleRuntimePath = join(integrationDirectory, "sample-runtime.mjs");
 const reviewedRuntimePath = join(
   backendDirectory,
   "runtime",
@@ -22,6 +21,27 @@ const frontendOrigin = `http://localhost:${frontendPort}`;
 const backendOrigin = `http://127.0.0.1:${backendPort}`;
 const runtimeMode = resolveRuntimeMode(process.argv.slice(2));
 const uiFile = await findUiFile();
+const securityHeaders = Object.freeze({
+  "Content-Security-Policy": [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+    "font-src 'self' https://cdn.jsdelivr.net data:",
+    "img-src 'self' data: blob:",
+    "connect-src 'self'",
+    "media-src 'self' blob:",
+    "object-src 'none'",
+    "frame-src 'none'",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+  ].join("; "),
+  "Permissions-Policy":
+    "camera=(self), geolocation=(self), microphone=()",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+});
 
 const backend = startBackend();
 let server = null;
@@ -70,11 +90,9 @@ await new Promise((resolveListen, rejectListen) => {
 
 console.log(`흙날씨 UI: ${frontendOrigin}`);
 console.log(
-  runtimeMode === "sample"
-    ? "실행 모드: 개발 샘플 API (농업 의사결정 사용 금지)"
-    : runtimeMode === "external"
-      ? "실행 모드: 외부 검수 runtime/키 (환경변수 사용)"
-      : "실행 모드: 안전 기본 HOLD (외부 검수 runtime 없음)",
+  runtimeMode === "external"
+    ? "실행 모드: 외부 검수 runtime/키 (환경변수 사용)"
+    : "실행 모드: 안전 기본 HOLD (외부 검수 runtime 없음)",
 );
 
 process.once("SIGINT", () => void shutdown());
@@ -84,15 +102,6 @@ async function routeRequest(request, response) {
   const url = new URL(request.url ?? "/", frontendOrigin);
   if (url.pathname.startsWith("/api/")) {
     await proxyApi(request, response, url);
-    return;
-  }
-  if (url.pathname === "/__integration/config") {
-    sendJson(response, 200, {
-      runtimeMode,
-      sampleData: runtimeMode === "sample",
-      apiBase: "/api",
-      backendPort,
-    });
     return;
   }
   if (url.pathname === "/" || url.pathname === `/${encodeURIComponent(uiFile.name)}`) {
@@ -162,7 +171,10 @@ async function proxyApi(request, response, url) {
   const setCookies = upstream.headers.getSetCookie?.() ?? [];
   if (setCookies.length > 0) responseHeaders["Set-Cookie"] = setCookies;
   responseHeaders["Content-Length"] = String(payload.length);
-  response.writeHead(upstream.status, responseHeaders);
+  response.writeHead(upstream.status, {
+    ...securityHeaders,
+    ...responseHeaders,
+  });
   response.end(payload);
 }
 
@@ -172,7 +184,6 @@ function startBackend() {
     runtimeMode,
     backendPort,
     frontendOrigin,
-    sampleRuntimePath,
     reviewedRuntimePath,
   });
   return spawn(process.execPath, ["server/index.js"], {
@@ -272,10 +283,10 @@ async function serveFile(path, response, { cache }) {
     return;
   }
   response.writeHead(200, {
+    ...securityHeaders,
     "Content-Type": contentType(path),
     "Content-Length": String(fileStat.size),
     "Cache-Control": cache ? "public, max-age=300" : "no-store",
-    "X-Content-Type-Options": "nosniff",
   });
   createReadStream(path).pipe(response);
 }
@@ -298,10 +309,10 @@ async function readRequestBody(request) {
 function sendJson(response, status, body) {
   const payload = Buffer.from(JSON.stringify(body));
   response.writeHead(status, {
+    ...securityHeaders,
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": String(payload.length),
     "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff",
   });
   response.end(payload);
 }
@@ -344,10 +355,9 @@ function parsePort(value, fallback) {
 
 function resolveRuntimeMode(args) {
   if (args.includes("--safe")) return "safe";
-  if (args.includes("--external")) return "external";
-  if (args.length === 0 || args.includes("--sample")) return "sample";
+  if (args.length === 0 || args.includes("--external")) return "external";
   throw new TypeError(
-    "지원하는 실행 옵션은 --sample, --safe 또는 --external입니다.",
+    "지원하는 실행 옵션은 --external 또는 --safe입니다.",
   );
 }
 

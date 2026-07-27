@@ -647,10 +647,10 @@ const LETTUCE_RULES = [
  * 표 자체가 근거이고 아래 수치는 옮겨 적은 것이다. 임의로 만든 값은 없다.
  */
 const SOIL_CHEMISTRY_SOURCE = Object.freeze({
-  sourceTitle: "흙토람 토양검정 결과 — 토양의 화학적 성질",
-  sourceUrl: "https://soil.rda.go.kr/",
-  sourcePageOrTable: "적정범위(논/밭/과수/시설) 표",
-  sourceVersion: "흙토람 토양검정 결과 화면 (운영자 제공, 2026-07-27 확인)",
+  sourceTitle: "흙토람 농업환경 변동정보 — 토양화학성 적정범위",
+  sourceUrl: "https://soil.rda.go.kr/soilact/composition.do",
+  sourcePageOrTable: "경작 형태별 토양화학성 적정범위 표",
+  sourceVersion: "국립농업과학원 흙토람 (2026-07-27 확인)",
   reviewedAt: "2026-07-27",
 });
 

@@ -10,6 +10,7 @@ import {
 } from "../src/application/index.js";
 import {
   createRuleRegistry,
+  evaluateForecastRisks,
   validateRuleRegistry,
 } from "../src/domain/index.js";
 import { createBackend } from "../server/app.js";
@@ -18,6 +19,21 @@ import { REVIEWED_LOCATION_MAPPINGS } from "../runtime/reviewed-location-mapping
 import { createRuntimeOptions } from "../runtime/reviewed-runtime.mjs";
 
 const REVIEW_CLOCK = () => new Date("2026-07-25T12:00:00.000Z");
+const REVIEWED_FORECAST_CONTEXTS = [
+  ["APPLE", "OPEN_FIELD", "UNSPECIFIED"],
+  ["PEAR", "OPEN_FIELD", "UNSPECIFIED"],
+  ["PEAR", "OPEN_FIELD", "FLOWERING"],
+  ["POTATO", "OPEN_FIELD", "UNSPECIFIED"],
+  ["POTATO", "OPEN_FIELD", "TUBER_BULKING"],
+  ["CUCUMBER", "OPEN_FIELD", "UNSPECIFIED"],
+  ["CUCUMBER", "FACILITY_SOIL", "UNSPECIFIED"],
+  ["CUCUMBER", "FACILITY_HYDRO", "UNSPECIFIED"],
+  ["LETTUCE", "OPEN_FIELD", "UNSPECIFIED"],
+  ["LETTUCE", "FACILITY_SOIL", "UNSPECIFIED"],
+  ["LETTUCE", "FACILITY_SOIL", "FLOWER_DIFFERENTIATION"],
+  ["LETTUCE", "FACILITY_HYDRO", "UNSPECIFIED"],
+  ["LETTUCE", "FACILITY_HYDRO", "FLOWER_DIFFERENTIATION"],
+];
 
 test("reviewed crop rules pass the strict activation gate", () => {
   const validation = validateRuleRegistry(REVIEWED_CROP_RULES);
@@ -60,6 +76,158 @@ test("reviewed crop rules pass the strict activation gate", () => {
           rule.guidance.sourceUrl.startsWith("https://"),
       ),
   );
+});
+
+test("all reviewed crop, cultivation, and growth contexts reach a complete forecast conclusion", () => {
+  const days = Array.from({ length: 5 }, (_, index) => ({
+    date: `2026-07-${String(index + 24).padStart(2, "0")}`,
+    sourceType: "SHORT_GRID",
+    sourceFreshness: "CURRENT",
+    minTemperature: 15,
+    maxTemperature: 24,
+  }));
+
+  for (const [crop, cultivationMode, growthStage] of REVIEWED_FORECAST_CONTEXTS) {
+    const result = evaluateForecastRisks({
+      days,
+      rules: REVIEWED_CROP_RULES,
+      crop,
+      cultivationMode,
+      growthStage,
+      unitsByMetric: {
+        minTemperature: "℃",
+        maxTemperature: "℃",
+      },
+    });
+
+    assert.equal(
+      result.state,
+      "READY",
+      `${crop}/${cultivationMode}/${growthStage}`,
+    );
+    assert.equal(
+      result.noActiveRisksConfirmed,
+      true,
+      `${crop}/${cultivationMode}/${growthStage}`,
+    );
+    assert.ok(result.ruleEvaluations.length > 0);
+  }
+});
+
+test("reviewed forecast contexts expose the exact missing date and metric instead of an incomplete judgement", () => {
+  const completeDays = Array.from({ length: 5 }, (_, index) => ({
+    date: `2026-07-${String(index + 24).padStart(2, "0")}`,
+    sourceType: "SHORT_GRID",
+    sourceFreshness: "CURRENT",
+    minTemperature: 15,
+    maxTemperature: 24,
+  }));
+
+  for (const [crop, cultivationMode, growthStage] of REVIEWED_FORECAST_CONTEXTS) {
+    const days = completeDays.map((day, index) =>
+      index === 2 ? { ...day, maxTemperature: null } : day,
+    );
+    const result = evaluateForecastRisks({
+      days,
+      rules: REVIEWED_CROP_RULES,
+      crop,
+      cultivationMode,
+      growthStage,
+      unitsByMetric: {
+        minTemperature: "℃",
+        maxTemperature: "℃",
+      },
+    });
+
+    assert.equal(
+      result.state,
+      "PARTIAL",
+      `${crop}/${cultivationMode}/${growthStage}`,
+    );
+    assert.equal(result.noActiveRisksConfirmed, false);
+    assert.ok(
+      result.missingMetrics.some(
+        ({ date, metric }) =>
+          date === "2026-07-26" && metric === "maxTemperature",
+      ),
+      `${crop}/${cultivationMode}/${growthStage}`,
+    );
+  }
+});
+
+test("minimum-temperature gaps affect only contexts whose reviewed rules require daily lows", () => {
+  const days = Array.from({ length: 5 }, (_, index) => ({
+    date: `2026-07-${String(index + 24).padStart(2, "0")}`,
+    sourceType: "SHORT_GRID",
+    sourceFreshness: "CURRENT",
+    minTemperature: index === 2 ? null : 15,
+    maxTemperature: 24,
+  }));
+  const lowTemperatureContexts = new Set([
+    "PEAR/OPEN_FIELD/FLOWERING",
+    "CUCUMBER/OPEN_FIELD/UNSPECIFIED",
+    "CUCUMBER/FACILITY_SOIL/UNSPECIFIED",
+    "CUCUMBER/FACILITY_HYDRO/UNSPECIFIED",
+  ]);
+
+  for (const [crop, cultivationMode, growthStage] of REVIEWED_FORECAST_CONTEXTS) {
+    const context = `${crop}/${cultivationMode}/${growthStage}`;
+    const result = evaluateForecastRisks({
+      days,
+      rules: REVIEWED_CROP_RULES,
+      crop,
+      cultivationMode,
+      growthStage,
+      unitsByMetric: {
+        minTemperature: "℃",
+        maxTemperature: "℃",
+      },
+    });
+
+    assert.equal(
+      result.state,
+      lowTemperatureContexts.has(context) ? "PARTIAL" : "READY",
+      context,
+    );
+  }
+});
+
+test("complete short-range values stay conclusive without mid-range days, while both ranges missing stay on hold", () => {
+  const completeShortRange = Array.from({ length: 5 }, (_, index) => ({
+    date: `2026-07-${String(index + 24).padStart(2, "0")}`,
+    sourceType: "SHORT_GRID",
+    sourceFreshness: "CURRENT",
+    minTemperature: 15,
+    maxTemperature: 24,
+  }));
+
+  const shortOnly = evaluateForecastRisks({
+    days: completeShortRange,
+    rules: REVIEWED_CROP_RULES,
+    crop: "APPLE",
+    cultivationMode: "OPEN_FIELD",
+    growthStage: "UNSPECIFIED",
+    unitsByMetric: {
+      minTemperature: "℃",
+      maxTemperature: "℃",
+    },
+  });
+  const noForecast = evaluateForecastRisks({
+    days: [],
+    rules: REVIEWED_CROP_RULES,
+    crop: "APPLE",
+    cultivationMode: "OPEN_FIELD",
+    growthStage: "UNSPECIFIED",
+    unitsByMetric: {
+      minTemperature: "℃",
+      maxTemperature: "℃",
+    },
+  });
+
+  assert.equal(shortOnly.state, "READY");
+  assert.equal(shortOnly.noActiveRisksConfirmed, true);
+  assert.equal(noForecast.state, "HOLD");
+  assert.equal(noForecast.noActiveRisksConfirmed, false);
 });
 
 test("custom open-field climate rules activate only selected crop months", () => {

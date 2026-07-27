@@ -22,33 +22,10 @@ self.addEventListener("message", (event) => {
       tag: data.tag ?? NOTIFICATION_TAG,
       renotify: true,
       requireInteraction: false,
-      badge: "/icons/icon-fullbleed-192.png",
-      icon: "/icons/icon-fullbleed-192.png",
+      badge: "/icons/icon-192.png",
+      icon: "/icons/icon-192.png",
       lang: "ko",
       data: { url: "/" },
-    }),
-  );
-});
-
-// 앱을 나가 있어도 뜨는 알림은 이 경로로만 온다. 페이지의 타이머는
-// 홈 화면으로 나가는 순간 멈추기 때문이다.
-self.addEventListener("push", (event) => {
-  let payload = {};
-  try {
-    payload = event.data ? event.data.json() : {};
-  } catch {
-    /* 규격 밖 본문이면 기본 문구로 띄운다 */
-  }
-  event.waitUntil(
-    self.registration.showNotification(payload.title || "흙날씨 알림", {
-      body: payload.body || "앱을 열어 확인해 주세요.",
-      tag: payload.tag || NOTIFICATION_TAG,
-      renotify: true,
-      requireInteraction: false,
-      badge: "/icons/icon-fullbleed-192.png",
-      icon: "/icons/icon-fullbleed-192.png",
-      lang: "ko",
-      data: { url: payload.url || "/" },
     }),
   );
 });

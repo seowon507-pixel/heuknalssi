@@ -139,13 +139,7 @@ test('real HTTP composition completes analysis, semantic replay, ownership, and 
     },
   );
   assert.equal(reportResponse.status, 202);
-  // 리포트는 응답 전에 완성된다(서버리스에서 사후 작업이 실행되지 않으므로).
-  const reportBody = await reportResponse.json();
-  assert.equal(reportBody.report.state, 'FALLBACK');
-  assert.equal(
-    reportBody.report.plainLanguage.basis,
-    'REWRITTEN_FROM_CONFIRMED_ANALYSIS',
-  );
+  assert.equal((await reportResponse.json()).report.state, 'PENDING');
 
   await new Promise((resolve) => setImmediate(resolve));
   const completedResponse = await fetch(

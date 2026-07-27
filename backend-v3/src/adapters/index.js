@@ -7,9 +7,11 @@ import {
   createKmaAsosObservationAdapter,
   createKmaClimateNormalAdapter
 } from "./kma-observation.js";
+import { createKmaLocationCatalogAdapter } from "./kma-location-catalog.js";
 import { ProviderExecutionGuard } from "./provider-control.js";
 import { createSoilV2Adapter } from "./soil-v2.js";
 import { createSoilFieldAdapter } from "./soil-field.js";
+import { createSoilExamAdapter } from "./soil-exam.js";
 import { createSmartfarmAdapter } from "./smartfarm.js";
 import { createGoogleAiSelector } from "./google-ai.js";
 
@@ -57,9 +59,11 @@ export {
   VERIFIED_KMA_MID_CONTRACT_VERSION,
   VERIFIED_KMA_ASOS_CONTRACT_VERSION,
   VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
+  VERIFIED_KMA_LOCATION_CATALOG_CONTRACT_VERSION,
   VERIFIED_KMA_SHORT_CONTRACT_VERSION,
   VERIFIED_SOIL_V2_CONTRACT_VERSION,
   VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
+  VERIFIED_SOIL_EXAM_CONTRACT_VERSION,
   VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION,
   hasFrozenContractVersion,
   hasUsableCredential,
@@ -82,8 +86,14 @@ export {
   createKmaAsosObservationAdapter,
   createKmaClimateNormalAdapter,
   parseKmaAsosDaily,
+  parseKmaClimateNormals,
   selectKmaClimateNormals
 } from "./kma-observation.js";
+export {
+  createKmaLocationCatalogAdapter,
+  parseKmaForecastZoneCatalog,
+  parseKmaSurfaceStationCatalog
+} from "./kma-location-catalog.js";
 export {
   createKmaMidForecastAdapter,
   createKmaShortForecastAdapter,
@@ -105,6 +115,10 @@ export {
   parseSoilFieldCharacteristics
 } from "./soil-field.js";
 export {
+  createSoilExamAdapter,
+  parseSoilExam
+} from "./soil-exam.js";
+export {
   createSmartfarmAdapter,
   parseSmartfarmFacilityReference,
   parseSmartfarmOutdoorReference,
@@ -118,8 +132,10 @@ export const adapterFactories = Object.freeze({
   kmaMid: createKmaMidForecastAdapter,
   kmaAsos: createKmaAsosObservationAdapter,
   kmaClimate: createKmaClimateNormalAdapter,
+  kmaLocationCatalog: createKmaLocationCatalogAdapter,
   soilV2: createSoilV2Adapter,
   soilField: createSoilFieldAdapter,
+  soilExam: createSoilExamAdapter,
   smartfarm: createSmartfarmAdapter
 });
 
@@ -134,8 +150,10 @@ export function createAdapterRegistry({
   kmaMid = {},
   kmaAsos = {},
   kmaClimate = {},
+  kmaLocationCatalog = {},
   soilV2 = {},
   soilField = {},
+  soilExam = {},
   smartfarm = {}
 } = {}) {
   const kmaProviderControl = {
@@ -143,13 +161,15 @@ export function createAdapterRegistry({
     ...(kmaShort.providerControl ?? {}),
     ...(kmaMid.providerControl ?? {}),
     ...(kmaAsos.providerControl ?? {}),
-    ...(kmaClimate.providerControl ?? {})
+    ...(kmaClimate.providerControl ?? {}),
+    ...(kmaLocationCatalog.providerControl ?? {})
   };
   const registryNow =
     kmaMid.now ??
     kmaShort.now ??
     kmaAsos.now ??
     kmaClimate.now ??
+    kmaLocationCatalog.now ??
     common.now ??
     (() => Date.now());
   const commonKmaExecutionGuard =
@@ -158,6 +178,7 @@ export function createAdapterRegistry({
     kmaMid.executionGuard ??
     kmaAsos.executionGuard ??
     kmaClimate.executionGuard ??
+    kmaLocationCatalog.executionGuard ??
     new ProviderExecutionGuard({
       maxConcurrency: 4,
       maxQueue: 8,
@@ -196,8 +217,15 @@ export function createAdapterRegistry({
       ...kmaClimate,
       executionGuard: kmaClimate.executionGuard ?? commonKmaExecutionGuard
     }),
+    locationCatalog: createKmaLocationCatalogAdapter({
+      ...common,
+      ...kmaLocationCatalog,
+      executionGuard:
+        kmaLocationCatalog.executionGuard ?? commonKmaExecutionGuard
+    }),
     soilV2: createSoilV2Adapter({ ...common, ...soilV2 }),
     soilField: createSoilFieldAdapter({ ...common, ...soilField }),
+    soilExam: createSoilExamAdapter({ ...common, ...soilExam }),
     smartfarm: createSmartfarmAdapter({ ...common, ...smartfarm })
   });
 }
