@@ -39,7 +39,7 @@ function safeErrorCode(error) {
 async function probe({ id, endpoint }, serviceKey) {
   const url = new URL(endpoint);
   url.searchParams.set("serviceKey", serviceKey);
-  url.searchParams.set("PNU_Code", SAMPLE_PNU);
+  url.searchParams.set("PNU_CD", SAMPLE_PNU);
   const response = await fetch(url, {
     headers: { Accept: "application/xml, text/xml" },
     signal: AbortSignal.timeout(10_000),

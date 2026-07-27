@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="초보 농업인을 위한 지역·작물 재배환경 체험 분석">
   <title>흙날씨 진단</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#1F6B36">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="흙날씨">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sun-typeface/SUIT@2/fonts/variable/woff2/SUIT-Variable.css">
   <link rel="stylesheet" href="/ui-integration/backend-integration.css">
@@ -297,7 +304,7 @@
       .calc-table td { display: grid; grid-template-columns: 94px minmax(0, 1fr); gap: 8px; border: 0; border-top: 1px solid var(--border); }
       .calc-table td:first-child { border-top: 0; }
       .calc-table td::before { content: attr(data-label); color: var(--muted); font-weight: 650; }
-      .bottom-nav { position: fixed; z-index: 50; inset: auto 0 0; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border-top: 2px solid var(--border-strong); padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -3px 8px rgb(32 37 32 / 10%); }
+      .bottom-nav { position: fixed; z-index: 50; inset: auto 0 0; display: grid; grid-template-columns: repeat(2, 1fr); background: var(--surface); border-top: 2px solid var(--border-strong); padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -3px 8px rgb(32 37 32 / 10%); }
       .bottom-nav .nav-button { min-height: 70px; border: 0; border-top: 4px solid transparent; border-radius: 0; color: #4B554D; text-align: center; font-size: .82rem; font-weight: 750; }
       .bottom-nav .nav-button[aria-current="page"] { border-top-color: var(--primary); background: var(--primary-soft); color: #1F4B29; }
       .wizard-shell { padding-top: 16px; }
@@ -390,6 +397,7 @@
     .nav-button::before { width: 17px; height: 17px; flex: 0 0 auto; background: currentColor; content: ""; opacity: .82; mask-position: center; mask-repeat: no-repeat; mask-size: 17px; }
     .nav-button[data-view="dashboard"]::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='2' d='M4 4h6v7H4zm10 0h6v4h-6zM4 15h6v5H4zm10-3h6v8h-6z'/%3E%3C/svg%3E"); }
     .nav-button[data-view="analyses"]::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='2' d='M5 19V9m7 10V5m7 14v-7'/%3E%3C/svg%3E"); }
+    .nav-button[data-view="services"]::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-width='2' d='M4 7h16M7 4v6m10-6v6M5 12h14v8H5z'/%3E%3C/svg%3E"); }
     .nav-button[data-view="mypage"]::before { mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='8' r='3' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath fill='none' stroke='black' stroke-width='2' d='M5 20c.7-4 3-6 7-6s6.3 2 7 6'/%3E%3C/svg%3E"); }
     .sidebar .nav-button:hover { border: 0; background: #202722; color: #E7ECE8; }
     .sidebar .nav-button[aria-current="page"] { border: 0; background: #242C27; color: #FFFFFF; box-shadow: none; }
@@ -399,6 +407,47 @@
     .sidebar-recent h2 { margin: 0 0 8px; color: #7F8A82; font-size: 11px; font-weight: 620; letter-spacing: .04em; }
     .recent-analysis { padding: 9px 0; color: #C8D0CA; font-size: 13px; line-height: 1.45; }
     .recent-analysis strong { display: block; color: #F3F6F4; font-size: 13px; font-weight: 600; }
+    .farm-switcher { display: grid; gap: 6px; }
+    .farm-switch-button,
+    .farm-add-button {
+      width: 100%;
+      min-height: 46px;
+      padding: 8px 10px;
+      border: 1px solid #364139;
+      border-radius: 9px;
+      background: transparent;
+      color: #C8D0CA;
+      text-align: left;
+      cursor: pointer;
+    }
+    .farm-switch-button strong,
+    .farm-switch-button span { display: block; }
+    .farm-switch-button strong {
+      overflow: hidden;
+      color: #F3F6F4;
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .farm-switch-button span {
+      margin-top: 2px;
+      color: #98A39B;
+      font-size: 11px;
+    }
+    .farm-switch-button.is-active {
+      border-color: #4CB779;
+      background: #21352A;
+    }
+    .farm-add-button {
+      margin-top: 7px;
+      border-style: dashed;
+      color: #A9D8BA;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .farm-switch-button:hover,
+    .farm-add-button:hover { border-color: #70C991; background: #202A23; }
     .sidebar-user { display: flex; margin-top: auto; padding: 14px 8px 2px; align-items: center; gap: 10px; border-top: 1px solid #303833; color: #C4CDC6; font-size: 12px; }
     .user-avatar { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #2B352F; color: #FFFFFF; font-size: 11px; font-weight: 650; }
 
@@ -590,6 +639,14 @@
     .choice-card:has(input:checked)::after { margin-left: auto; color: var(--v5-brand); font-size: 16px; font-weight: 700; content: "✓"; }
     .choice-card strong { font-size: 15px; font-weight: 640; }
     .choice-card small { font-size: 13px; }
+    .choice-card-disabled,
+    .choice-card-disabled:hover {
+      border-color: #E0E4E1;
+      background: #F5F6F5;
+      color: #7A827C;
+      cursor: not-allowed;
+    }
+    .choice-card-disabled input { cursor: not-allowed; }
     .wizard-footer { grid-column: 2; grid-row: 2; position: sticky; bottom: 0; z-index: 2; display: flex; width: 100%; max-width: 640px; margin: 0 auto; padding: 12px clamp(24px, 6vw, 64px); align-items: center; border-top: 1px solid var(--v5-hairline); background: #FFFFFF; box-shadow: none; }
     .wizard-footer .button { min-width: 112px; min-height: 50px; }
     .summary-list { border-color: var(--v5-hairline); }
@@ -628,7 +685,7 @@
       .smartfarm-reference-detail { grid-template-columns: 1fr; }
       .insight-reasons { border-top: 1px solid var(--v5-hairline) !important; border-left: 0 !important; }
       .field-context { grid-template-columns: 1fr; }
-      .bottom-nav { position: fixed; z-index: 50; inset: auto 0 0; display: grid; min-height: 68px; grid-template-columns: repeat(3, 1fr); background: #FFFFFF; border-top: 1px solid var(--v5-hairline); box-shadow: 0 -4px 16px rgb(21 26 23 / 7%); }
+      .bottom-nav { position: fixed; z-index: 50; inset: auto 0 0; display: grid; min-height: 68px; grid-template-columns: repeat(2, 1fr); background: #FFFFFF; border-top: 1px solid var(--v5-hairline); box-shadow: 0 -4px 16px rgb(21 26 23 / 7%); }
       .bottom-nav .nav-button { min-height: 68px; padding: 7px 4px; flex-direction: column; justify-content: center; gap: 3px; border: 0; border-top: 2px solid transparent; color: #69736C; font-size: 12px; }
       .bottom-nav .nav-button[aria-current="page"] { border-top-color: var(--v5-brand); background: #FFFFFF; color: var(--v5-brand); }
       .wizard-shell { display: flex; padding: 0; }
@@ -876,7 +933,7 @@
     .onboarding-promises strong {
       margin-bottom: 3px;
       color: #24442F;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 700;
     }
     .onboarding-promises span {
@@ -1297,7 +1354,7 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       align-items: end;
-      min-height: 112px;
+      min-height: 178px;
       margin-top: 14px;
       padding: 12px 14px 8px;
       gap: 16px;
@@ -1307,21 +1364,43 @@
     }
     .forecast-temperature-chart {
       width: 100%;
-      height: 116px;
+      height: 150px;
       overflow: visible;
     }
     .forecast-temperature-chart .grid-line { stroke: #DCE6DF; stroke-width: 1; }
+    .forecast-temperature-chart .temperature-band {
+      fill: rgb(77 164 111 / 12%);
+    }
     .forecast-temperature-chart .temperature-line {
       fill: none;
-      stroke: #278B5A;
       stroke-linecap: round;
       stroke-linejoin: round;
-      stroke-width: 3;
+      stroke-width: 2.7;
+    }
+    .forecast-temperature-chart .temperature-line.is-high { stroke: #238255; }
+    .forecast-temperature-chart .temperature-line.is-low {
+      stroke: #7AA68B;
+      stroke-dasharray: 5 5;
     }
     .forecast-temperature-chart .temperature-point {
       fill: #FFFFFF;
-      stroke: #278B5A;
-      stroke-width: 3;
+      stroke-width: 2.7;
+    }
+    .forecast-temperature-chart .temperature-point.is-high { stroke: #238255; }
+    .forecast-temperature-chart .temperature-point.is-low { stroke: #7AA68B; }
+    .forecast-temperature-chart .precipitation-bar {
+      fill: #6EABD4;
+      opacity: .72;
+    }
+    .forecast-temperature-chart .risk-threshold-line {
+      stroke: #C57B11;
+      stroke-dasharray: 7 5;
+      stroke-width: 1.8;
+    }
+    .forecast-temperature-chart .risk-threshold-label {
+      fill: #9A5D08;
+      font-size: 11px;
+      font-weight: 780;
     }
     .forecast-temperature-chart .temperature-value-label {
       fill: #1D3627;
@@ -1347,6 +1426,44 @@
       font-size: 20px;
       letter-spacing: -.02em;
     }
+    .forecast-chart-legend {
+      display: flex;
+      grid-column: 1 / -1;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      color: #5E6B63;
+      font-size: 12px;
+      font-weight: 680;
+    }
+    .forecast-chart-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .forecast-chart-legend i {
+      display: inline-block;
+      width: 18px;
+      height: 3px;
+      border-radius: 99px;
+      background: #238255;
+    }
+    .forecast-chart-legend .is-low i {
+      background: repeating-linear-gradient(90deg, #7AA68B 0 4px, transparent 4px 7px);
+    }
+    .forecast-chart-legend .is-rain i {
+      width: 9px;
+      height: 12px;
+      border-radius: 4px 4px 2px 2px;
+      background: #6EABD4;
+    }
+    .forecast-chart-legend .is-threshold i {
+      background: repeating-linear-gradient(
+        90deg,
+        #C57B11 0 5px,
+        transparent 5px 8px
+      );
+    }
     .forecast-day-list {
       display: grid;
       grid-template-columns: repeat(7, minmax(78px, 1fr));
@@ -1364,6 +1481,11 @@
       text-align: center;
     }
     .forecast-day.is-short { background: #F6FBF8; }
+    .forecast-day.is-risk {
+      border-color: #E2B86F;
+      background: #FFF8EA;
+      box-shadow: inset 0 3px 0 #D89422;
+    }
     .forecast-day-date,
     .forecast-day-source,
     .forecast-day-rain { display: block; }
@@ -1392,6 +1514,18 @@
     }
     .forecast-day-rain { margin-top: 5px; color: #356892; font-size: 12px; font-weight: 650; }
     .forecast-day-source { margin-top: 6px; color: #667169; font-size: 11px; }
+    .forecast-day-alert {
+      display: inline-flex;
+      min-height: 22px;
+      margin: 0 auto 5px;
+      padding: 2px 7px;
+      align-items: center;
+      border-radius: 999px;
+      background: #F4DCAD;
+      color: #7C4B08;
+      font-size: 11px;
+      font-weight: 800;
+    }
     .forecast-scroll-hint {
       display: none;
       margin: 9px 2px 0;
@@ -1470,52 +1604,40 @@
     }
     .live-action-visual {
       position: relative;
-      display: grid;
-      width: 90px;
-      height: 90px;
-      margin: 24px 0 18px;
-      place-items: center;
-      border-radius: 24px;
-      background: rgb(255 255 255 / 10%);
+      display: inline-grid;
+      width: fit-content;
+      min-width: 156px;
+      min-height: 58px;
+      margin: 20px 0 16px;
+      padding: 11px 14px;
+      grid-template-columns: 34px auto;
+      place-items: center start;
+      gap: 10px;
+      border: 1px solid rgb(199 240 213 / 26%);
+      border-radius: 16px;
+      background: rgb(255 255 255 / 9%);
+      color: #A9E2BD;
     }
-    .live-action-visual::before,
-    .live-action-visual::after {
-      position: absolute;
-      border-radius: 50% 50% 48% 52%;
-      background: #8BD3A4;
-      content: "";
-      transform-origin: bottom center;
+    .live-action-visual svg {
+      width: 32px;
+      height: 32px;
     }
-    .live-action-visual::before {
-      width: 31px;
-      height: 48px;
-      transform: translate(-14px, -4px) rotate(-35deg);
-    }
-    .live-action-visual::after {
-      width: 28px;
-      height: 43px;
-      transform: translate(14px, -1px) rotate(38deg);
-    }
-    .live-action-stem {
-      position: absolute;
-      z-index: 1;
-      width: 5px;
-      height: 48px;
-      border-radius: 8px;
-      background: #C9EFD5;
-      transform: translateY(16px);
+    .live-action-visual > span {
+      color: #EAF6EE;
+      font-size: 13px;
+      font-weight: 760;
     }
     .live-action-title {
       margin: 0;
       color: #FFFFFF;
-      font-size: 19px;
+      font-size: 22px;
       font-weight: 740;
       line-height: 1.48;
     }
     .live-action-context {
       margin: 8px 0 0;
       color: #C8D9CF;
-      font-size: 14px;
+      font-size: 16px;
       line-height: 1.55;
     }
     .live-action-button {
@@ -1572,7 +1694,8 @@
       align-items: start;
       gap: 8px;
       color: #E7F2EB;
-      font-size: 13px;
+      font-size: 17px;
+      font-weight: 650;
       line-height: 1.48;
       counter-increment: live-action-step;
     }
@@ -1864,7 +1987,8 @@
       z-index: 90;
       display: grid;
       width: clamp(320px, 20vw, 380px);
-      height: clamp(340px, 34vh, 440px);
+      height: clamp(510px, 51vh, 660px);
+      max-height: calc(100dvh - 128px);
       overflow: hidden;
       grid-template-rows: auto minmax(0, 1fr) auto auto;
       border: 1px solid #CEDBD2;
@@ -1923,7 +2047,7 @@
       border-radius: 13px 13px 13px 4px;
       background: #EAF5EE;
       color: #20342A;
-      font-size: 13px;
+      font-size: 15px;
       line-height: 1.55;
       white-space: pre-line;
     }
@@ -1937,7 +2061,7 @@
       display: block;
       margin-top: 6px;
       color: #5F7166;
-      font-size: 10px;
+      font-size: 11px;
     }
     .assistant-quick-questions {
       display: flex;
@@ -1950,14 +2074,14 @@
     }
     .assistant-quick-questions::-webkit-scrollbar { display: none; }
     .assistant-quick-questions button {
-      min-height: 34px;
-      padding: 7px 10px;
+      min-height: 44px;
+      padding: 9px 12px;
       flex: 0 0 auto;
       border: 1px solid #CBD9CF;
       border-radius: 999px;
       background: #FFFFFF;
       color: #2F4B3A;
-      font-size: 11px;
+      font-size: 14px;
       font-weight: 620;
       cursor: pointer;
     }
@@ -1999,37 +2123,60 @@
     .current-state-visual {
       display: grid;
       margin: 18px 0 4px;
-      grid-template-columns: 86px minmax(0, 1fr);
+      grid-template-columns: 112px minmax(0, 1fr);
       align-items: center;
       gap: 15px;
     }
     .current-state-ring {
+      position: relative;
       display: grid;
-      width: 86px;
-      height: 86px;
-      place-items: center;
-      border-radius: 50%;
-      background:
-        radial-gradient(circle at center, #F7F9F7 0 57%, transparent 59%),
-        conic-gradient(#2B8A57 0 40%, #D69A35 40% 68%, #DDE4DF 68% 100%);
+      width: 112px;
+      height: 88px;
+      padding: 14px 14px 17px;
+      align-content: center;
+      justify-items: start;
+      overflow: hidden;
+      border: 1px solid #D7E2DA;
+      border-radius: 15px;
+      background: #FFFFFF;
+      box-shadow: 0 9px 22px rgb(31 63 42 / 8%);
     }
-    .current-state-ring.is-good {
-      background:
-        radial-gradient(circle at center, #F7F9F7 0 57%, transparent 59%),
-        conic-gradient(#2B8A57 0 86%, #DDE4DF 86% 100%);
+    .current-state-ring::before,
+    .current-state-ring::after {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 6px;
+      content: "";
     }
-    .current-state-ring.is-hold {
-      background:
-        radial-gradient(circle at center, #F7F9F7 0 57%, transparent 59%),
-        conic-gradient(#D69A35 0 48%, #DDE4DF 48% 100%);
+    .current-state-ring::before { width: 100%; background: #E4EAE6; }
+    .current-state-ring::after {
+      width: var(--condition-percent);
+      background: #2B8A57;
     }
+    .current-state-ring.is-hold::after,
+    .current-state-ring.is-caution::after { background: #D69A35; }
+    .current-state-ring.is-danger::after { background: #B64B3C; }
     .current-state-ring span {
-      max-width: 62px;
+      max-width: none;
       color: #263A2E;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 750;
       line-height: 1.25;
-      text-align: center;
+      text-align: left;
+    }
+    .current-state-ring strong {
+      color: #183426;
+      font-size: 25px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -.04em;
+      line-height: 1;
+    }
+    .current-state-ring strong em {
+      margin-left: 2px;
+      font-size: 10px;
+      font-style: normal;
+      letter-spacing: 0;
     }
     .current-state-copy strong,
     .current-state-copy span { display: block; }
@@ -2044,8 +2191,204 @@
       font-size: 11px;
       line-height: 1.45;
     }
+    .axis-status.is-danger::before { background: #B64B3C; }
+    .axis-status .axis-score-value {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      color: #17261D;
+      font-variant-numeric: tabular-nums;
+    }
+    .axis-status .axis-score-value b {
+      font-size: 25px;
+      letter-spacing: -.035em;
+    }
+    .axis-status .axis-score-value em {
+      color: #667168;
+      font-size: 12px;
+      font-style: normal;
+      font-weight: 650;
+    }
+    .axis-status .axis-score-value.is-unavailable b {
+      font-size: 15px;
+      letter-spacing: -.01em;
+    }
+
+    /* 최종 대시보드 배치: 상태를 첫 화면 우측 상단에 고정한다. */
+    .decision-flow {
+      grid-template-columns: minmax(0, 1.55fr) minmax(360px, .75fr);
+      grid-template-rows: min-content 1fr;
+      align-items: stretch;
+    }
+    .summary-panel {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .risk-panel {
+      grid-column: 1;
+      grid-row: 2;
+    }
+    .overview-score {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      border-left: 1px solid var(--v5-hairline) !important;
+    }
+    .axis-status {
+      padding: 14px 14px 14px 30px;
+      gap: 4px;
+    }
+    .axis-status::before {
+      top: 20px;
+      left: 14px;
+    }
+    .axis-status span { font-size: 13px; }
+    .axis-status small { font-size: 12px; }
+    .current-state-copy strong { font-size: 25px; }
+    .current-state-copy span { font-size: 13px; }
+
+    .farm-condition-actions {
+      padding: 27px 28px 29px;
+      border-top: 0;
+      border-bottom: 1px solid #DCE7DF;
+      background:
+        linear-gradient(90deg, rgb(41 133 83 / 7%), transparent 48%),
+        #F8FCF9;
+    }
+    .action-priority-card {
+      position: relative;
+      padding-left: 34px;
+    }
+    .action-priority-card::before {
+      position: absolute;
+      top: 27px;
+      bottom: 29px;
+      left: 0;
+      width: 6px;
+      border-radius: 0 99px 99px 0;
+      background: #248351;
+      content: "";
+    }
+    .farm-condition-action-kicker {
+      display: block;
+      margin-bottom: 5px;
+      color: #237146;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .farm-condition-actions h3 {
+      margin-bottom: 18px;
+      font-size: 24px;
+      letter-spacing: -.02em;
+    }
+    .farm-condition-action-list li {
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 12px;
+      color: #203329;
+      font-size: 17px;
+      font-weight: 720;
+      line-height: 1.58;
+    }
+    .farm-condition-action-list li::before {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      font-size: 14px;
+    }
+    .farm-condition-verification {
+      margin-top: 18px;
+      border: 1px solid #DDE6DF;
+      border-radius: 11px;
+      background: #FFFFFF;
+    }
+    .farm-condition-verification > summary {
+      padding: 14px 16px;
+      color: #45554B;
+      font-size: 14px;
+      font-weight: 750;
+      cursor: pointer;
+    }
+    .farm-condition-verification-body {
+      padding: 0 16px 16px;
+    }
+    .farm-condition-verification-list {
+      margin: 0 0 14px;
+      padding-left: 20px;
+      color: #55635A;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .soil-exam-service-callout {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 22px 28px;
+      border-top: 1px solid #E8D4AC;
+      gap: 24px;
+      background: #FFF9ED;
+    }
+    .soil-exam-service-copy { max-width: 760px; }
+    .soil-exam-service-kicker {
+      display: block;
+      margin-bottom: 5px;
+      color: #996019;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .soil-exam-service-callout h3 {
+      margin: 0;
+      color: #2B2A24;
+      font-size: 20px;
+      letter-spacing: -.02em;
+    }
+    .soil-exam-service-callout p {
+      margin: 7px 0 0;
+      color: #665B49;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .soil-exam-service-button { flex: 0 0 auto; }
+    .condition-fact-summary {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+    }
+    .condition-fact-details {
+      margin-top: 14px;
+      border-top: 1px solid #E1E8E3;
+    }
+    .condition-fact-details > summary {
+      padding: 12px 0 0;
+      color: #315E44;
+      font-size: 13px;
+      font-weight: 760;
+      cursor: pointer;
+    }
+    .condition-fact-details-body { padding-top: 3px; }
+
+    @media (max-width: 920px) {
+      .decision-flow {
+        grid-template-columns: 1fr;
+        grid-template-rows: none;
+      }
+      .bottom-nav { grid-template-columns: repeat(3, 1fr); }
+      .summary-panel { grid-column: 1; grid-row: 1; }
+      .overview-score {
+        grid-column: 1;
+        grid-row: 2;
+        border-top: 1px solid var(--v5-hairline);
+        border-left: 0 !important;
+      }
+      .risk-panel { grid-column: 1; grid-row: 3; }
+    }
 
     @media (max-width: 620px) {
+      .bottom-nav { grid-template-columns: repeat(3, 1fr); }
+      .soil-exam-service-callout {
+        display: grid;
+        padding: 20px 18px;
+      }
+      .soil-exam-service-button { width: 100%; }
       .assistant-launcher {
         right: 16px;
         bottom: calc(80px + env(safe-area-inset-bottom));
@@ -2070,9 +2413,9 @@
     }
   </style>
 </head>
-<body data-integration="pending">
+<body data-integration="pending" data-profile-state="checking">
   <a class="skip-link" href="#main-content">본문으로 바로가기</a>
-  <div class="app-shell">
+  <div class="app-shell" inert>
     <aside class="sidebar" aria-label="주요 메뉴">
       <div class="brand-lockup" aria-label="흙날씨 농지 진단">
         <span class="brand-mark" aria-hidden="true">
@@ -2083,11 +2426,11 @@
       <div class="sidebar-context" aria-label="현재 분석">
         <span class="sidebar-kicker">현재 분석</span>
         <strong id="sidebar-context-value">평창군 진부면 · 감자</strong>
-        <span id="sidebar-mode-value">농지를 알아보는 중</span>
+        <span id="sidebar-mode-value">재배 중 생육 점검</span>
       </div>
       <nav class="nav-list">
         <button class="nav-button" type="button" data-view="dashboard" aria-current="page">대시보드</button>
-        <button class="nav-button" type="button" data-view="analyses">내 분석</button>
+        <button class="nav-button" type="button" data-view="services">추가 서비스</button>
         <button class="nav-button" type="button" data-view="mypage">마이페이지</button>
       </nav>
       <section class="sidebar-recent" aria-labelledby="sidebar-recent-title">
@@ -2102,7 +2445,6 @@
       <div class="topbar-context"><strong id="topbar-context-value">분석 조건을 입력해 주세요</strong><span class="test-mode"><span class="test-mode-label" id="runtime-mode-label">API 연결 확인 중</span></span></div>
       <div class="topbar-actions">
         <button class="button command-trigger" id="command-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="command-dialog"><span class="ui-icon icon-search" aria-hidden="true"></span><span>검색 또는 명령…</span><kbd aria-hidden="true">⌘K</kbd></button>
-        <button class="button button-quiet" type="button" data-open-dialog="evidence">분석 근거</button>
         <button class="button button-secondary" id="open-new-analysis" type="button">조건 바꾸기</button>
       </div>
     </header>
@@ -2115,6 +2457,13 @@
             <p class="muted" id="dashboard-mode-copy">현재 재배 조건 기준 기상·토양·예보 분석</p>
           </div>
         </header>
+        <section class="panel" id="dashboard-soil-test" aria-labelledby="dashboard-soil-test-title" hidden>
+          <h2 id="dashboard-soil-test-title">내 밭 흙 검사 결과 <span class="status-label good">등록됨</span></h2>
+          <p class="muted no-margin" id="dashboard-soil-test-meta">—</p>
+          <dl class="condition-fact-list" id="dashboard-soil-test-values"></dl>
+          <p class="formula-note">동네 평균이 아니라 이 숫자로 토양을 판단합니다. 값을 고치시려면 마이페이지에서 다시 등록해 주세요.</p>
+        </section>
+
         <div class="integration-banner is-loading" id="backend-service-banner" role="status" aria-live="polite">
           <div>
             <strong id="backend-service-title">백엔드 연결을 확인하고 있습니다.</strong>
@@ -2134,7 +2483,7 @@
           </div>
         </section>
 
-        <section class="panel risk-panel" aria-labelledby="risk-title">
+        <section class="panel risk-panel" aria-labelledby="risk-title" hidden>
           <p class="brief-kicker">자동 위험 분석</p>
           <span class="headline-status" id="headline-status">현재 판단 · 계속 검토</span>
           <p class="risk-date">주요 확인 사항 · 4월 16일</p>
@@ -2181,7 +2530,7 @@
             </div>
             <p class="score-state" id="score-state">일부 자료 부족 · 추가 확인 필요</p>
           </div>
-          <button class="button button-secondary score-evidence-button" type="button" data-open-dialog="evidence">분석 근거 보기</button>
+          <button class="button button-secondary score-evidence-button" type="button" data-open-dialog="evidence">상태 자세히</button>
           <section class="overview-spatial" aria-labelledby="overview-spatial-title">
             <h3 class="overview-spatial-title" id="overview-spatial-title"><span class="ui-icon icon-evidence" aria-hidden="true"></span>자료 공간 범위 · 필지 미등록</h3>
             <dl class="distance-list">
@@ -2241,7 +2590,7 @@
           </aside>
         </section>
 
-        <section class="evidence-workspace" aria-labelledby="evidence-workspace-title">
+        <section class="evidence-workspace" aria-labelledby="evidence-workspace-title" hidden>
           <div class="evidence-header"><div><h2 id="evidence-workspace-title"><span class="ui-icon icon-evidence" aria-hidden="true"></span>분석 근거와 자료</h2><p class="muted no-margin">출처, 계산 방식, 공간 범위를 필요할 때 확인하세요.</p></div><button class="button button-secondary" type="button" data-open-dialog="evidence">계산 상세</button></div>
         <section class="panel" aria-labelledby="data-coverage-title">
           <div class="section-heading">
@@ -2292,7 +2641,7 @@
           </details>
         </section>
 
-        <section class="panel" aria-labelledby="detail-map-title">
+        <section class="panel" aria-labelledby="detail-map-title" hidden>
           <div class="section-heading">
             <div><h2 id="detail-map-title">계산과 공간 범위</h2><p class="muted">필요할 때만 펼쳐 보세요.</p></div>
             <button class="button" type="button" data-open-dialog="evidence">계산 상세 보기</button>
@@ -2320,70 +2669,197 @@
           </details>
         </section>
 
-        <section class="panel" aria-labelledby="satellite-title">
+        <section class="panel" aria-labelledby="satellite-title" hidden>
           <details>
             <summary id="satellite-title">위성으로 변화 살펴보기 · 미등록</summary>
-            <div class="details-body"><div class="map-empty"><div><strong>등록된 필지가 없습니다</strong><p>위성영상은 생육을 확정 판정하지 않습니다. 필지를 등록한 뒤 색 변화와 수분 징후를 현장 기록과 함께 비교합니다.</p><button class="button" type="button" id="go-to-analyses">내 분석에서 농장으로 전환</button></div></div></div>
+            <div class="details-body"><div class="map-empty"><div><strong>등록된 필지가 없습니다</strong><p>위성영상은 생육을 확정 판정하지 않습니다. 필지를 등록한 뒤 색 변화와 수분 징후를 현장 기록과 함께 비교합니다.</p></div></div></div>
           </details>
         </section>
 
-        <aside class="notice" aria-label="참고지수 이용 안내">
+        <aside class="notice" aria-label="참고지수 이용 안내" hidden>
           <p><strong>참고지수는 수확량, 성공확률, 안전등급, 토지가치를 뜻하지 않습니다.</strong></p>
           <p>공식 적정범위와 지역자료의 거리를 이용한 참고값이며, 지역 대표자료는 내 필지 실측자료가 아닙니다. 계약·시비·방제 결정 전에는 현장 확인과 전문가 상담이 필요합니다.</p>
         </aside>
         </section>
       </section>
-      <section class="view" id="view-analyses" data-view-panel="analyses" aria-labelledby="analyses-title" hidden>
+      <section class="view" id="view-services" data-view-panel="services" aria-labelledby="services-title" hidden>
         <header class="page-header">
-          <div><h1 id="analyses-title" tabindex="-1">내 분석</h1><p class="muted">관심 지역·작물의 변화와 실제 농장을 함께 관리합니다.</p></div>
-          <button class="button button-primary" id="new-analysis-button" type="button">새 분석 시작</button>
+          <div><h1 id="services-title" tabindex="-1">추가 서비스</h1><p class="muted">농장 분석의 정확도를 높이는 현장 지원을 확인합니다.</p></div>
         </header>
 
-        <div class="analysis-list-surface">
-        <section class="panel" aria-labelledby="saved-analysis-title">
-          <div class="section-heading">
-            <div><h2 id="saved-analysis-title">저장한 지역·작물</h2><p class="muted" id="saved-count">체험 예시 1개</p></div>
-          </div>
-          <div id="saved-analysis-list">
-            <article class="analysis-card source-card" data-analysis-card>
-              <div>
-                <div class="cluster"><h2>평창군 진부면 · 감자</h2><span class="status-label info">체험 예시</span></div>
-                <p>농지를 알아보는 중 · 고랭지 여름 감자</p>
-                <p class="muted">마지막 확인 4월 13일 06:00 · 토양 현장 확인 필요</p>
-              </div>
-              <div class="analysis-card-actions">
-                <button class="button" type="button" data-analysis-action="view">결과 보기</button>
-                <button class="button button-secondary" type="button" data-analysis-action="farm">실제 재배 시 농장으로 전환</button>
-              </div>
-            </article>
-          </div>
-        </section>
+        <div class="settings-surface">
+        <section class="panel" aria-labelledby="soil-exam-title">
+          <h2 id="soil-exam-title" tabindex="-1">흙 검사 무료로 받는 방법 <span class="status-label good">무료</span></h2>
+          <p class="muted">내 밭 흙의 산도(pH)와 양분은 <strong>직접 검사를 받아야</strong> 정확히 알 수 있습니다. 이 앱이 보여 드리는 토양 정보는 우리 동네 전체의 평균이라, 내 밭과는 다를 수 있습니다.</p>
 
-        <section class="panel" aria-labelledby="latest-change-title">
-          <div class="section-heading">
-            <div><h2 id="latest-change-title">최신 변화</h2><p class="muted">저장한 조건에서 달라진 자료만 모았습니다.</p></div>
-            <span class="status-label warning">1건</span>
+          <div class="setting-row">
+            <div><strong>검사비</strong><p class="muted no-margin">농업기술센터에서 무료로 해 줍니다. 일 년 내내 신청할 수 있습니다.</p></div>
+            <span class="status-label good">0원</span>
           </div>
-          <article class="notice notice-warning">
-            <p><strong>평창 감자 · 4월 16일 강수 예보가 12mm에서 18mm로 늘었습니다.</strong></p>
-            <p>아직 작기를 정하지 않았다면 실제 생육 위험이 아닙니다. 농지 방문 때 배수 상태를 확인하는 참고로 사용하세요.</p>
-            <button class="button" type="button" data-analysis-action="view">변화가 반영된 결과 보기</button>
-          </article>
-        </section>
+          <div class="setting-row">
+            <div><strong>걸리는 시간</strong><p class="muted no-margin">흙을 맡긴 날부터 결과지를 받을 때까지</p></div>
+            <span>약 15일</span>
+          </div>
+          <div class="setting-row">
+            <div><strong>어디로 가나요</strong><p class="muted no-margin">시·군마다 한 곳씩 있는 <strong>농업기술센터</strong>입니다. 미리 전화해 보시면 좋습니다.</p></div>
+            <span id="soil-exam-center">농업기술센터</span>
+          </div>
 
-        <section class="panel" aria-labelledby="farm-help-title">
-          <h2 id="farm-help-title">실제로 재배를 시작했나요?</h2>
-          <p>농장 전환 시 오늘의 점검 항목과 1~3일 위험 우선 표시</p>
-          <p class="muted">필지 실측값을 등록하기 전에는 계속 지역 대표자료로 표시됩니다.</p>
+          <h3>이렇게 하시면 됩니다</h3>
+          <ol class="plain-steps">
+            <li><strong>밭에서 흙을 퍼 옵니다.</strong> 한 군데만 파지 마시고 밭 안에서 <strong>다섯 군데</strong>를 고르세요. 겉의 마른 흙은 걷어내고, 논과 밭은 <strong>15cm</strong>, 과수원은 <strong>30cm</strong> 깊이로 팝니다.</li>
+            <li><strong>퍼 온 흙을 한데 섞습니다.</strong> 다섯 군데 흙을 고루 섞은 뒤 <strong>500g</strong>쯤 담으세요. 우유팩 반 정도 분량입니다.</li>
+            <li><strong>농업기술센터에 가져갑니다.</strong> 성함과 연락처, 농지 주소를 말씀하시면 접수해 줍니다.</li>
+            <li><strong>약 15일 뒤 결과지를 받습니다.</strong> <strong>‘비료 사용 처방서’</strong>라는 종이를 줍니다.</li>
+          </ol>
+
+          <h3>결과지에 무엇이 적혀 있나요</h3>
+          <ul class="reason-list">
+            <li>내 밭 흙의 <strong>산도(pH)</strong>와 양분이 얼마나 있는지</li>
+            <li>질소·인산·칼리 비료를 <strong>얼마나</strong> 줘야 하는지</li>
+            <li>퇴비와 석회를 얼마나 넣어야 하는지</li>
+          </ul>
+
+          <details>
+            <summary>언제 신청하면 좋은가요</summary>
+            <div class="details-body">
+              <ul class="reason-list">
+                <li><strong>논</strong>은 그해 <strong>11월 20일까지</strong> 검사가 끝나야 합니다.</li>
+                <li><strong>밭과 비닐하우스</strong>는 씨를 뿌리기 전이나, 수확이 끝난 뒤에 신청하세요.</li>
+                <li>결과지가 나오기까지 보름쯤 걸리니, <strong>농사 시작 한 달 전</strong>에 맡기시면 넉넉합니다.</li>
+              </ul>
+            </div>
+          </details>
+          <details>
+            <summary>우리 지역 농업기술센터 찾기</summary>
+            <div class="details-body">
+              <p>인터넷이 어려우시면 <strong>시청이나 군청에 전화해서 “농업기술센터 토양검정실”을 물어보시면</strong> 됩니다.</p>
+              <p>인터넷으로 찾으실 분은 아래에서 지역을 고르실 수 있습니다.</p>
+              <p><a class="condition-source-link" href="https://www.nongsaro.go.kr/portal/ps/psz/psza/contentSub.ps?menuId=PS00078&amp;cntntsNo=208877" target="_blank" rel="noopener noreferrer">농사로 — 토양검정 의뢰 지역 문의처</a></p>
+            </div>
+          </details>
+          <details>
+            <summary>지난 검사 결과를 인터넷으로 보려면</summary>
+            <div class="details-body">
+              <p>예전에 검사를 받으신 적이 있다면 <strong>흙토람</strong>에서 다시 볼 수 있습니다. 농지 주소로 찾습니다.</p>
+              <p><a class="condition-source-link" href="https://soil.rda.go.kr/" target="_blank" rel="noopener noreferrer">흙토람 (농촌진흥청 토양환경정보)</a></p>
+            </div>
+          </details>
+
+          <p class="formula-note">이 안내는 농촌진흥청·농업기술센터가 공개한 절차를 정리한 것입니다. 검사 항목과 접수 방법은 지역마다 조금 다를 수 있으니, 가시기 전에 전화로 확인해 주세요.</p>
         </section>
         </div>
       </section>
+
       <section class="view" id="view-mypage" data-view-panel="mypage" aria-labelledby="mypage-title" hidden>
         <header class="page-header">
           <div><h1 id="mypage-title" tabindex="-1">마이페이지</h1><p class="muted">개인정보와 보기 편한 화면을 관리합니다.</p></div>
         </header>
 
         <div class="settings-surface">
+        <section class="panel" aria-labelledby="soil-result-title">
+          <h2 id="soil-result-title">검사 결과지 등록 <span class="status-label" id="soil-result-state">등록 안 됨</span></h2>
+          <p class="muted">받으신 <strong>비료 사용 처방서</strong>의 숫자를 넣어 주시면, 다음 분석부터 <strong>동네 평균이 아니라 내 밭의 실제 흙</strong>으로 판단합니다.</p>
+
+          <form id="soil-test-form" novalidate>
+            <div class="photo-stage-card">
+              <label for="soil-test-photo">결과지 사진 넣기 <span class="muted">(선택 · 보관용)</span>
+                <input id="soil-test-photo" name="soilTestPhoto" type="file" accept="image/*,.pdf" capture="environment" aria-describedby="soil-test-photo-status">
+              </label>
+              <div class="growth-photo-preview" id="soil-test-photo-preview" hidden>
+                <img id="soil-test-photo-image" alt="등록한 검사 결과지 미리보기">
+                <p id="soil-test-photo-status">넣으신 결과지</p>
+              </div>
+              <p class="muted no-margin">사진은 입력 확인용 미리보기이며 저장하거나 전송하지 않습니다. 아래 숫자만 분석에 씁니다.</p>
+            </div>
+
+            <div class="field">
+              <label for="soil-test-ph">산도 pH <strong>(꼭 넣어 주세요)</strong></label>
+              <input id="soil-test-ph" name="ph" type="number" inputmode="decimal" step="0.1" min="3" max="10" placeholder="예: 6.1" required aria-describedby="soil-test-ph-help">
+              <p class="field-help" id="soil-test-ph-help">결과지에 <strong>pH(1:5)</strong> 또는 <strong>산도</strong>라고 적힌 숫자입니다.</p>
+            </div>
+            <div class="field">
+              <label for="soil-test-date">검사받은 날짜 <strong>(꼭 넣어 주세요)</strong></label>
+              <input id="soil-test-date" name="sampledOn" type="date" required>
+            </div>
+
+            <details>
+              <summary>다른 항목도 넣기 (선택)</summary>
+              <div class="details-body">
+                <div class="field">
+                  <label for="soil-test-ec">전기전도도 EC (dS/m)</label>
+                  <input id="soil-test-ec" name="electricalConductivity" type="number" inputmode="decimal" step="0.1" min="0" max="30" placeholder="예: 0.8">
+                </div>
+                <div class="field">
+                  <label for="soil-test-om">유기물 (g/kg)</label>
+                  <input id="soil-test-om" name="organicMatter" type="number" inputmode="decimal" step="1" min="0" max="500" placeholder="예: 26">
+                </div>
+                <div class="field">
+                  <label for="soil-test-p">유효인산 (mg/kg)</label>
+                  <input id="soil-test-p" name="availablePhosphate" type="number" inputmode="decimal" step="1" min="0" max="3000" placeholder="예: 350">
+                </div>
+                <div class="field">
+                  <label for="soil-test-k">칼륨 K (cmol⁺/kg)</label>
+                  <input id="soil-test-k" name="exchangeableK" type="number" inputmode="decimal" step="0.01" min="0" max="100" placeholder="예: 0.55">
+                </div>
+                <div class="field">
+                  <label for="soil-test-ca">칼슘 Ca (cmol⁺/kg)</label>
+                  <input id="soil-test-ca" name="exchangeableCa" type="number" inputmode="decimal" step="0.1" min="0" max="100" placeholder="예: 5.2">
+                </div>
+                <div class="field">
+                  <label for="soil-test-mg">마그네슘 Mg (cmol⁺/kg)</label>
+                  <input id="soil-test-mg" name="exchangeableMg" type="number" inputmode="decimal" step="0.1" min="0" max="100" placeholder="예: 1.8">
+                </div>
+                <div class="field">
+                  <label for="soil-test-issuer">검사해 준 곳</label>
+                  <input id="soil-test-issuer" name="issuer" type="text" maxlength="60" placeholder="예: 안동시농업기술센터">
+                </div>
+              </div>
+            </details>
+
+            <p class="validation" id="soil-test-error" role="alert" hidden></p>
+            <div class="location-search-actions">
+              <button class="button button-primary" id="soil-test-save" type="submit">저장하고 분석에 반영</button>
+              <button class="button button-secondary" id="soil-test-clear" type="button">지우기</button>
+            </div>
+            <p class="muted no-margin" id="soil-test-status" role="status" aria-live="polite">아직 등록된 검사 결과가 없습니다. 지금은 동네 평균 토양 자료로 분석합니다.</p>
+          </form>
+
+          <p class="formula-note">등록하신 숫자는 결과지에 적힌 값 그대로 사용합니다. 없는 값을 대신 채워 넣거나 평균으로 바꾸지 않습니다.</p>
+        </section>
+
+        <section class="panel" aria-labelledby="account-key-title">
+          <h2 id="account-key-title">휴대폰을 바꿔도 그대로 쓰기</h2>
+          <p class="muted">등록하신 검사 결과는 <strong>이 휴대폰에 저장</strong>되어 있어서, 앱을 껐다 켜거나 새로고침해도 없어지지 않습니다. 다만 <strong>휴대폰을 바꾸면</strong> 새 기기에는 없습니다.</p>
+          <p class="muted">아래에서 <strong>계정 열쇠</strong>를 만들어 적어 두시면, 새 휴대폰에서 그 열쇠만 넣어도 똑같이 쓰실 수 있습니다.</p>
+
+          <div class="setting-row">
+            <div><strong>내 계정 열쇠</strong><p class="muted no-margin" id="account-key-hint">아직 만들지 않았습니다.</p></div>
+            <span id="account-key-value" style="font-weight:700; letter-spacing:.06em">—</span>
+          </div>
+
+          <div class="location-search-actions">
+            <button class="button button-primary" id="account-key-create" type="button">열쇠 만들고 보관하기</button>
+            <button class="button button-secondary" id="account-key-copy" type="button" hidden>열쇠 복사</button>
+          </div>
+          <p class="muted no-margin" id="account-key-status" role="status" aria-live="polite"></p>
+
+          <details>
+            <summary>새 휴대폰에서 불러오기</summary>
+            <div class="details-body">
+              <div class="field">
+                <label for="account-key-input">적어 두신 계정 열쇠</label>
+                <input id="account-key-input" type="text" inputmode="latin" autocapitalize="characters" autocomplete="off" maxlength="20" placeholder="예: 37B9-FRUS-8AZQ" aria-describedby="account-key-restore-help">
+                <p class="field-help" id="account-key-restore-help">대소문자와 가운데 줄표는 신경 쓰지 않으셔도 됩니다.</p>
+              </div>
+              <p class="validation" id="account-key-error" role="alert" hidden></p>
+              <button class="button button-primary" id="account-key-restore" type="button">불러오기</button>
+            </div>
+          </details>
+
+          <p class="formula-note">계정 열쇠는 종이에 적어 두시거나 사진으로 남겨 주세요. <strong>열쇠를 잃어버리면 다시 찾아 드릴 수 없습니다.</strong> 저장되는 것은 검사 결과 숫자와 지역뿐이고, 성함·연락처는 보관하지 않습니다.</p>
+        </section>
+
         <section class="panel" aria-labelledby="profile-title">
           <h2 id="profile-title">개인 설정</h2>
           <div class="setting-row"><div><strong>이용 상태</strong><p class="muted no-margin">로그인하지 않은 체험 사용자</p></div><span class="status-label">체험 중</span></div>
@@ -2407,18 +2883,40 @@
         </section>
 
         <section class="panel" aria-labelledby="notification-title">
-          <h2 id="notification-title">알림 설정 <span class="status-label">준비 중</span></h2>
+          <h2 id="notification-title">알림 설정 <span class="status-label" id="notification-permission-state">꺼짐</span></h2>
+          <p class="muted">정해 두신 시각에 <strong>오늘 가장 먼저 할 일</strong>을 알림으로 보내 드립니다.</p>
+
           <div class="setting-row">
-            <div><label for="risk-notification">가까운 기상 위험 알림</label><p class="muted no-margin" id="risk-notification-status">DB·주기 확인·알림 채널 구현 전에는 사용할 수 없습니다.</p></div>
-            <input id="risk-notification" type="checkbox" role="switch" disabled>
+            <div><strong>알림 허용</strong><p class="muted no-margin" id="risk-notification-status">휴대폰에서 알림을 받으려면 먼저 허용해 주세요.</p></div>
+            <button class="button button-primary" id="notification-enable" type="button">알림 허용하기</button>
           </div>
+
           <div class="setting-row">
-            <div><label for="notification-time">알림 확인 시간</label><p class="muted no-margin">실제 알림 기능 구현 뒤 제공할 예정입니다.</p></div>
-            <select id="notification-time" name="notification-time" style="width: auto" disabled>
-              <option value="morning">아침 7시</option>
-              <option value="noon">낮 12시</option>
-              <option value="evening">저녁 6시</option>
-            </select>
+            <div><label for="notification-time">알림 받을 시간</label><p class="muted no-margin">매일 이 시각에 오늘 할 일을 보내 드립니다.</p></div>
+            <input id="notification-time" name="notification-time" type="time" value="07:00" step="60" style="width: auto">
+          </div>
+
+          <div class="location-search-actions">
+            <button class="button button-secondary" id="notification-save" type="button">시간 저장</button>
+            <button class="button button-secondary" id="notification-test" type="button">10초 뒤 시험 알림</button>
+          </div>
+          <p class="muted no-margin" id="notification-status" role="status" aria-live="polite">아직 알림 시간을 저장하지 않았습니다.</p>
+
+          <details>
+            <summary>휴대폰 바탕화면에 앱으로 두기</summary>
+            <div class="details-body">
+              <p><strong>아이폰</strong> — 사파리에서 이 화면을 연 뒤 아래 <strong>공유 버튼(↑)</strong> → <strong>홈 화면에 추가</strong>를 누르세요. 홈 화면에서 실행해야 알림을 받을 수 있습니다.</p>
+              <p><strong>안드로이드</strong> — 크롬 오른쪽 위 <strong>점 세 개</strong> → <strong>홈 화면에 추가</strong>(또는 앱 설치)를 누르세요.</p>
+              <p class="muted">앱을 완전히 종료한 상태에서도 알림을 받으려면 서버 푸시 연동이 필요합니다. 지금은 앱이 실행 중이거나 앱을 열 때 밀린 알림을 보내 드립니다.</p>
+            </div>
+          </details>
+        </section>
+
+        <section class="panel" aria-labelledby="technical-analysis-title">
+          <h2 id="technical-analysis-title">분석 기준 및 데이터 출처</h2>
+          <p class="muted">대시보드에는 농장 상태와 행동만 표시합니다. 공공데이터 출처와 전문적인 판정 정보는 필요할 때 여기에서 확인할 수 있습니다.</p>
+          <div id="technical-analysis-settings">
+            <p class="backend-empty">농장 분석을 완료하면 사용한 출처와 판정 범위를 표시합니다.</p>
           </div>
         </section>
 
@@ -2439,7 +2937,7 @@
 
     <nav class="bottom-nav" aria-label="모바일 주요 메뉴">
       <button class="nav-button" type="button" data-view="dashboard" aria-current="page">대시보드</button>
-      <button class="nav-button" type="button" data-view="analyses">내 분석</button>
+      <button class="nav-button" type="button" data-view="services">추가 서비스</button>
       <button class="nav-button" type="button" data-view="mypage">마이페이지</button>
     </nav>
   </div>
@@ -2473,7 +2971,7 @@
     </form>
   </aside>
 
-  <section class="wizard-overlay" id="onboarding" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+  <section class="wizard-overlay" id="onboarding" role="dialog" aria-modal="true" aria-labelledby="wizard-title" hidden>
     <div class="wizard-shell">
       <header class="wizard-top">
         <div class="brand-lockup" aria-label="흙날씨 농지 진단">
@@ -2501,17 +2999,17 @@
         <div class="wizard-body" id="wizard-body">
           <section class="wizard-step" data-step="1" aria-labelledby="wizard-title">
             <h1 id="wizard-title" tabindex="-1">분석할 위치와 목적을 선택해 주세요</h1>
-            <p class="onboarding-lead">농사를 시작할 곳을 검토하거나, 이미 키우는 작물을 점검할 수 있습니다.</p>
+            <p class="onboarding-lead">현재 재배 중인 농장의 위치·작물·재배 환경과 생육 상태를 확인합니다.</p>
             <fieldset class="settings-group">
               <legend class="situation-legend">분석 목적</legend>
               <div class="choice-grid">
-                <label class="choice-card">
-                  <input type="radio" name="situation" value="planning" checked>
-                  <span><strong>농사를 시작할 곳 알아보기</strong><small>후보 지역과 작물의 기후·토양 적합성 확인</small></span>
+                <label class="choice-card choice-card-disabled">
+                  <input type="radio" name="situation" value="planning" disabled>
+                  <span><strong>재배 전 환경 분석</strong><small>추후 업데이트 예정</small></span>
                 </label>
                 <label class="choice-card">
-                  <input type="radio" name="situation" value="growing">
-                  <span><strong>이미 재배 중인 농장 점검</strong><small>현재 생육 상태와 가까운 예보에 맞춘 행동 확인</small></span>
+                  <input type="radio" name="situation" value="growing" checked>
+                  <span><strong>재배 중 생육 점검</strong><small>현재 생육 상태와 가까운 예보에 맞춘 관리 행동 확인</small></span>
                 </label>
               </div>
             </fieldset>
@@ -2524,8 +3022,8 @@
             <div class="location-divider"><span>또는 직접 입력</span></div>
             <div class="field">
               <label for="region-input">농장 지역</label>
-              <input id="region-input" name="region" type="text" placeholder="강원특별자치도 평창군 진부면" autocomplete="address-level3" aria-describedby="region-help region-search-status region-error">
-              <p class="field-help" id="region-help">상세 주소를 몰라도 시·군·구까지만 입력할 수 있습니다.</p>
+              <input id="region-input" name="region" type="text" placeholder="강원특별자치도 평창군 진부면" autocomplete="address-level3" role="combobox" aria-autocomplete="list" aria-controls="location-candidates" aria-expanded="false" aria-describedby="region-help region-search-status region-error">
+              <p class="field-help" id="region-help">시·도 이름을 입력하면 아래에 시·군·구 후보가 표시됩니다. 상세 주소를 몰라도 됩니다.</p>
             </div>
             <div class="location-search-actions">
               <button class="button button-secondary" id="search-location" type="button" disabled>입력한 지역 확인</button>
@@ -2560,8 +3058,8 @@
             <h1 id="growth-step-title" tabindex="-1">작물별 현재 상태를 확인해 주세요</h1>
             <p id="growth-step-help">오늘 날짜로 예상한 단계가 기본 선택되어 있습니다. 실제 작물과 다르면 작물별로 바꿔 주세요.</p>
             <div class="notice notice-good" id="growth-planning-note" hidden>
-              <p><strong>후보지 분석은 생육 단계를 입력하지 않습니다.</strong></p>
-              <p>선택한 위치·작물·현재 날짜를 기준으로 기후와 토양을 비교합니다.</p>
+              <p><strong>재배 전 환경 분석은 추후 업데이트 예정입니다.</strong></p>
+              <p>현재는 재배 중 생육 점검에서 작물별 생육 상태를 확인해 주세요.</p>
             </div>
             <div class="photo-stage-card" id="growth-photo-card">
               <label for="growth-photo">작물 사진 추가 <span class="muted">(선택 · 미리보기)</span>
@@ -2580,7 +3078,7 @@
             <h1 id="review-step-title" tabindex="-1">입력한 조건을 확인해 주세요</h1>
             <p>틀린 항목은 바로 돌아가 고칠 수 있습니다.</p>
             <dl class="summary-list">
-              <div class="summary-row"><dt>분석 목적</dt><dd id="review-situation">농사를 시작할 곳 알아보기</dd><span></span></div>
+              <div class="summary-row"><dt>분석 목적</dt><dd id="review-situation">재배 중 생육 점검</dd><span></span></div>
               <div class="summary-row"><dt>분석 위치</dt><dd id="review-region">위치 확인 필요</dd><button class="text-button" type="button" data-edit-step="1">수정</button></div>
               <div class="summary-row"><dt>선택 작물</dt><dd id="review-crop">선택 전</dd><button class="text-button" type="button" data-edit-step="2">수정</button></div>
               <div class="summary-row"><dt>작물별 조건</dt><dd id="review-season">선택 전</dd><button class="text-button" type="button" data-edit-step="3">수정</button></div>
@@ -2592,7 +3090,7 @@
             </div>
             <div class="inline-check">
               <input id="save-consent" name="saveConsent" type="checkbox">
-              <label for="save-consent">이 지역·작물 조합을 ‘내 분석’에 저장하는 데 동의합니다. <span class="muted">(선택, 기본 꺼짐)</span></label>
+              <label for="save-consent">이 기기에 농장 설정을 저장합니다. <span class="muted">(선택)</span></label>
             </div>
           </section>
         </div>
@@ -2613,10 +3111,9 @@
       </header>
       <div class="command-list" role="list">
         <button class="command-item" type="button" data-command="dashboard"><span class="ui-icon icon-data" aria-hidden="true"></span>대시보드<span>이동</span></button>
-        <button class="command-item" type="button" data-command="analyses"><span class="ui-icon icon-data" aria-hidden="true"></span>내 분석<span>이동</span></button>
+        <button class="command-item" type="button" data-command="services"><span class="ui-icon icon-check" aria-hidden="true"></span>추가 서비스<span>이동</span></button>
         <button class="command-item" type="button" data-command="mypage"><span class="ui-icon icon-check" aria-hidden="true"></span>마이페이지<span>이동</span></button>
-        <button class="command-item" type="button" data-command="new-analysis"><span class="ui-icon icon-check" aria-hidden="true"></span>새 분석<span>시작</span></button>
-        <button class="command-item" type="button" data-command="evidence"><span class="ui-icon icon-evidence" aria-hidden="true"></span>분석 근거<span>열기</span></button>
+        <button class="command-item" type="button" data-command="new-analysis"><span class="ui-icon icon-check" aria-hidden="true"></span>조건 바꾸기<span>열기</span></button>
       </div>
     </div>
   </dialog>
@@ -2679,970 +3176,7 @@
 
   <p class="sr-only" id="live-region" role="status" aria-live="polite" aria-atomic="true"></p>
 
-  <script>
-    (() => {
-      'use strict';
-
-      const liveRegion = document.querySelector('#live-region');
-      const skipLink = document.querySelector('.skip-link');
-      const form = document.querySelector('#onboarding-form');
-      const onboarding = document.querySelector('#onboarding');
-      const wizardSteps = [...document.querySelectorAll('.wizard-step')];
-      const progressText = document.querySelector('#wizard-progress');
-      const progressBar = document.querySelector('#wizard-progressbar');
-      const previousButton = document.querySelector('#wizard-prev');
-      const nextButton = document.querySelector('#wizard-next');
-      const submitButton = document.querySelector('#run-analysis');
-      const regionInput = document.querySelector('#region-input');
-      const cropSettings = document.querySelector('#crop-settings');
-      const growthSettings = document.querySelector('#growth-settings');
-      const growthPhoto = document.querySelector('#growth-photo');
-      const growthPhotoPreview = document.querySelector('#growth-photo-preview');
-      const growthPhotoImage = document.querySelector('#growth-photo-image');
-      let currentStep = 1;
-      let photoPreviewUrl = null;
-      const cropSettingsState = {};
-      const cropGrowthState = {};
-
-      const labels = {
-        situation: { planning: '농지를 알아보는 중', growing: '이미 농사 중' },
-        crop: { apple: '사과', pear: '배', cucumber: '오이', potato: '감자', lettuce: '상추' },
-        cultivation: { outdoor: '노지', 'facility-soil': '시설흙', 'facility-water': '시설물', unknown: '잘 모름' },
-        growth: {
-          early: '초기 생육',
-          middle: '한창 자라는 중',
-          harvest: '수확 무렵',
-          unknown: '잘 모름',
-          flowering: '꽃이 피는 중',
-          'tuber-bulking': '감자알이 굵어지는 중',
-          'flower-differentiation': '꽃눈이 생기기 시작함'
-        }
-      };
-
-      const cropResults = {
-        potato: {
-          score: 62, range: '56~68', climate: 68, soil: 54,
-          reasons: ['토양 산도 pH 5.1로 공식 적정범위 5.5~6.5보다 낮습니다.', '유기물 자료가 6.8km 떨어진 대표지점 값이라 불확실성이 있습니다.', '최근 5년 중 봄철 저온 이탈이 2회 확인됐습니다.'],
-          summary: '평창 진부면은 감자를 재배할 때 기온 조건은 대체로 맞지만, 토양 산도가 조금 낮고 토양 자료가 필지에서 멀어 확인이 더 필요합니다.',
-          actions: ['농지를 보러 갈 때 물이 잘 빠지는지 먼저 확인하세요.', '농업기술센터나 토양검정으로 내 밭의 pH를 확인하세요.', '작기를 정한 뒤 재분석해 실제 시기의 예보를 확인하세요.'],
-          evidenceRows: [
-            ['생육기 평균기온', '13.8℃', '12~18℃', '없음', '중간', '18%', '0.0'],
-            ['봄철 최저기온', '-1.2℃', '0℃ 이상', '1.2℃ 낮음', '높음', '22%', '-4.2'],
-            ['생육기 누적강수', '142mm', '120~260mm', '없음', '중간', '15%', '0.0'],
-            ['토양 산도', 'pH 5.1', 'pH 5.5~6.5', '0.4 낮음', '높음', '18%', '-7.2'],
-            ['토양 유기물', '16g/kg', '20~30g/kg', '4g/kg 부족', '중간', '12%', '-3.0'],
-            ['배수등급', '약간 불량', '양호~보통', '1등급', '높음', '15%', '-8.2']
-          ]
-        },
-        apple: {
-          score: 59, range: '52~66', climate: 57, soil: 62,
-          reasons: ['봄철 저온 이력이 있어 개화기 냉해 확인이 필요합니다.', '토양 산도 자료가 적정범위 아래쪽에 가깝습니다.', '대표 토양지점이 6.8km 떨어져 있어 필지 확인이 필요합니다.'],
-          summary: '평창 진부면의 사과 재배는 봄철 저온과 실제 토양 산도를 먼저 확인해야 합니다. 지역자료만으로 과원 적합성을 확정할 수는 없습니다.',
-          actions: ['주변 과원의 늦서리 피해 이력을 물어보세요.', '과수원 후보지의 경사와 찬 공기 흐름을 확인하세요.', '토양검정 뒤 재배 가능 여부를 전문가와 상의하세요.'],
-          evidenceRows: [
-            ['생육기 평균기온', '13.8℃', '15~25℃', '1.2℃ 낮음', '중간', '15%', '-1.8'],
-            ['개화기 최저기온', '-1.2℃', '0℃ 이상', '1.2℃ 낮음', '매우 높음', '25%', '-6.0'],
-            ['봄철 누적강수', '142mm', '120~240mm', '없음', '중간', '15%', '0.0'],
-            ['토양 산도', 'pH 5.1', 'pH 5.5~6.5', '0.4 낮음', '중간', '15%', '-4.0'],
-            ['토양 유기물', '16g/kg', '20~30g/kg', '4g/kg 부족', '중간', '10%', '-2.0'],
-            ['배수등급', '약간 불량', '양호~보통', '1등급', '높음', '20%', '-7.0']
-          ]
-        },
-        pear: {
-          score: 57, range: '50~64', climate: 54, soil: 61,
-          reasons: ['개화기 저온에 민감해 최근 봄철 최저기온이 감점됐습니다.', '배수등급이 대표지점 기준 ‘약간 불량’입니다.', '필지 단위 토양자료가 없어 추정 범위를 넓혔습니다.'],
-          summary: '평창 진부면의 배 재배는 개화기 저온과 배수 상태를 우선 확인해야 합니다. 지금 결과는 후보지를 거르는 참고로만 사용하세요.',
-          actions: ['주변 배 과원의 개화기 냉해 이력을 확인하세요.', '비 온 뒤 물이 고이는 곳이 있는지 살펴보세요.', '필지 토양검정을 신청한 뒤 다시 비교하세요.'],
-          evidenceRows: [
-            ['생육기 평균기온', '13.8℃', '15~25℃', '1.2℃ 낮음', '중간', '15%', '-2.0'],
-            ['개화기 최저기온', '-1.2℃', '0℃ 이상', '1.2℃ 낮음', '매우 높음', '27%', '-6.5'],
-            ['봄철 누적강수', '142mm', '120~240mm', '없음', '중간', '13%', '0.0'],
-            ['토양 산도', 'pH 5.1', 'pH 5.5~6.5', '0.4 낮음', '중간', '15%', '-4.0'],
-            ['토양 유기물', '16g/kg', '20~30g/kg', '4g/kg 부족', '중간', '10%', '-2.0'],
-            ['배수등급', '약간 불량', '양호~보통', '1등급', '높음', '20%', '-7.5']
-          ]
-        },
-        cucumber: {
-          score: 64, range: '57~71', climate: 66, soil: 62,
-          reasons: ['재배 시설 유형에 따라 온도 기준의 차이가 큽니다.', '토양 배수등급이 대표지점 자료라 현장 차이가 날 수 있습니다.', '4월 16일 강수 예보로 노지라면 과습 확인이 필요합니다.'],
-          summary: '오이는 노지인지 시설인지에 따라 판단이 크게 달라집니다. 선택한 환경 기준으로 보되, 온도와 물 빠짐을 현장에서 확인하세요.',
-          actions: ['선택한 재배 환경이 현장과 같은지 확인하세요.', '토양을 쓰는 경우 물 빠짐과 pH를 확인하세요.', '시설이라면 낮·밤 온도 기록을 준비하세요.'],
-          evidenceRows: [
-            ['재배환경 평균기온', '13.8℃', '18~28℃', '4.2℃ 낮음', '높음', '25%', '-7.0'],
-            ['야간 최저기온', '-1.2℃', '10℃ 이상', '11.2℃ 낮음', '높음', '12%', '-4.5'],
-            ['작기 누적강수', '142mm', '100~220mm', '없음', '중간', '18%', '0.0'],
-            ['토양 산도', 'pH 5.1', 'pH 6.0~6.5', '0.9 낮음', '높음', '15%', '-6.0'],
-            ['토양 유기물', '16g/kg', '20~30g/kg', '4g/kg 부족', '중간', '10%', '-2.0'],
-            ['배수등급', '약간 불량', '양호', '1등급 이상', '높음', '20%', '-8.0']
-          ]
-        },
-        lettuce: {
-          score: 66, range: '59~73', climate: 69, soil: 62,
-          reasons: ['여름 작기에는 고온 민감도가 커질 수 있습니다.', '토양 산도 pH 5.1이 체험 기준보다 낮습니다.', '필지 실측 수분자료가 없어 배수 판단이 제한됩니다.'],
-          summary: '상추는 재배 시기와 시설 여부에 따라 고온·과습 판단이 달라집니다. 토양 산도와 실제 물 빠짐을 먼저 확인하세요.',
-          actions: ['재배 시기와 시설 유형을 먼저 확정하세요.', '토양검정으로 pH를 확인하세요.', '비 온 뒤 토양이 마르는 시간을 기록하세요.'],
-          evidenceRows: [
-            ['재배환경 평균기온', '13.8℃', '15~20℃', '1.2℃ 낮음', '높음', '28%', '-3.5'],
-            ['야간 최저기온', '-1.2℃', '5℃ 이상', '6.2℃ 낮음', '중간', '10%', '-2.5'],
-            ['작기 누적강수', '142mm', '100~200mm', '없음', '중간', '18%', '0.0'],
-            ['토양 산도', 'pH 5.1', 'pH 6.0~6.5', '0.9 낮음', '높음', '16%', '-6.0'],
-            ['토양 유기물', '16g/kg', '20~30g/kg', '4g/kg 부족', '중간', '8%', '-1.5'],
-            ['배수등급', '약간 불량', '양호~보통', '1등급', '높음', '20%', '-7.0']
-          ]
-        }
-      };
-
-      const dataStates = {
-        ready: { badge: '모두 준비', coverage: 100, badgeClass: 'good', scoreState: '필요 자료 충족', rangeExtra: '59~65', title: '필요한 공개자료가 모두 준비됐습니다.', detail: '그래도 지역 대표자료는 내 필지 실측값이 아니므로 현장 확인이 필요합니다.' },
-        partial: { badge: '일부 부족', coverage: 78, badgeClass: 'warning', scoreState: '일부 자료 부족 · 추가 확인 필요', rangeExtra: '', title: '토양 유기물과 배수등급은 가까운 대표지점 자료입니다.', detail: '임의 값으로 채우지 않았고, 부족한 만큼 추정 범위를 넓혔습니다.' },
-        stale: { badge: '갱신 지연', coverage: 74, badgeClass: 'warning', scoreState: '예보 갱신 지연 · 다시 확인 필요', rangeExtra: '54~70', title: '단기예보 갱신이 평소보다 늦습니다.', detail: '장기 참고지수는 유지하지만 가까운 위험은 최신 예보를 받은 뒤 확인하세요.' },
-        error: { badge: '일부 실패', coverage: 66, badgeClass: 'danger', scoreState: '단기예보 불러오기 실패', rangeExtra: '53~71', title: '단기예보를 불러오지 못했습니다.', detail: '과거 기후와 토양 자료 결과만 남기고, 향후 10일 위험은 판단하지 않습니다.' },
-        offline: { badge: '오프라인', coverage: 60, badgeClass: 'danger', scoreState: '저장된 체험자료 표시 중', rangeExtra: '52~72', title: '인터넷 연결을 확인할 수 없습니다.', detail: '마지막 체험자료를 표시합니다. 연결 후 갱신 시각을 다시 확인하세요.' },
-        hold: { badge: '계산 보류', coverage: 45, badgeClass: 'danger', scoreState: '핵심 자료 부족 · 계산 보류', rangeExtra: '', title: '토양 핵심 자료가 없어 점수를 계산하지 않았습니다.', detail: '임의 값으로 채우지 않습니다. 토양 산도와 배수자료를 확보한 뒤 다시 계산하세요.' }
-      };
-
-      let activeDataState = 'partial';
-      let lastDialogTrigger = null;
-      let savedAnalysisCount = 1;
-
-      function announce(message) {
-        liveRegion.textContent = '';
-        requestAnimationFrame(() => { liveRegion.textContent = message; });
-      }
-
-      function selectedValue(name) {
-        return form.querySelector(`input[name="${name}"]:checked`)?.value || '';
-      }
-
-      function selectedValues(name) {
-        return [...form.querySelectorAll(`input[name="${name}"]:checked`)].map((input) => input.value);
-      }
-
-      function setError(id, visible) {
-        const element = document.querySelector(`#${id}`);
-        if (element) element.hidden = !visible;
-      }
-
-      function cropSettingsComplete() {
-        return selectedValues('crop').every((crop) => {
-          if (crop === 'cucumber' || crop === 'lettuce') {
-            return Boolean(selectedValue(`cultivation-${crop}`));
-          }
-          return true;
-        });
-      }
-
-      function growthSettingsComplete() {
-        if (selectedValue('situation') === 'planning') return true;
-        const crops = selectedValues('crop');
-        return crops.length > 0 && crops.every((crop) => Boolean(selectedValue(`growth-${crop}`)));
-      }
-
-      function isStepComplete(step) {
-        if (step === 1) return regionInput.dataset.candidateVerified === 'true';
-        if (step === 2) return selectedValues('crop').length > 0;
-        if (step === 3) return cropSettingsComplete();
-        if (step === 4) return growthSettingsComplete();
-        return true;
-      }
-
-      function validateStep(step) {
-        const complete = isStepComplete(step);
-        if (step === 1) setError('region-error', regionInput.dataset.candidateVerified !== 'true');
-        if (step === 2) setError('crop-error', selectedValues('crop').length === 0);
-        if (step === 3) {
-          const selectedCrops = selectedValues('crop');
-          setError('cultivation-error', selectedCrops.some((crop) =>
-            ['cucumber', 'lettuce'].includes(crop) && !selectedValue(`cultivation-${crop}`)));
-        }
-        if (step === 4) setError('growth-error', !growthSettingsComplete());
-        if (!complete) announce('선택하지 않은 항목이 있습니다. 안내 문구를 확인해 주세요.');
-        return complete;
-      }
-
-      function updateNextState() {
-        nextButton.disabled = !isStepComplete(currentStep);
-      }
-
-      function updateReview() {
-        const selectedCrops = selectedValues('crop');
-        const planning = selectedValue('situation') === 'planning';
-        document.querySelector('#review-growth-row').hidden = planning;
-        document.querySelector('#review-situation').textContent = planning
-          ? '농사를 시작할 곳 알아보기'
-          : '이미 재배 중인 농장 점검';
-        document.querySelector('#review-region').textContent =
-          regionInput.dataset.candidateVerified === 'true'
-            ? regionInput.value.trim()
-            : '위치 확인 필요';
-        document.querySelector('#review-crop').textContent =
-          selectedCrops.map((crop) => labels.crop[crop]).join(', ') || '선택 전';
-        document.querySelector('#review-season').textContent =
-          selectedCrops.map(cropSettingSummary).join(' · ') || '선택 전';
-        document.querySelector('#review-growth').textContent = planning
-          ? '후보지 분석 · 생육 단계 입력 없음'
-          : `${selectedCrops.map(growthSettingSummary).join(' · ') || '단계 미선택'}${growthPhoto.files?.length ? ' · 사진 추가됨' : ''}`;
-      }
-
-      function wizardRoute() {
-        return selectedValue('situation') === 'planning'
-          ? [1, 2, 3, 5]
-          : [1, 2, 3, 4, 5];
-      }
-
-      function setStep(step, shouldFocus = true) {
-        currentStep = Math.max(1, Math.min(5, step));
-        const route = wizardRoute();
-        if (!route.includes(currentStep)) {
-          currentStep = route.find((itemStep) => itemStep > currentStep) ?? route.at(-1);
-        }
-        const routePosition = route.indexOf(currentStep) + 1;
-        wizardSteps.forEach((section) => { section.hidden = Number(section.dataset.step) !== currentStep; });
-        document.querySelectorAll('.wizard-step-list li').forEach((item, index) => {
-          const itemStep = index + 1;
-          const visiblePosition = route.indexOf(itemStep);
-          item.hidden = visiblePosition === -1;
-          if (visiblePosition >= 0) item.dataset.stepNumber = String(visiblePosition + 1);
-          item.classList.toggle('is-current', itemStep === currentStep);
-          item.classList.toggle('is-complete', itemStep < currentStep);
-          if (itemStep === currentStep) item.setAttribute('aria-current', 'step');
-          else item.removeAttribute('aria-current');
-        });
-        progressText.textContent = `${routePosition} / ${route.length}`;
-        progressBar.max = route.length;
-        progressBar.value = routePosition;
-        progressBar.textContent = `${routePosition} / ${route.length}`;
-        previousButton.disabled = routePosition === 1;
-        nextButton.hidden = currentStep === 5;
-        submitButton.hidden = currentStep !== 5;
-        if (currentStep === 4) renderGrowthSettings();
-        if (currentStep === 5) updateReview();
-        updateNextState();
-        if (shouldFocus) {
-          const heading = document.querySelector(`.wizard-step[data-step="${currentStep}"] h1`);
-          heading?.focus({ preventScroll: true });
-          document.querySelector('.wizard-overlay')?.scrollTo({ top: 0 });
-        }
-      }
-
-      function createChoice(name, value, title, help, checked = false) {
-        const label = document.createElement('label');
-        label.className = 'choice-card';
-        const input = document.createElement('input');
-        input.type = 'radio';
-        input.name = name;
-        input.value = value;
-        input.dataset.label = title;
-        input.checked = checked;
-        const span = document.createElement('span');
-        const strong = document.createElement('strong');
-        strong.textContent = title;
-        const small = document.createElement('small');
-        small.textContent = help;
-        span.append(strong, small);
-        label.append(input, span);
-        return label;
-      }
-
-      function createGrowthChoice(crop, value, title, help, recommended, checked) {
-        const label = createChoice(`growth-${crop}`, value, title, help, checked);
-        const strong = label.querySelector('strong');
-        const titleRow = document.createElement('span');
-        titleRow.className = 'choice-title-row';
-        strong.replaceWith(titleRow);
-        titleRow.append(strong);
-        if (recommended) {
-          const badge = document.createElement('span');
-          badge.className = 'choice-recommendation';
-          badge.textContent = '날짜 기준 AI 예상';
-          titleRow.append(badge);
-        }
-        return label;
-      }
-
-      function rememberCropSettings() {
-        Object.keys(labels.crop).forEach((crop) => {
-          cropSettingsState[crop] = {
-            cultivation: selectedValue(`cultivation-${crop}`) || cropSettingsState[crop]?.cultivation || ''
-          };
-        });
-      }
-
-      function renderCropSettings() {
-        rememberCropSettings();
-        const planning = selectedValue('situation') === 'planning';
-        document.querySelector('#settings-step-help').textContent = planning
-          ? '오늘 날짜를 기준으로 후보 지역의 기후와 토양을 비교합니다.'
-          : '생육 상태는 날짜 기준 AI 예상으로 선택되며 필요할 때 직접 변경할 수 있습니다.';
-        const cards = selectedValues('crop').map((crop) => {
-          const card = document.createElement('section');
-          card.className = 'crop-setting-card';
-          const title = document.createElement('h2');
-          title.textContent = labels.crop[crop];
-          const help = document.createElement('p');
-          help.textContent = crop === 'cucumber' || crop === 'lettuce'
-            ? '재배 환경에 따라 기상·토양 판단 범위가 달라집니다.'
-            : '재배 환경은 노지로 적용합니다.';
-          card.append(title, help);
-          if (crop === 'cucumber' || crop === 'lettuce') {
-            const cultivation = document.createElement('fieldset');
-            cultivation.className = 'settings-group';
-            const legend = document.createElement('legend');
-            legend.textContent = '재배 환경';
-            const grid = document.createElement('div');
-            grid.className = 'choice-grid';
-            grid.append(
-              createChoice(`cultivation-${crop}`, 'outdoor', '노지', '야외 밭', !cropSettingsState[crop]?.cultivation || cropSettingsState[crop]?.cultivation === 'outdoor'),
-              createChoice(`cultivation-${crop}`, 'facility-soil', '시설흙', '비닐하우스 토양', cropSettingsState[crop]?.cultivation === 'facility-soil'),
-              createChoice(`cultivation-${crop}`, 'facility-water', '시설물', '양액·수경 시설', cropSettingsState[crop]?.cultivation === 'facility-water')
-            );
-            cultivation.append(legend, grid);
-            card.append(cultivation);
-          }
-          const dateNote = document.createElement('div');
-          dateNote.className = 'auto-date-note';
-          const dateLabel = new Intl.DateTimeFormat('ko-KR', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-          }).format(new Date());
-          const dateCheck = document.createElement('span');
-          dateCheck.setAttribute('aria-hidden', 'true');
-          dateCheck.textContent = '✓';
-          const dateCopy = document.createElement('div');
-          const dateTitle = document.createElement('strong');
-          dateTitle.textContent = planning
-            ? `${dateLabel} · 분석 기준일`
-            : `${dateLabel} · 날짜 기준 AI 예상`;
-          const dateHelp = document.createElement('p');
-          dateHelp.textContent = planning
-            ? '이 날짜를 기준으로 기후와 토양을 비교합니다.'
-            : '현재 날짜와 다음 단계의 생육 상태를 함께 사용합니다.';
-          dateCopy.append(dateTitle, dateHelp);
-          dateNote.append(dateCheck, dateCopy);
-          card.append(dateNote);
-          return card;
-        });
-        cropSettings.replaceChildren(...cards);
-        updateNextState();
-      }
-
-      function rememberCropGrowth() {
-        Object.keys(labels.crop).forEach((crop) => {
-          const growth = selectedValue(`growth-${crop}`);
-          if (growth) cropGrowthState[crop] = growth;
-        });
-      }
-
-      function recommendedGrowthStage(crop, month = new Date().getMonth() + 1) {
-        const profiles = {
-          apple: { early: [3, 4, 5], middle: [6, 7, 8], harvest: [9, 10, 11] },
-          pear: { early: [3, 4, 5], middle: [6, 7, 8], harvest: [9, 10, 11] },
-          cucumber: { early: [3, 4], middle: [5, 6, 7, 8], harvest: [9, 10] },
-          potato: { early: [3, 4], middle: [5, 6, 7, 8], harvest: [9, 10, 11] },
-          lettuce: { early: [2, 3, 4], middle: [5, 6, 7, 8, 9], harvest: [10, 11] }
-        };
-        const profile = profiles[crop] || {};
-        return Object.entries(profile).find(([, months]) => months.includes(month))?.[0] || 'unknown';
-      }
-
-      function renderGrowthSettings() {
-        rememberCropGrowth();
-        const planning = selectedValue('situation') === 'planning';
-        document.querySelector('#growth-planning-note').hidden = !planning;
-        document.querySelector('#growth-photo-card').hidden = planning;
-        document.querySelector('#growth-step-title').textContent = planning
-          ? '후보지 분석 조건을 확인해 주세요'
-          : '작물별 현재 상태를 확인해 주세요';
-        document.querySelector('#growth-step-help').textContent = planning
-          ? '후보지를 검토할 때는 아직 실제 생육 단계가 없으므로 별도로 묻지 않습니다.'
-          : '오늘 날짜로 예상한 단계가 기본 선택되어 있습니다. 실제 작물과 다르면 작물별로 바꿔 주세요.';
-        if (planning) {
-          growthSettings.replaceChildren();
-          updateNextState();
-          return;
-        }
-        const cards = selectedValues('crop').map((crop) => {
-          const recommendation = recommendedGrowthStage(crop);
-          const selected = cropGrowthState[crop] || recommendation;
-          cropGrowthState[crop] = selected;
-          const card = document.createElement('section');
-          card.className = 'crop-setting-card growth-crop-card';
-          const title = document.createElement('h2');
-          title.textContent = labels.crop[crop];
-          const help = document.createElement('p');
-          help.textContent = '오늘 날짜의 일반적인 생육 흐름을 기준으로 예상했습니다. 실제 상태가 다르면 바꿔 주세요.';
-          const fieldset = document.createElement('fieldset');
-          fieldset.className = 'settings-group';
-          const legend = document.createElement('legend');
-          legend.className = 'sr-only';
-          legend.textContent = `${labels.crop[crop]} 생육단계`;
-          const grid = document.createElement('div');
-          grid.className = 'choice-grid';
-          const choices = [
-            ['early', '초기 생육', '싹·어린 잎 시기'],
-            ['middle', '한창 자라는 중', '생육 중기'],
-            ['harvest', '수확 무렵', '수확 준비'],
-            ['unknown', '잘 모름', '단계 공통 안내']
-          ];
-          if (crop === 'pear') {
-            choices.splice(1, 0, ['flowering', '꽃이 피는 중', '개화기 저온 확인']);
-          }
-          if (crop === 'potato') {
-            choices.splice(2, 0, ['tuber-bulking', '감자알이 굵어지는 중', '고온 영향 확인']);
-          }
-          const cultivation = selectedValue(`cultivation-${crop}`);
-          if (
-            crop === 'lettuce' &&
-            ['facility-soil', 'facility-water'].includes(cultivation)
-          ) {
-            choices.splice(2, 0, [
-              'flower-differentiation',
-              '꽃눈이 생기기 시작함',
-              '고온·추대 가능성 확인'
-            ]);
-          }
-          choices.forEach(([value, choiceTitle, choiceHelp]) => {
-            grid.append(createGrowthChoice(
-              crop,
-              value,
-              choiceTitle,
-              choiceHelp,
-              value === recommendation,
-              value === selected
-            ));
-          });
-          fieldset.append(legend, grid);
-          card.append(title, help, fieldset);
-          return card;
-        });
-        growthSettings.replaceChildren(...cards);
-        updateNextState();
-      }
-
-      function cropSettingSummary(crop) {
-        if (!['cucumber', 'lettuce'].includes(crop)) {
-          return `${labels.crop[crop]} · 노지 · 날짜 기준 AI 예상`;
-        }
-        const cultivation = labels.cultivation[selectedValue(`cultivation-${crop}`)] || '환경 미선택';
-        return `${labels.crop[crop]} · ${cultivation} · 날짜 기준 AI 예상`;
-      }
-
-      function growthSettingSummary(crop) {
-        const growth = selectedValue(`growth-${crop}`) || cropGrowthState[crop];
-        const recommendation = recommendedGrowthStage(crop);
-        const suffix = growth === recommendation ? ' · 날짜 기준 AI 예상' : '';
-        return `${labels.crop[crop]} · ${labels.growth[growth] || '단계 미선택'}${suffix}`;
-      }
-
-      function replaceList(list, items) {
-        list.replaceChildren(...items.map((text) => {
-          const item = document.createElement('li');
-          item.textContent = text;
-          return item;
-        }));
-      }
-
-      function currentResult() {
-        return cropResults[selectedValues('crop')[0]] || cropResults.potato;
-      }
-
-      function setAxisSummary(result) {
-        const climateSummary = result.climate >= 65 ? '기온은 대체로 적정' : '기후 조건 추가 확인';
-        const soilSummary = result.soil >= 65 ? '지역 토양은 범위 안' : '내 밭의 pH·배수';
-        document.querySelector('#climate-metric-value').textContent = climateSummary;
-        document.querySelector('#soil-metric-value').textContent = soilSummary;
-        document.querySelector('#climate-axis-status').textContent = result.climate >= 65 ? '대체로 맞음' : '추가 확인';
-        document.querySelector('#soil-axis-status').textContent = result.soil >= 65 ? '자료상 범위 안' : '현장 확인 필요';
-      }
-
-      function renderEvidenceRows(rows) {
-        const cellLabels = ['항목', '관측값', '공식 범위 예시', '이탈', '민감도', '가중치', '감점'];
-        const tableRows = rows.map((row) => {
-          const tableRow = document.createElement('tr');
-          row.forEach((value, index) => {
-            const cell = document.createElement('td');
-            cell.dataset.label = cellLabels[index];
-            cell.textContent = value;
-            tableRow.append(cell);
-          });
-          return tableRow;
-        });
-        document.querySelector('.calc-table tbody').replaceChildren(...tableRows);
-      }
-
-      function renderCalculationCopy(cropLabel, result) {
-        const copy = document.querySelector('#calculation-rule-copy');
-        const keySentence = document.createElement('strong');
-        keySentence.textContent = '서로 다른 축을 종합점수로 합치지 않습니다.';
-        copy.replaceChildren(
-          keySentence,
-          document.createTextNode(` ${cropLabel} 체험 규칙 예시의 범위 이탈거리·민감도·가중치는 기후와 토양 각 축 안에서만 사용합니다. 예보 위험은 날짜와 지속기간이 있는 별도 신호로 표시합니다.`)
-        );
-      }
-
-      function renderResult() {
-        const crop = selectedValue('crop') || 'potato';
-        const cropLabel = labels.crop[crop];
-        const result = currentResult();
-        const region = regionInput.value.trim() || '강원특별자치도 평창군';
-        const compactRegion = region.replace('강원특별자치도 ', '');
-        document.querySelector('#result-region').textContent = region;
-        document.querySelector('#result-crop').textContent = cropLabel;
-        document.querySelector('#profile-region').textContent = compactRegion;
-        document.querySelector('#sidebar-context-value').textContent = `${compactRegion} · ${cropLabel}`;
-        document.querySelector('#topbar-context-value').textContent = `${compactRegion} · ${cropLabel}`;
-        document.querySelector('#dashboard-title').textContent = `${compactRegion.replace('군 ', ' ')} · ${cropLabel} 농장 분석`;
-        replaceList(document.querySelector('#score-reasons'), result.reasons);
-        document.querySelector('#ai-summary').textContent = result.summary;
-        replaceList(document.querySelector('#ai-actions'), result.actions);
-        setAxisSummary(result);
-        renderEvidenceRows(result.evidenceRows);
-        renderCalculationCopy(cropLabel, result);
-        document.querySelector('#rule-version').textContent = `${cropLabel} 규칙 v1.0 · 체험 규칙 예시`;
-        document.querySelector('.calc-table caption').textContent = `${cropLabel} 축별 환경 비교 체험 규칙 예시 변수별 계산표`;
-        const formula = document.querySelector('#evidence-dialog .calc-table + .muted');
-        const weightTotal = result.evidenceRows.reduce((sum, row) => sum + Number.parseFloat(row[5]), 0);
-        if (formula) formula.textContent = `표는 대표 항목 ${result.evidenceRows.length}개이며 각 항목 가중치 합은 ${weightTotal}%입니다. 같은 분야 안의 비교에만 사용하며 기후·토양·예보를 하나의 성공확률이나 종합점수로 합치지 않습니다.`;
-      }
-
-      function applyMode(mode) {
-        const growing = mode === 'growing';
-        document.body.dataset.mode = mode;
-        document.querySelector('#sidebar-mode-value').textContent = growing ? '이미 농사 중' : '농지를 알아보는 중';
-        document.querySelectorAll('[data-mode-only]').forEach((section) => {
-          section.hidden = section.dataset.modeOnly !== mode;
-        });
-        if (window.__BACKEND_INTEGRATION_ENABLED__) return;
-        document.querySelector('#dashboard-mode-copy').textContent = growing
-          ? '현재 재배 조건 기준 1~3일 위험 및 점검 항목'
-          : '후보지 기준 기상·토양·예보 분석';
-        document.querySelector('#headline-status').textContent = growing
-          ? '현재 판단 · 오늘 확인, 4월 16일 비 18mm'
-          : '현재 판단 · 계속 검토, 배수 확인 필요';
-        document.querySelector('#risk-context').textContent = growing
-          ? '현재 생육단계에 가까운 1~3일 위험입니다. 비가 오기 전에 배수로와 물 고임을 확인하고, 현장 상태가 다르면 기록해 주세요.'
-          : '아직 실제 재배시기를 정하지 않았다면 이 비를 생육 위험으로 보지는 않습니다. 농지를 볼 때 배수 상태를 확인할 근거로만 사용하세요.';
-        const checklistButton = document.querySelector('#first-action');
-        const checklistPanel = document.querySelector('#field-checklist');
-        checklistButton.textContent = growing
-          ? '오늘 현장 체크리스트 열기'
-          : '현장 확인 체크리스트 열기';
-        checklistButton.setAttribute('aria-expanded', 'false');
-        checklistPanel.hidden = true;
-        document.querySelector('#checklist-mode-copy').textContent = growing
-          ? '비가 오기 전에 배수로와 물 고임을 확인하는 순서입니다.'
-          : '농지를 볼 때 배수 상태를 확인하는 순서입니다.';
-      }
-
-      function resetTaskState() {
-        document.querySelector('#drainage-task').classList.remove('is-complete');
-        document.querySelector('#task-status').textContent = '아직 확인 전';
-        document.querySelector('#today-task-count').textContent = '1개 남음';
-        document.querySelectorAll('[data-task-action]').forEach((button) => {
-          button.disabled = false;
-          button.removeAttribute('aria-pressed');
-        });
-      }
-
-      function setBadge(element, text, stateClass) {
-        element.textContent = text;
-        element.className = `status-label ${stateClass || ''}`.trim();
-      }
-
-      function setSourceState(source, text, stateClass) {
-        const badge = document.querySelector(`[data-source="${source}"] [data-source-state]`);
-        if (badge) setBadge(badge, text, stateClass);
-      }
-
-      function setDataMessage(title, detail) {
-        const message = document.querySelector('#data-state-message');
-        const titleParagraph = document.createElement('p');
-        const titleStrong = document.createElement('strong');
-        titleStrong.textContent = title;
-        titleParagraph.append(titleStrong);
-        const detailParagraph = document.createElement('p');
-        detailParagraph.textContent = detail;
-        message.replaceChildren(titleParagraph, detailParagraph);
-      }
-
-      function setDataState(state, shouldAnnounce = true) {
-        const config = dataStates[state] || dataStates.partial;
-        const result = currentResult();
-        activeDataState = state;
-        document.querySelectorAll('[data-data-state]').forEach((button) => {
-          button.setAttribute('aria-pressed', String(button.dataset.dataState === state));
-        });
-        setBadge(document.querySelector('#overall-data-badge'), config.badge, config.badgeClass);
-        document.querySelector('#coverage-value').textContent = `${config.coverage}%`;
-        document.querySelector('#coverage-fill').style.width = `${config.coverage}%`;
-        document.querySelector('.coverage-track').setAttribute('aria-valuenow', String(config.coverage));
-        setDataMessage(config.title, config.detail);
-        document.querySelector('#data-state-message').className = `notice ${config.badgeClass === 'danger' ? 'notice-danger' : config.badgeClass === 'good' ? 'notice-good' : 'notice-warning'}`;
-
-        ['forecast', 'history', 'soil', 'crop-rule'].forEach((source) => setSourceState(source, '정상', 'good'));
-        if (state === 'partial') setSourceState('soil', '일부 부족', 'warning');
-        if (state === 'stale') {
-          setSourceState('forecast', '갱신 지연', 'warning');
-          setSourceState('history', '갱신 지연', 'warning');
-        }
-        if (state === 'error') setSourceState('forecast', '불러오기 실패', 'danger');
-        if (state === 'offline') {
-          setSourceState('forecast', '연결 안 됨', 'danger');
-          setSourceState('soil', '저장 자료', 'info');
-        }
-        if (state === 'hold') setSourceState('soil', '핵심자료 없음', 'danger');
-
-        if (state === 'hold') {
-          document.querySelector('#soil-metric-value').textContent = '핵심 자료 없어 보류';
-          document.querySelector('#soil-axis-status').textContent = '판단 보류';
-          replaceList(document.querySelector('#score-reasons'), ['토양 산도와 배수등급이 없어 공식 범위와 비교할 수 없습니다.', '결측값을 임의로 채우지 않았습니다.', '토양검정 또는 유효한 지역자료를 확보한 뒤 다시 계산합니다.']);
-        } else {
-          setAxisSummary(result);
-          replaceList(document.querySelector('#score-reasons'), result.reasons);
-        }
-        document.querySelector('#score-state').textContent = config.scoreState;
-        if (shouldAnnounce) announce(`자료 상태를 ${config.badge}(으)로 바꿨습니다. ${config.scoreState}`);
-      }
-
-      function openWizard(resetValues) {
-        document.querySelector('#save-consent').checked = false;
-        if (resetValues) {
-          form.reset();
-          document.querySelectorAll('.validation').forEach((error) => { error.hidden = true; });
-          renderCropSettings();
-        }
-        onboarding.hidden = false;
-        document.querySelector('.app-shell').inert = true;
-        skipLink.inert = true;
-        document.body.classList.add('wizard-open');
-        setStep(1);
-      }
-
-      function makeElement(tagName, className, text) {
-        const element = document.createElement(tagName);
-        if (className) element.className = className;
-        if (text) element.textContent = text;
-        return element;
-      }
-
-      function addSavedAnalysis() {
-        savedAnalysisCount += 1;
-        const crop = selectedValues('crop')[0];
-        const seasonLabel = cropSettingSummary(crop);
-        const card = makeElement('article', 'analysis-card source-card');
-        card.dataset.analysisCard = 'user';
-        const info = makeElement('div');
-        const titleCluster = makeElement('div', 'cluster');
-        titleCluster.append(makeElement('h2', '', `${regionInput.value.trim()} · ${labels.crop[crop]}`), makeElement('span', 'status-label good', '사용자 저장'));
-        info.append(titleCluster, makeElement('p', '', `${labels.situation[selectedValue('situation')]} · ${seasonLabel}`), makeElement('p', 'muted', `방금 저장 · 참고지수 ${currentResult().score}점`));
-        const actions = makeElement('div', 'analysis-card-actions');
-        const viewButton = makeElement('button', 'button', '결과 보기');
-        viewButton.type = 'button';
-        viewButton.dataset.analysisAction = 'view';
-        const farmButton = makeElement('button', 'button button-secondary', '실제 재배 시 농장으로 전환');
-        farmButton.type = 'button';
-        farmButton.dataset.analysisAction = 'farm';
-        actions.append(viewButton, farmButton);
-        card.append(info, actions);
-        document.querySelector('#saved-analysis-list').append(card);
-        document.querySelector('#saved-count').textContent = `저장된 조합 ${savedAnalysisCount}개`;
-      }
-
-      function showView(viewName) {
-        document.querySelectorAll('[data-view-panel]').forEach((panel) => {
-          panel.hidden = panel.dataset.viewPanel !== viewName;
-        });
-        document.querySelectorAll('[data-view]').forEach((button) => {
-          if (button.dataset.view === viewName) button.setAttribute('aria-current', 'page');
-          else button.removeAttribute('aria-current');
-        });
-        const heading = document.querySelector(`[data-view-panel="${viewName}"] h1`);
-        window.scrollTo({ top: 0, left: 0 });
-        heading?.focus({ preventScroll: true });
-        announce(`${heading?.textContent || '현재'} 화면으로 이동했습니다.`);
-      }
-
-      function openEvidenceDialog(section) {
-        const dialog = document.querySelector('#evidence-dialog');
-        lastDialogTrigger = document.activeElement;
-        dialog.showModal();
-        if (section === 'limits') document.querySelector('#dialog-limits').focus();
-        else dialog.querySelector('[data-close-dialog]').focus();
-      }
-
-      function trapDialogFocus(event) {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          event.currentTarget.close();
-          return;
-        }
-        if (event.key !== 'Tab') return;
-        const dialog = event.currentTarget;
-        const focusable = [...dialog.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')]
-          .filter((element) => !element.hidden);
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
-
-      document.querySelectorAll('[data-view]').forEach((button) => {
-        button.addEventListener('click', () => showView(button.dataset.view));
-      });
-
-      document.querySelectorAll('[data-open-dialog]').forEach((button) => {
-        button.addEventListener('click', () => openEvidenceDialog(button.dataset.openDialog));
-      });
-
-      const evidenceDialog = document.querySelector('#evidence-dialog');
-      evidenceDialog.addEventListener('keydown', trapDialogFocus);
-      evidenceDialog.querySelector('[data-close-dialog]').addEventListener('click', () => evidenceDialog.close());
-      evidenceDialog.addEventListener('click', (event) => {
-        if (event.target === evidenceDialog) evidenceDialog.close();
-      });
-      evidenceDialog.addEventListener('close', () => {
-        if (lastDialogTrigger instanceof HTMLElement) lastDialogTrigger.focus();
-      });
-
-      const checklistButton = document.querySelector('#first-action');
-      const checklistPanel = document.querySelector('#field-checklist');
-      checklistButton.addEventListener('click', () => {
-        const willOpen = checklistPanel.hidden;
-        checklistPanel.hidden = !willOpen;
-        checklistButton.setAttribute('aria-expanded', String(willOpen));
-        checklistButton.textContent = willOpen
-          ? (document.body.dataset.mode === 'growing' ? '오늘 현장 체크리스트 닫기' : '현장 확인 체크리스트 닫기')
-          : (document.body.dataset.mode === 'growing' ? '오늘 현장 체크리스트 열기' : '현장 확인 체크리스트 열기');
-        if (willOpen) {
-          document.querySelector('#check-water-mark').focus();
-          announce('현장 확인 체크리스트를 열었습니다.');
-        } else {
-          checklistButton.focus();
-          announce('현장 확인 체크리스트를 닫았습니다.');
-        }
-      });
-
-      const commandDialog = document.querySelector('#command-dialog');
-      const commandTrigger = document.querySelector('#command-trigger');
-      const commandClose = document.querySelector('#command-close');
-
-      function openCommandDialog() {
-        if (window.matchMedia('(max-width: 920px)').matches || !onboarding.hidden || evidenceDialog.open) return;
-        if (commandDialog.open) {
-          commandDialog.close();
-          return;
-        }
-        commandDialog.showModal();
-        commandTrigger.setAttribute('aria-expanded', 'true');
-        commandDialog.querySelector('[data-command]')?.focus();
-      }
-
-      commandTrigger.addEventListener('click', openCommandDialog);
-      commandClose.addEventListener('click', () => commandDialog.close());
-      commandDialog.addEventListener('keydown', trapDialogFocus);
-      commandDialog.addEventListener('click', (event) => {
-        if (event.target === commandDialog) commandDialog.close();
-      });
-      commandDialog.addEventListener('close', () => {
-        commandTrigger.setAttribute('aria-expanded', 'false');
-        commandTrigger.focus();
-      });
-      document.addEventListener('keydown', (event) => {
-        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-          event.preventDefault();
-          openCommandDialog();
-        }
-      });
-      commandDialog.querySelectorAll('[data-command]').forEach((button) => {
-        button.addEventListener('click', () => {
-          const command = button.dataset.command;
-          commandDialog.close();
-          if (['dashboard', 'analyses', 'mypage'].includes(command)) showView(command);
-          if (command === 'new-analysis') requestAnimationFrame(() => openWizard(true));
-          if (command === 'evidence') requestAnimationFrame(() => openEvidenceDialog('evidence'));
-        });
-      });
-
-      document.querySelectorAll('[data-data-state]').forEach((button) => {
-        button.addEventListener('click', () => setDataState(button.dataset.dataState));
-      });
-
-      document.querySelectorAll('[data-task-action]').forEach((button) => {
-        button.addEventListener('click', () => {
-          const action = button.dataset.taskAction;
-          const task = document.querySelector('#drainage-task');
-          const status = document.querySelector('#task-status');
-          if (action === 'complete') {
-            task.classList.add('is-complete');
-            status.textContent = '완료됨 · 방금';
-            document.querySelector('#today-task-count').textContent = '모두 완료';
-            button.disabled = true;
-            announce('배수로 확인 작업을 완료로 표시했습니다.');
-          }
-          if (action === 'remind') {
-            button.setAttribute('aria-pressed', 'true');
-            status.textContent = '현재 화면에서 나중에 볼 항목으로 표시';
-            announce('배수로 확인 작업을 현재 화면에서 나중에 보도록 표시했습니다.');
-          }
-          if (action === 'different') {
-            button.setAttribute('aria-pressed', 'true');
-            status.textContent = '현장 기록에 ‘자료와 다름’으로 표시';
-            announce('현장 상태가 자료와 다르다고 기록했습니다. 이후 판단에서 현장 확인을 우선합니다.');
-          }
-        });
-      });
-
-      document.querySelectorAll('input[name="font-size-setting"]').forEach((radio) => {
-        radio.addEventListener('change', () => {
-          document.body.classList.toggle('large-text', radio.value === 'large' && radio.checked);
-          announce(`글자 크기를 ${radio.value === 'large' ? '크게' : '보통으로'} 바꿨습니다.`);
-        });
-      });
-
-      document.querySelector('#contrast-setting').addEventListener('change', (event) => {
-        document.body.classList.toggle('high-contrast', event.target.checked);
-        document.querySelector('#contrast-status').textContent = `고대비 화면 ${event.target.checked ? '켜짐' : '꺼짐'}`;
-        announce(`고대비 화면을 ${event.target.checked ? '켰습니다' : '껐습니다'}.`);
-      });
-
-      document.querySelector('#risk-notification').addEventListener('change', (event) => {
-        document.querySelector('#notification-time').disabled = !event.target.checked;
-        document.querySelector('#risk-notification-status').textContent = `현재 ${event.target.checked ? '켜짐' : '꺼짐'}`;
-        announce(`가까운 기상 위험 알림을 ${event.target.checked ? '켰습니다' : '껐습니다'}.`);
-      });
-
-      document.querySelector('#saved-analysis-list').addEventListener('click', (event) => {
-        const button = event.target.closest('[data-analysis-action]');
-        if (!button) return;
-        if (button.dataset.analysisAction === 'view') showView('dashboard');
-        if (button.dataset.analysisAction === 'farm') {
-          applyMode('growing');
-          button.textContent = '농장으로 사용 중';
-          button.disabled = true;
-          showView('dashboard');
-          announce('실제 재배 중인 농장으로 전환했습니다. 오늘의 점검 항목이 우선 표시됩니다.');
-        }
-      });
-
-      document.querySelectorAll('[data-analysis-action="view"]').forEach((button) => {
-        if (!button.closest('#saved-analysis-list')) button.addEventListener('click', () => showView('dashboard'));
-      });
-
-      document.querySelector('#go-to-analyses').addEventListener('click', () => showView('analyses'));
-      document.querySelector('#open-new-analysis').addEventListener('click', () => openWizard(false));
-      document.querySelector('#new-analysis-button').addEventListener('click', () => openWizard(true));
-
-      nextButton.addEventListener('click', () => {
-        if (!validateStep(currentStep)) return;
-        const route = wizardRoute();
-        const currentIndex = route.indexOf(currentStep);
-        setStep(route[Math.min(currentIndex + 1, route.length - 1)]);
-      });
-
-      previousButton.addEventListener('click', () => {
-        const route = wizardRoute();
-        const currentIndex = route.indexOf(currentStep);
-        setStep(route[Math.max(currentIndex - 1, 0)]);
-      });
-
-      form.addEventListener('change', (event) => {
-        if (event.target.name === 'situation') {
-          const growing = event.target.value === 'growing';
-          document.querySelector('#crop-step-title').textContent = growing
-            ? '지금 키우는 작물을 모두 골라 주세요'
-            : '검토할 작물을 모두 골라 주세요';
-          document.querySelector('#crop-step-help').textContent = growing
-            ? '여러 작물을 함께 재배한다면 복수로 선택할 수 있습니다. 분석 후 작물 탭에서 결과를 전환할 수 있습니다.'
-            : '여러 작물을 비교하려면 복수로 선택할 수 있습니다. 분석 후 작물 탭에서 결과를 전환할 수 있습니다.';
-          renderCropSettings();
-          renderGrowthSettings();
-          setStep(currentStep, false);
-        }
-        if (event.target.name === 'crop') {
-          renderCropSettings();
-          renderGrowthSettings();
-        }
-        if (event.target.name === 'crop') setError('crop-error', false);
-        if (event.target.name.startsWith('cultivation-')) setError('cultivation-error', false);
-        if (event.target.name.startsWith('growth-')) {
-          const crop = event.target.name.slice('growth-'.length);
-          cropGrowthState[crop] = event.target.value;
-          setError('growth-error', false);
-        }
-        updateNextState();
-      });
-
-      growthPhoto.addEventListener('change', () => {
-        if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
-        const [file] = growthPhoto.files || [];
-        if (!file) {
-          photoPreviewUrl = null;
-          growthPhotoPreview.hidden = true;
-          growthPhotoImage.removeAttribute('src');
-          return;
-        }
-        if (!file.type.startsWith('image/') || file.size > 10 * 1024 * 1024) {
-          growthPhoto.value = '';
-          growthPhotoPreview.hidden = true;
-          announce('10MB 이하 이미지 파일만 추가할 수 있습니다.');
-          return;
-        }
-        photoPreviewUrl = URL.createObjectURL(file);
-        growthPhotoImage.src = photoPreviewUrl;
-        growthPhotoPreview.hidden = false;
-        announce('선택한 사진을 미리 봅니다.');
-      });
-
-      regionInput.addEventListener('input', () => {
-        setError('region-error', false);
-        updateNextState();
-      });
-
-      document.querySelectorAll('[data-edit-step]').forEach((button) => {
-        button.addEventListener('click', () => setStep(Number(button.dataset.editStep)));
-      });
-
-      form.addEventListener('submit', (event) => {
-        event.preventDefault();
-        if (window.__BACKEND_INTEGRATION_ENABLED__) return;
-        for (const step of wizardRoute().filter((step) => step !== 5)) {
-          if (!validateStep(step)) {
-            setStep(step);
-            return;
-          }
-        }
-        resetTaskState();
-        renderResult();
-        applyMode(selectedValue('situation'));
-        setDataState('partial', false);
-        if (document.querySelector('#save-consent').checked) addSavedAnalysis();
-        onboarding.hidden = true;
-        document.querySelector('.app-shell').inert = false;
-        skipLink.inert = false;
-        document.body.classList.remove('wizard-open');
-        document.body.classList.add('analysis-ready');
-        showView('dashboard');
-        announce('체험용 분석을 완료했습니다. 결과가 즉시 표시되었습니다.');
-      });
-
-      renderCropSettings();
-      renderGrowthSettings();
-      renderResult();
-      applyMode('planning');
-      setDataState('partial', false);
-      document.querySelector('.app-shell').inert = true;
-      skipLink.inert = true;
-      document.body.classList.add('wizard-open');
-      setStep(1);
-    })();
-  </script>
+  <script type="module" src="/ui-integration/ui-shell.mjs"></script>
   <script type="module" src="/ui-integration/backend-client.mjs"></script>
 </body>
 </html>

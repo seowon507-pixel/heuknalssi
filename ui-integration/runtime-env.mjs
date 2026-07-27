@@ -2,10 +2,11 @@ import {
   VERIFIED_KAKAO_ADDRESS_CONTRACT_VERSION,
   VERIFIED_KMA_ASOS_CONTRACT_VERSION,
   VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
+  VERIFIED_KMA_LOCATION_CATALOG_CONTRACT_VERSION,
   VERIFIED_KMA_MID_CONTRACT_VERSION,
   VERIFIED_KMA_SHORT_CONTRACT_VERSION,
   VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
-  VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION,
+  VERIFIED_SOIL_EXAM_CONTRACT_VERSION,
 } from "../backend-v3/src/adapters/index.js";
 
 function hasValue(value) {
@@ -27,7 +28,6 @@ export function buildBackendEnvironment({
   runtimeMode,
   backendPort,
   frontendOrigin,
-  sampleRuntimePath,
   reviewedRuntimePath,
 }) {
   const env = {
@@ -40,19 +40,6 @@ export function buildBackendEnvironment({
       "local-ui-integration-session-secret-at-least-32-characters",
   };
 
-  if (runtimeMode === "sample") {
-    env.TRUSTED_BACKEND_RUNTIME_MODULE = sampleRuntimePath;
-    env.ENABLE_LIVE_KAKAO = "false";
-    env.ENABLE_LIVE_KMA_SHORT = "false";
-    env.ENABLE_LIVE_KMA_MID = "false";
-    env.ENABLE_LIVE_KMA_ASOS = "false";
-    env.ENABLE_LIVE_KMA_CLIMATE_NORMAL = "false";
-    env.ENABLE_LIVE_SOIL = "false";
-    env.ENABLE_LIVE_SOIL_FIELD = "false";
-    env.ENABLE_SMARTFARM = "false";
-    return env;
-  }
-
   if (runtimeMode === "safe") {
     env.TRUSTED_BACKEND_RUNTIME_MODULE = "";
     env.ENABLE_LIVE_KAKAO = "false";
@@ -60,8 +47,10 @@ export function buildBackendEnvironment({
     env.ENABLE_LIVE_KMA_MID = "false";
     env.ENABLE_LIVE_KMA_ASOS = "false";
     env.ENABLE_LIVE_KMA_CLIMATE_NORMAL = "false";
+    env.ENABLE_LIVE_KMA_LOCATION_CATALOG = "false";
     env.ENABLE_LIVE_SOIL = "false";
     env.ENABLE_LIVE_SOIL_FIELD = "false";
+    env.ENABLE_LIVE_SOIL_EXAM = "false";
     env.ENABLE_SMARTFARM = "false";
     return env;
   }
@@ -96,17 +85,25 @@ export function buildBackendEnvironment({
     );
   }
 
-  const climateNormalConfigured = hasValue(env.KMA_API_HUB_AUTH_KEY);
+  // API 허브 키가 있으면 실제 평년값 API를 우선 사용하고, 미승인·장애 시
+  // 저장소의 동일 기준기간 공식 검수본으로 전환한다.
+  defaultFlag(env, "ENABLE_LIVE_KMA_CLIMATE_NORMAL", true);
+  defaultContract(
+    env,
+    "KMA_CLIMATE_NORMAL_CONTRACT_VERSION",
+    VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
+  );
+  const kmaApiHubConfigured = hasValue(env.KMA_API_HUB_AUTH_KEY);
   defaultFlag(
     env,
-    "ENABLE_LIVE_KMA_CLIMATE_NORMAL",
-    climateNormalConfigured,
+    "ENABLE_LIVE_KMA_LOCATION_CATALOG",
+    kmaApiHubConfigured,
   );
-  if (climateNormalConfigured) {
+  if (kmaApiHubConfigured) {
     defaultContract(
       env,
-      "KMA_CLIMATE_NORMAL_CONTRACT_VERSION",
-      VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
+      "KMA_LOCATION_CATALOG_CONTRACT_VERSION",
+      VERIFIED_KMA_LOCATION_CATALOG_CONTRACT_VERSION,
     );
   }
 
@@ -124,22 +121,21 @@ export function buildBackendEnvironment({
   // pH interval/area contract. The same public-data credential is used.
   defaultFlag(env, "ENABLE_LIVE_SOIL", publicDataConfigured);
   defaultFlag(env, "ENABLE_LIVE_SOIL_FIELD", publicDataConfigured);
+  defaultFlag(env, "ENABLE_LIVE_SOIL_EXAM", publicDataConfigured);
   if (publicDataConfigured) {
     defaultContract(
       env,
       "SOIL_FIELD_CONTRACT_VERSION",
       VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
     );
-  }
-
-  const smartfarmConfigured = hasValue(env.SMARTFARM_SERVICE_KEY);
-  defaultFlag(env, "ENABLE_SMARTFARM", smartfarmConfigured);
-  if (smartfarmConfigured) {
     defaultContract(
       env,
-      "SMARTFARM_CONTRACT_VERSION",
-      VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION,
+      "SOIL_EXAM_CONTRACT_VERSION",
+      VERIFIED_SOIL_EXAM_CONTRACT_VERSION,
     );
   }
+
+  // 현재 제품 범위에서 SmartFarm은 제외한다. 키가 남아 있어도 호출하지 않는다.
+  env.ENABLE_SMARTFARM = "false";
   return env;
 }

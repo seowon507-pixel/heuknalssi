@@ -85,7 +85,7 @@ export function toKmaGrid(latitude, longitude) {
 export function resolveLocationKeys(
   location,
   verifiedMappings = {},
-  { now = () => new Date() } = {},
+  { now = () => new Date(), officialCatalog = null } = {},
 ) {
   const mapping = findActiveVerifiedMapping(
     location,
@@ -107,6 +107,9 @@ export function resolveLocationKeys(
           administrativeRepresentative.longitude,
         )
       : null;
+  const catalogMapping = mapping
+    ? null
+    : resolveOfficialCatalogMapping(location, officialCatalog);
   const midForecastRegionIds =
     mapping?.midForecast?.verified === true &&
     validProviderKey(mapping.midForecast.temperatureRegId) &&
@@ -115,7 +118,7 @@ export function resolveLocationKeys(
           temperatureRegId: mapping.midForecast.temperatureRegId,
           landRegId: mapping.midForecast.landRegId,
         })
-      : null;
+      : catalogMapping?.midForecastRegionIds ?? null;
   const legalDongCode10 =
     typeof location.legalDongCode === 'string' &&
     /^\d{10}$/.test(location.legalDongCode)
@@ -124,7 +127,9 @@ export function resolveLocationKeys(
   const observationStation =
     isAddressResolved && mapping?.observationStation?.verified === true
       ? mapping.observationStation
-      : null;
+      : isAddressResolved
+        ? catalogMapping?.observationStation ?? null
+        : null;
   const observationDistanceKm = observationStation
     ? Number.isFinite(observationStation.latitude) &&
       Number.isFinite(observationStation.longitude)
@@ -150,12 +155,141 @@ export function resolveLocationKeys(
         ? 'ADMIN_AREA_REPRESENTATIVE'
         : null,
     midForecastRegionIds,
-    normalStationId: mapping?.normalStation?.verified === true ? mapping.normalStation.id : null,
+    normalStationId:
+      mapping?.normalStation?.verified === true
+        ? mapping.normalStation.id
+        : catalogMapping?.normalStationId ?? null,
     observationStationId:
       observationStation
         ? observationStation.id
         : null,
     observationDistanceKm,
+  });
+}
+
+function routingCoordinates(location) {
+  if (
+    location?.resolutionMode === 'ADDRESS_RESOLVED' &&
+    isFiniteCoordinate(location.latitude) &&
+    isFiniteCoordinate(location.longitude)
+  ) {
+    return {
+      latitude: location.latitude,
+      longitude: location.longitude,
+    };
+  }
+  const representative = location?.administrativeRepresentative;
+  if (
+    location?.resolutionMode === 'ADMIN_AREA_BROAD' &&
+    representative?.purpose === 'REGIONAL_FORECAST_ONLY' &&
+    isFiniteCoordinate(representative.latitude) &&
+    isFiniteCoordinate(representative.longitude)
+  ) {
+    return {
+      latitude: representative.latitude,
+      longitude: representative.longitude,
+    };
+  }
+  return null;
+}
+
+function nearestByDistance(entries, coordinates, { maxDistanceKm = 200 } = {}) {
+  let nearest = null;
+  for (const entry of entries) {
+    const distanceKm = distanceKmBetween(
+      coordinates.latitude,
+      coordinates.longitude,
+      entry.latitude,
+      entry.longitude,
+    );
+    if (
+      distanceKm === null ||
+      distanceKm > maxDistanceKm ||
+      (nearest && distanceKm >= nearest.distanceKm)
+    ) {
+      continue;
+    }
+    nearest = { entry, distanceKm };
+  }
+  return nearest;
+}
+
+function landRegionFor(zone, zonesById) {
+  let current = zone;
+  const visited = new Set();
+  let landRegion = null;
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+    if (
+      current.type === 'A' &&
+      current.id !== '11000000' &&
+      /^11[0-9A-Z]{6}$/u.test(current.id)
+    ) {
+      landRegion = current;
+    }
+    current = current.parentId ? zonesById.get(current.parentId) : null;
+  }
+  return landRegion;
+}
+
+/**
+ * Resolves nationwide routing from KMA's official current station and
+ * forecast-zone catalogs. The catalog never replaces a reviewed static
+ * mapping, and broad administrative inputs still cannot claim a parcel-level
+ * ASOS observation.
+ */
+export function resolveOfficialCatalogMapping(location, catalog) {
+  const coordinates = routingCoordinates(location);
+  if (
+    !coordinates ||
+    !catalog ||
+    !Array.isArray(catalog.stations) ||
+    !Array.isArray(catalog.zones)
+  ) {
+    return null;
+  }
+  const stations = catalog.stations.filter(
+    (station) =>
+      station &&
+      /^\d{2,4}$/u.test(String(station.id ?? '')) &&
+      isFiniteCoordinate(station.latitude) &&
+      isFiniteCoordinate(station.longitude),
+  );
+  const temperatureZones = catalog.zones.filter(
+    (zone) =>
+      zone?.type === 'C' &&
+      /^11[0-9A-Z]{6}$/u.test(String(zone.id ?? '')) &&
+      isFiniteCoordinate(zone.latitude) &&
+      isFiniteCoordinate(zone.longitude),
+  );
+  const zonesById = new Map(
+    catalog.zones
+      .filter((zone) => zone && typeof zone.id === 'string')
+      .map((zone) => [zone.id, zone]),
+  );
+  const station = nearestByDistance(stations, coordinates);
+  const temperature = nearestByDistance(temperatureZones, coordinates);
+  const land = temperature
+    ? landRegionFor(temperature.entry, zonesById)
+    : null;
+  if (!station && (!temperature || !land)) return null;
+
+  return Object.freeze({
+    normalStationId: station?.entry.id ?? null,
+    observationStation: station
+      ? Object.freeze({
+          id: station.entry.id,
+          latitude: station.entry.latitude,
+          longitude: station.entry.longitude,
+        })
+      : null,
+    midForecastRegionIds:
+      temperature && land
+        ? Object.freeze({
+            temperatureRegId: temperature.entry.id,
+            landRegId: land.id,
+          })
+        : null,
   });
 }
 

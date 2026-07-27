@@ -35,7 +35,7 @@ test("planning potato maps to a confirmed LAND_SEARCH request", () => {
         userConfirmed: true,
       },
       options: {
-        includeSmartfarmBenchmark: true,
+        includeSmartfarmBenchmark: false,
         includeSatelliteObservation: false,
         saveConsent: true,
       },
@@ -57,7 +57,7 @@ test("generic growing stage stays explicit but does not impersonate a reviewed c
 
   assert.equal(request.usageMode, "ACTIVE_GROWING");
   assert.equal(request.cultivationMode, "FACILITY_HYDRO");
-  assert.equal(request.options.includeSmartfarmBenchmark, true);
+  assert.equal(request.options.includeSmartfarmBenchmark, false);
   assert.deepEqual(request.season, {
     kind: "CUSTOM",
     profileId: "CUSTOM",
@@ -123,7 +123,7 @@ test("apple uses the reviewed annual profile selected by the backend", () => {
   );
   assert.equal(request.cultivationMode, "OPEN_FIELD");
   assert.equal("season" in request, false);
-  assert.equal(request.options.includeSmartfarmBenchmark, true);
+  assert.equal(request.options.includeSmartfarmBenchmark, false);
 });
 
 test("multiple active crops become independent backend requests", () => {
@@ -161,8 +161,8 @@ test("multiple active crops become independent backend requests", () => {
     endMonth: 8,
     userConfirmed: true,
   });
-  assert.equal(requests[0].options.includeSmartfarmBenchmark, true);
-  assert.equal(requests[1].options.includeSmartfarmBenchmark, true);
+  assert.equal(requests[0].options.includeSmartfarmBenchmark, false);
+  assert.equal(requests[1].options.includeSmartfarmBenchmark, false);
 });
 
 test("multiple planning crops remain LAND_SEARCH without a growth-stage requirement", () => {
@@ -192,34 +192,54 @@ test("multiple planning crops remain LAND_SEARCH without a growth-stage requirem
   );
 });
 
-test("SmartFarm is requested only for exact supported crop and cultivation contexts", () => {
-  const cucumberOutdoor = buildAnalysisRequest(
-    {
-      situation: "planning",
-      crop: "cucumber",
-      cultivation: "outdoor",
-      season: "spring",
-    },
-    TOKEN,
-  );
-  const lettuceFacility = buildAnalysisRequest(
-    {
-      situation: "planning",
-      crop: "lettuce",
-      cultivation: "facility-soil",
-      season: "spring",
-    },
-    TOKEN,
-  );
+test("SmartFarm 참고자료는 사전점검 READY와 지원 조합을 모두 만족할 때만 요청한다", () => {
+  const supportedContexts = [
+    { crop: "cucumber", cultivation: "facility-soil", season: "spring" },
+    { crop: "apple" },
+    { crop: "potato", season: "spring" },
+  ];
+  for (const context of supportedContexts) {
+    const disabledRequest = buildAnalysisRequest(
+      { situation: "planning", ...context },
+      TOKEN,
+    );
+    assert.equal(disabledRequest.options.includeSmartfarmBenchmark, false);
 
-  assert.equal(
-    cucumberOutdoor.options.includeSmartfarmBenchmark,
-    false,
-  );
-  assert.equal(
-    lettuceFacility.options.includeSmartfarmBenchmark,
-    false,
-  );
+    const enabledRequest = buildAnalysisRequest(
+      {
+        situation: "planning",
+        ...context,
+        smartfarmAvailable: true,
+      },
+      TOKEN,
+    );
+    assert.equal(
+      enabledRequest.options.includeSmartfarmBenchmark,
+      true,
+      `${context.crop} 지원 조합은 READY일 때 SmartFarm을 요청해야 한다`,
+    );
+  }
+
+  const unsupportedContexts = [
+    { crop: "cucumber", cultivation: "outdoor", season: "spring" },
+    { crop: "pear" },
+    { crop: "lettuce", cultivation: "facility-soil", season: "spring" },
+  ];
+  for (const context of unsupportedContexts) {
+    const request = buildAnalysisRequest(
+      {
+        situation: "planning",
+        ...context,
+        smartfarmAvailable: true,
+      },
+      TOKEN,
+    );
+    assert.equal(
+      request.options.includeSmartfarmBenchmark,
+      false,
+      `${context.crop} 미지원 조합에 SmartFarm이 포함되면 안 된다`,
+    );
+  }
 });
 
 test("active crop analysis uses the current calendar month without asking for a season", () => {
@@ -350,4 +370,94 @@ test("idempotency keys are namespaced and deterministic under injection", () => 
     createIdempotencyKey(() => "00000000-0000-4000-8000-000000000000"),
     "soil-weather-ui-00000000-0000-4000-8000-000000000000",
   );
+});
+
+test("a registered soil test rides along with the analysis request", () => {
+  const request = buildAnalysisRequest(
+    {
+      situation: "planning",
+      crop: "apple",
+      soilTest: {
+        ph: "6.1",
+        organicMatter: "26",
+        sampledOn: "2026-03-15",
+        issuer: "  안동시농업기술센터  ",
+        userConfirmed: true,
+      },
+    },
+    TOKEN,
+  );
+
+  assert.deepEqual(request.soilTest, {
+    ph: 6.1,
+    organicMatter: 26,
+    sampledOn: "2026-03-15",
+    issuer: "안동시농업기술센터",
+    userConfirmed: true,
+  });
+});
+
+test("an analysis without a registered soil test omits the field entirely", () => {
+  const request = buildAnalysisRequest(
+    { situation: "planning", crop: "apple" },
+    TOKEN,
+  );
+  assert.equal(Object.hasOwn(request, "soilTest"), false);
+
+  const emptyPh = buildAnalysisRequest(
+    { situation: "planning", crop: "apple", soilTest: { sampledOn: "2026-03-15" } },
+    TOKEN,
+  );
+  assert.equal(Object.hasOwn(emptyPh, "soilTest"), false);
+});
+
+test("soil test values outside the reviewed range are rejected before sending", () => {
+  assert.throws(
+    () =>
+      buildAnalysisRequest(
+        {
+          situation: "planning",
+          crop: "apple",
+          soilTest: { ph: 99, sampledOn: "2026-03-15" },
+        },
+        TOKEN,
+      ),
+    (error) =>
+      error instanceof ContractValidationError &&
+      error.code === "SOIL_TEST_OUT_OF_RANGE",
+  );
+  assert.throws(
+    () =>
+      buildAnalysisRequest(
+        { situation: "planning", crop: "apple", soilTest: { ph: 6.1 } },
+        TOKEN,
+      ),
+    (error) => error.code === "SOIL_TEST_DATE_REQUIRED",
+  );
+});
+
+test("buildAnalysisRequests forwards the registered soil test to every crop", () => {
+  const requests = buildAnalysisRequests(
+    {
+      situation: "planning",
+      crops: ["apple", "potato"],
+      cropSettings: { potato: { season: "spring" } },
+      soilTest: { ph: 6.1, sampledOn: "2026-03-15", userConfirmed: true },
+    },
+    TOKEN,
+  );
+
+  assert.equal(requests.length, 2);
+  for (const request of requests) {
+    assert.equal(request.soilTest?.ph, 6.1);
+    assert.equal(request.soilTest?.sampledOn, "2026-03-15");
+  }
+});
+
+test("buildAnalysisRequests omits soilTest when none is registered", () => {
+  const requests = buildAnalysisRequests(
+    { situation: "planning", crops: ["apple"] },
+    TOKEN,
+  );
+  assert.equal(Object.hasOwn(requests[0], "soilTest"), false);
 });

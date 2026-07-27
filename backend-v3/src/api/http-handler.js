@@ -1,13 +1,16 @@
 import { randomBytes as nodeRandomBytes } from "node:crypto";
 
 import {
+  DeviceBackupError,
   FixedWindowRateLimiter,
   IdempotencyStore,
   SessionManager,
   createClientIpResolver,
   createOpaqueId,
+  generateAccountKey,
   hashNormalizedPayload,
   isValidIdempotencyKey,
+  normalizeAccountKey,
 } from "../infrastructure/index.js";
 import {
   ApiError,
@@ -76,6 +79,17 @@ const ROUTES = Object.freeze([
     pattern: /^\/api\/analyses\/([^/]+)$/,
     methods: ["GET"],
     parameter: "analysisId",
+  },
+  {
+    name: "backup.save",
+    pattern: /^\/api\/device-backup$/,
+    methods: ["POST"],
+  },
+  {
+    name: "backup.restore",
+    // 계정키를 URL·로그에 남기지 않으려고 본문으로 받는다.
+    pattern: /^\/api\/device-backup\/restore$/,
+    methods: ["POST"],
   },
   {
     name: "health.preflight",
@@ -456,6 +470,7 @@ export function createHttpHandler({
   config = {},
   clock = Date.now,
   randomBytes = nodeRandomBytes,
+  deviceBackup = null,
 } = {}) {
   validateServices(services);
   if (typeof clock !== "function") {
@@ -920,6 +935,37 @@ export function createHttpHandler({
         );
         sendJson(res, 200, result);
         return;
+      }
+
+      if (route.name === "backup.save" || route.name === "backup.restore") {
+        if (!deviceBackup || deviceBackup.configured !== true) {
+          throw new ApiError("BACKUP_NOT_CONFIGURED");
+        }
+        const body = await readJsonBody(
+          req,
+          config.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES,
+          abortContext.signal,
+        );
+        try {
+          if (route.name === "backup.save") {
+            const accountKey =
+              body.accountKey === undefined || body.accountKey === null
+                ? generateAccountKey()
+                : normalizeAccountKey(body.accountKey);
+            const { savedAt } = await deviceBackup.save(accountKey, body.payload);
+            sendJson(res, 200, { accountKey, savedAt });
+            return;
+          }
+          const accountKey = normalizeAccountKey(body.accountKey);
+          const { payload, savedAt } = await deviceBackup.load(accountKey);
+          sendJson(res, 200, { payload, savedAt });
+          return;
+        } catch (error) {
+          if (error instanceof DeviceBackupError) {
+            throw new ApiError(error.code);
+          }
+          throw error;
+        }
       }
 
       if (route.name === "health.preflight") {

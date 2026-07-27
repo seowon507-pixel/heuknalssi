@@ -10,6 +10,7 @@ import {
 } from "../src/application/index.js";
 import {
   createRuleRegistry,
+  evaluateForecastRisks,
   validateRuleRegistry,
 } from "../src/domain/index.js";
 import { createBackend } from "../server/app.js";
@@ -18,6 +19,21 @@ import { REVIEWED_LOCATION_MAPPINGS } from "../runtime/reviewed-location-mapping
 import { createRuntimeOptions } from "../runtime/reviewed-runtime.mjs";
 
 const REVIEW_CLOCK = () => new Date("2026-07-25T12:00:00.000Z");
+const REVIEWED_FORECAST_CONTEXTS = [
+  ["APPLE", "OPEN_FIELD", "UNSPECIFIED"],
+  ["PEAR", "OPEN_FIELD", "UNSPECIFIED"],
+  ["PEAR", "OPEN_FIELD", "FLOWERING"],
+  ["POTATO", "OPEN_FIELD", "UNSPECIFIED"],
+  ["POTATO", "OPEN_FIELD", "TUBER_BULKING"],
+  ["CUCUMBER", "OPEN_FIELD", "UNSPECIFIED"],
+  ["CUCUMBER", "FACILITY_SOIL", "UNSPECIFIED"],
+  ["CUCUMBER", "FACILITY_HYDRO", "UNSPECIFIED"],
+  ["LETTUCE", "OPEN_FIELD", "UNSPECIFIED"],
+  ["LETTUCE", "FACILITY_SOIL", "UNSPECIFIED"],
+  ["LETTUCE", "FACILITY_SOIL", "FLOWER_DIFFERENTIATION"],
+  ["LETTUCE", "FACILITY_HYDRO", "UNSPECIFIED"],
+  ["LETTUCE", "FACILITY_HYDRO", "FLOWER_DIFFERENTIATION"],
+];
 
 test("reviewed crop rules pass the strict activation gate", () => {
   const validation = validateRuleRegistry(REVIEWED_CROP_RULES);
@@ -28,11 +44,18 @@ test("reviewed crop rules pass the strict activation gate", () => {
     [...new Set(validation.validRules.map((rule) => rule.crop))].sort(),
     ["APPLE", "CUCUMBER", "LETTUCE", "PEAR", "POTATO"],
   );
+  // 검수 묶음마다 검수일이 다르다. 날짜를 하나로 못 박는 대신 모든 규칙이
+  // 실제 검수일(ISO)과 HTTPS 출처를 갖추었는지 확인한다.
+  const REVIEWED_DATES = new Set(["2026-07-25", "2026-07-27"]);
   assert.ok(
     validation.validRules.every(
       (rule) =>
-        rule.reviewedAt === "2026-07-25" &&
-        rule.sourceUrl.startsWith("https://"),
+        REVIEWED_DATES.has(rule.reviewedAt) &&
+        rule.sourceUrl.startsWith("https://") &&
+        typeof rule.sourceTitle === "string" &&
+        rule.sourceTitle !== "" &&
+        typeof rule.sourcePageOrTable === "string" &&
+        rule.sourcePageOrTable !== "",
     ),
   );
   assert.ok(
@@ -53,6 +76,158 @@ test("reviewed crop rules pass the strict activation gate", () => {
           rule.guidance.sourceUrl.startsWith("https://"),
       ),
   );
+});
+
+test("all reviewed crop, cultivation, and growth contexts reach a complete forecast conclusion", () => {
+  const days = Array.from({ length: 5 }, (_, index) => ({
+    date: `2026-07-${String(index + 24).padStart(2, "0")}`,
+    sourceType: "SHORT_GRID",
+    sourceFreshness: "CURRENT",
+    minTemperature: 15,
+    maxTemperature: 24,
+  }));
+
+  for (const [crop, cultivationMode, growthStage] of REVIEWED_FORECAST_CONTEXTS) {
+    const result = evaluateForecastRisks({
+      days,
+      rules: REVIEWED_CROP_RULES,
+      crop,
+      cultivationMode,
+      growthStage,
+      unitsByMetric: {
+        minTemperature: "℃",
+        maxTemperature: "℃",
+      },
+    });
+
+    assert.equal(
+      result.state,
+      "READY",
+      `${crop}/${cultivationMode}/${growthStage}`,
+    );
+    assert.equal(
+      result.noActiveRisksConfirmed,
+      true,
+      `${crop}/${cultivationMode}/${growthStage}`,
+    );
+    assert.ok(result.ruleEvaluations.length > 0);
+  }
+});
+
+test("reviewed forecast contexts expose the exact missing date and metric instead of an incomplete judgement", () => {
+  const completeDays = Array.from({ length: 5 }, (_, index) => ({
+    date: `2026-07-${String(index + 24).padStart(2, "0")}`,
+    sourceType: "SHORT_GRID",
+    sourceFreshness: "CURRENT",
+    minTemperature: 15,
+    maxTemperature: 24,
+  }));
+
+  for (const [crop, cultivationMode, growthStage] of REVIEWED_FORECAST_CONTEXTS) {
+    const days = completeDays.map((day, index) =>
+      index === 2 ? { ...day, maxTemperature: null } : day,
+    );
+    const result = evaluateForecastRisks({
+      days,
+      rules: REVIEWED_CROP_RULES,
+      crop,
+      cultivationMode,
+      growthStage,
+      unitsByMetric: {
+        minTemperature: "℃",
+        maxTemperature: "℃",
+      },
+    });
+
+    assert.equal(
+      result.state,
+      "PARTIAL",
+      `${crop}/${cultivationMode}/${growthStage}`,
+    );
+    assert.equal(result.noActiveRisksConfirmed, false);
+    assert.ok(
+      result.missingMetrics.some(
+        ({ date, metric }) =>
+          date === "2026-07-26" && metric === "maxTemperature",
+      ),
+      `${crop}/${cultivationMode}/${growthStage}`,
+    );
+  }
+});
+
+test("minimum-temperature gaps affect only contexts whose reviewed rules require daily lows", () => {
+  const days = Array.from({ length: 5 }, (_, index) => ({
+    date: `2026-07-${String(index + 24).padStart(2, "0")}`,
+    sourceType: "SHORT_GRID",
+    sourceFreshness: "CURRENT",
+    minTemperature: index === 2 ? null : 15,
+    maxTemperature: 24,
+  }));
+  const lowTemperatureContexts = new Set([
+    "PEAR/OPEN_FIELD/FLOWERING",
+    "CUCUMBER/OPEN_FIELD/UNSPECIFIED",
+    "CUCUMBER/FACILITY_SOIL/UNSPECIFIED",
+    "CUCUMBER/FACILITY_HYDRO/UNSPECIFIED",
+  ]);
+
+  for (const [crop, cultivationMode, growthStage] of REVIEWED_FORECAST_CONTEXTS) {
+    const context = `${crop}/${cultivationMode}/${growthStage}`;
+    const result = evaluateForecastRisks({
+      days,
+      rules: REVIEWED_CROP_RULES,
+      crop,
+      cultivationMode,
+      growthStage,
+      unitsByMetric: {
+        minTemperature: "℃",
+        maxTemperature: "℃",
+      },
+    });
+
+    assert.equal(
+      result.state,
+      lowTemperatureContexts.has(context) ? "PARTIAL" : "READY",
+      context,
+    );
+  }
+});
+
+test("complete short-range values stay conclusive without mid-range days, while both ranges missing stay on hold", () => {
+  const completeShortRange = Array.from({ length: 5 }, (_, index) => ({
+    date: `2026-07-${String(index + 24).padStart(2, "0")}`,
+    sourceType: "SHORT_GRID",
+    sourceFreshness: "CURRENT",
+    minTemperature: 15,
+    maxTemperature: 24,
+  }));
+
+  const shortOnly = evaluateForecastRisks({
+    days: completeShortRange,
+    rules: REVIEWED_CROP_RULES,
+    crop: "APPLE",
+    cultivationMode: "OPEN_FIELD",
+    growthStage: "UNSPECIFIED",
+    unitsByMetric: {
+      minTemperature: "℃",
+      maxTemperature: "℃",
+    },
+  });
+  const noForecast = evaluateForecastRisks({
+    days: [],
+    rules: REVIEWED_CROP_RULES,
+    crop: "APPLE",
+    cultivationMode: "OPEN_FIELD",
+    growthStage: "UNSPECIFIED",
+    unitsByMetric: {
+      minTemperature: "℃",
+      maxTemperature: "℃",
+    },
+  });
+
+  assert.equal(shortOnly.state, "READY");
+  assert.equal(shortOnly.noActiveRisksConfirmed, true);
+  assert.equal(noForecast.state, "HOLD");
+  assert.equal(noForecast.noActiveRisksConfirmed, false);
 });
 
 test("custom open-field climate rules activate only selected crop months", () => {
@@ -114,15 +289,18 @@ test("single targets and facility risks retain their evidence limitations", () =
   );
 });
 
-test("six reviewed locations provide every P0 mapping and calculate ASOS distance from the confirmed address", () => {
+test("reviewed locations provide every P0 mapping and calculate ASOS distance from the confirmed address", () => {
   const validation = validateVerifiedLocationMappings(
     REVIEWED_LOCATION_MAPPINGS,
     { now: REVIEW_CLOCK },
   );
 
   assert.equal(validation.valid, true);
-  assert.equal(validation.verifiedCount, 6);
-  assert.equal(validation.p0ReadyCount, 6);
+  // 검수 지역은 늘어난다. 개수를 못 박는 대신 모든 항목이 P0를 갖췄는지 본다.
+  const reviewedCount = Object.keys(REVIEWED_LOCATION_MAPPINGS).length;
+  assert.ok(reviewedCount >= 6, "검수 지역은 최소 6곳이어야 한다");
+  assert.equal(validation.verifiedCount, reviewedCount);
+  assert.equal(validation.p0ReadyCount, reviewedCount);
   assert.equal(validation.p0IncompleteAreaCodes.length, 0);
 
   const resolved = resolveLocationKeys(
@@ -192,6 +370,12 @@ test("preflight configures all five reviewed crops while preserving adapter and 
   assert.equal(potatoCustom.modules.SOIL.status, "CONFIGURED");
   assert.equal(potatoCustom.modules.FORECAST.status, "CONFIGURED");
   assert.equal(cucumberFacility.status, "CONFIGURED");
-  assert.equal(preflight.locationMappings.verifiedCount, 6);
-  assert.equal(preflight.locationMappings.p0ReadyCount, 6);
+  assert.equal(
+    preflight.locationMappings.verifiedCount,
+    Object.keys(REVIEWED_LOCATION_MAPPINGS).length,
+  );
+  assert.equal(
+    preflight.locationMappings.p0ReadyCount,
+    Object.keys(REVIEWED_LOCATION_MAPPINGS).length,
+  );
 });

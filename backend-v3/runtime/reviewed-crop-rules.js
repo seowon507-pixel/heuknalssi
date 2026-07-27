@@ -638,10 +638,123 @@ const LETTUCE_RULES = [
   ),
 ];
 
+/**
+ * 흙토람 토양검정 결과지의 「토양의 화학적 성질 — 적정범위」 표.
+ * 논/밭/과수/시설 네 가지 토지이용 구분으로 제공되며, 작물별 값이 아니다.
+ * pH는 이미 작목별 농사로 기준으로 검수된 규칙이 있으므로 여기서 다시
+ * 만들지 않는다(같은 지표를 두 번 세면 가중치가 왜곡된다).
+ *
+ * 표 자체가 근거이고 아래 수치는 옮겨 적은 것이다. 임의로 만든 값은 없다.
+ */
+const SOIL_CHEMISTRY_SOURCE = Object.freeze({
+  sourceTitle: "흙토람 농업환경 변동정보 — 토양화학성 적정범위",
+  sourceUrl: "https://soil.rda.go.kr/soilact/composition.do",
+  sourcePageOrTable: "경작 형태별 토양화학성 적정범위 표",
+  sourceVersion: "국립농업과학원 흙토람 (2026-07-27 확인)",
+  reviewedAt: "2026-07-27",
+});
+
+// 표의 열 순서: 유기물 · 유효인산 · 칼륨 · 칼슘 · 마그네슘 · 전기전도도
+const SOIL_CHEMISTRY_RANGES = Object.freeze({
+  // 밭: 20~30 / 300~550 / 0.50~0.80 / 5.0~6.0 / 1.5~2.0 / 2 이하
+  UPLAND: Object.freeze({
+    ORGANIC_MATTER: [20, 30],
+    AVAILABLE_PHOSPHATE: [300, 550],
+    EXCHANGEABLE_K: [0.5, 0.8],
+    EXCHANGEABLE_CA: [5, 6],
+    EXCHANGEABLE_MG: [1.5, 2],
+    EC: [0, 2],
+  }),
+  // 과수: 밭과 같은 범위로 표기되어 있다
+  ORCHARD: Object.freeze({
+    ORGANIC_MATTER: [20, 30],
+    AVAILABLE_PHOSPHATE: [300, 550],
+    EXCHANGEABLE_K: [0.5, 0.8],
+    EXCHANGEABLE_CA: [5, 6],
+    EXCHANGEABLE_MG: [1.5, 2],
+    EC: [0, 2],
+  }),
+  // 시설: 유기물 25~35, 마그네슘 1.5~2.5로 밭과 다르다
+  FACILITY: Object.freeze({
+    ORGANIC_MATTER: [25, 35],
+    AVAILABLE_PHOSPHATE: [300, 550],
+    EXCHANGEABLE_K: [0.5, 0.8],
+    EXCHANGEABLE_CA: [5, 6],
+    EXCHANGEABLE_MG: [1.5, 2.5],
+    EC: [0, 2],
+  }),
+});
+
+const SOIL_CHEMISTRY_UNITS = Object.freeze({
+  ORGANIC_MATTER: "g/kg",
+  AVAILABLE_PHOSPHATE: "mg/kg",
+  EXCHANGEABLE_K: "cmol+/kg",
+  EXCHANGEABLE_CA: "cmol+/kg",
+  EXCHANGEABLE_MG: "cmol+/kg",
+  EC: "dS/m",
+});
+
+const SOIL_CHEMISTRY_SLUGS = Object.freeze({
+  ORGANIC_MATTER: "organic-matter",
+  AVAILABLE_PHOSPHATE: "available-phosphate",
+  EXCHANGEABLE_K: "exchangeable-k",
+  EXCHANGEABLE_CA: "exchangeable-ca",
+  EXCHANGEABLE_MG: "exchangeable-mg",
+  EC: "electrical-conductivity",
+});
+
+/**
+ * 산도(pH)만 작물별로 검수된 임계값이라 CRITICAL로 둔다. 아래 양분 항목은
+ * 토지이용 구분 기준이라 보조 근거로만 쓰고, 값이 없어도 판단을 막지 않는다.
+ */
+function soilChemistryRules(crop, cultivationMode, landUse, slugPrefix) {
+  return Object.entries(SOIL_CHEMISTRY_RANGES[landUse]).map(
+    ([metric, optimalRange]) => ({
+      ruleId: `${slugPrefix}.soil.${SOIL_CHEMISTRY_SLUGS[metric]}.v1`,
+      module: "SOIL",
+      crop,
+      cultivationMode,
+      evaluationPeriod: { grain: "SEASON_AGGREGATE", aggregation: "MEAN" },
+      stage: "ANY",
+      metric,
+      unit: SOIL_CHEMISTRY_UNITS[metric],
+      use: "DEVIATION",
+      evidenceStatus: "CONFIRMED_RANGE",
+      optimalRange: [...optimalRange],
+      toleranceRange: null,
+      sensitivityTier: "SUPPORTING",
+      critical: false,
+      ...SOIL_CHEMISTRY_SOURCE,
+      ruleVersion: `${slugPrefix}-soil-chemistry-v1`,
+    }),
+  );
+}
+
+const SOIL_CHEMISTRY_RULES = Object.freeze([
+  ...soilChemistryRules("APPLE", "OPEN_FIELD", "ORCHARD", "apple.open-field"),
+  ...soilChemistryRules("PEAR", "OPEN_FIELD", "ORCHARD", "pear.open-field"),
+  ...soilChemistryRules("POTATO", "OPEN_FIELD", "UPLAND", "potato.open-field"),
+  ...soilChemistryRules("CUCUMBER", "OPEN_FIELD", "UPLAND", "cucumber.open-field"),
+  ...soilChemistryRules(
+    "CUCUMBER",
+    "FACILITY_SOIL",
+    "FACILITY",
+    "cucumber.facility-soil",
+  ),
+  ...soilChemistryRules("LETTUCE", "OPEN_FIELD", "UPLAND", "lettuce.open-field"),
+  ...soilChemistryRules(
+    "LETTUCE",
+    "FACILITY_SOIL",
+    "FACILITY",
+    "lettuce.facility-soil",
+  ),
+]);
+
 export const REVIEWED_CROP_RULES = Object.freeze([
   ...APPLE_RULES,
   ...PEAR_RULES,
   ...POTATO_RULES,
   ...CUCUMBER_RULES,
   ...LETTUCE_RULES,
+  ...SOIL_CHEMISTRY_RULES,
 ]);

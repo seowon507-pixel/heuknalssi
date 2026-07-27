@@ -22,10 +22,10 @@ function fieldXml({
       <Result_Code>200</Result_Code>
       <items>
         <item>
-          <PNU_Code>${pnu}</PNU_Code>
-          <Soildra_Code>${drainage}</Soildra_Code>
-          <Vldsoildep_Code>${effectiveDepth}</Vldsoildep_Code>
-          <Surtture_Code>${texture}</Surtture_Code>
+          <PNU_Cd>${pnu}</PNU_Cd>
+          <Soildra_Cd>${drainage}</Soildra_Cd>
+          <Vldsoildep_Cd>${effectiveDepth}</Vldsoildep_Cd>
+          <Surtture_Cd>${texture}</Surtture_Cd>
         </item>
       </items>
     </response>`;
@@ -143,4 +143,23 @@ test("soil field adapter never exposes credential or parcel identifier", async (
   assert.equal(envelope.adapterState, "SUCCESS");
   assert.equal(serialized.includes("fixture-secret"), false);
   assert.equal(serialized.includes(PNU), false);
+});
+
+test("토양도에 속성이 없는 필지는 스키마 오류가 아니라 자료 없음으로 구분한다", () => {
+  const pnu = "5176025026100170000";
+  const empty = [
+    "<response><header><Result_Code>200</Result_Code>",
+    "<Result_Msg>정상</Result_Msg></header><body><items><item>",
+    `<PNU_Cd>${pnu}</PNU_Cd>`,
+    "<Soildra_Cd></Soildra_Cd>",
+    "<Vldsoildep_Cd></Vldsoildep_Cd>",
+    "<Surtture_Cd></Surtture_Cd>",
+    "</item></items></body></response>",
+  ].join("");
+
+  assert.throws(
+    () => parseSoilFieldCharacteristics(empty, { expectedPnu: pnu }),
+    (error) => error.name === "NoDataError" || error.adapterState === "NO_DATA",
+    "빈 값은 NoDataError여야 한다",
+  );
 });

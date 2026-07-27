@@ -96,9 +96,8 @@ function decideOpenField(request, modules, states) {
     climate?.state === "READY" &&
     soil?.state === "READY" &&
     states.conditionState === "READY";
-  const allEvidenceCurrent = [climate, soil, riskModule(modules)].every(
-    currentModule,
-  );
+  const allEvidenceCurrent =
+    [climate, soil].every(currentModule) && currentRiskEvaluation(modules);
   const allCriticalClimateWithin = climateDeviations(climate)
     .filter((item) => item.critical)
     .every((item) => item.normalizedDeviation === 0);
@@ -142,7 +141,7 @@ function decideFacility(modules, states) {
   }
   if (
     states.riskState !== "READY" ||
-    !currentModule(riskModule(modules)) ||
+    !currentRiskEvaluation(modules) ||
     !shortForecastAvailable(modules) ||
     !noActiveRiskConclusionAvailable(modules)
   ) {
@@ -254,6 +253,17 @@ function currentModule(module) {
     module.qualityFlags?.includes("SAMPLE") ||
     module.qualityFlags?.includes("STALE")
   );
+}
+
+function currentRiskEvaluation(modules) {
+  const forecast = modules.forecast;
+  if (forecast?.result?.riskState !== undefined) {
+    return (
+      forecast.result.riskState === "READY" &&
+      forecast.result.noActiveRisksConfirmed === true
+    );
+  }
+  return currentModule(riskModule(modules));
 }
 
 function unique(values) {

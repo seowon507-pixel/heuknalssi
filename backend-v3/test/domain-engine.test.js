@@ -185,6 +185,110 @@ test("request validation normalizes safe fields and expands a cross-year season"
   });
 });
 
+test("a confirmed soil test is normalized with its own source marker", () => {
+  const normalized = validateAndNormalizeRequest(
+    baseRequest({
+      soilTest: {
+        ph: 6.1,
+        electricalConductivity: 0.8,
+        organicMatter: 26,
+        sampledOn: "2026-03-15",
+        issuer: "  안동시농업기술센터  ",
+        userConfirmed: true,
+      },
+    }),
+  );
+
+  assert.equal(normalized.soilTest.ph, 6.1);
+  assert.equal(normalized.soilTest.organicMatter, 26);
+  assert.equal(normalized.soilTest.sampledOn, "2026-03-15");
+  assert.equal(normalized.soilTest.issuer, "안동시농업기술센터");
+  assert.equal(normalized.soilTest.source, "USER_SOIL_TEST");
+});
+
+test("an analysis without a soil test keeps the field absent instead of guessing", () => {
+  const normalized = validateAndNormalizeRequest(baseRequest());
+  assert.equal(Object.hasOwn(normalized, "soilTest"), false);
+});
+
+test("soil test rejects unconfirmed, out-of-range, missing pH, and unknown fields", () => {
+  const cases = [
+    [{ ph: 6.1, sampledOn: "2026-03-15" }, "SOIL_TEST_NOT_CONFIRMED"],
+    [
+      { ph: 99, sampledOn: "2026-03-15", userConfirmed: true },
+      "SOIL_TEST_OUT_OF_RANGE",
+    ],
+    [
+      { electricalConductivity: 0.8, sampledOn: "2026-03-15", userConfirmed: true },
+      "SOIL_TEST_PH_REQUIRED",
+    ],
+    [{ ph: 6.1, sampledOn: "2026-02-30", userConfirmed: true }, "INVALID_SOIL_TEST"],
+    [{ ph: 6.1, sampledOn: "20260315", userConfirmed: true }, "INVALID_SOIL_TEST"],
+    [
+      { ph: 6.1, sampledOn: "2026-03-15", farmerName: "홍길동", userConfirmed: true },
+      "INVALID_SOIL_TEST",
+    ],
+  ];
+  for (const [soilTest, code] of cases) {
+    assert.throws(
+      () => validateAndNormalizeRequest(baseRequest({ soilTest })),
+      (error) => error.code === code,
+      `expected ${code} for ${JSON.stringify(soilTest)}`,
+    );
+  }
+});
+
+test("a measured pH is classified without inventing boundary uncertainty", () => {
+  const rules = [
+    soilRule({
+      ruleId: "ph-rule",
+      crop: "CUCUMBER",
+      metric: "PH",
+      unit: "pH",
+      optimalRange: [5.5, 6.8],
+    }),
+  ];
+  const measured = (ph) => [
+    {
+      metric: "PH",
+      unit: "pH",
+      boundarySemanticsVerified: true,
+      totalValidArea: 1,
+      areaUnit: "MEASURED_POINT",
+      intervals: [
+        {
+          lower: ph,
+          upper: ph,
+          lowerInclusive: true,
+          upperInclusive: true,
+          area: 1,
+          areaUnit: "MEASURED_POINT",
+        },
+      ],
+    },
+  ];
+
+  const inside = evaluateSoil({
+    crop: "CUCUMBER",
+    cultivationMode: "OPEN_FIELD",
+    rules,
+    metrics: measured(6.2),
+  });
+  assert.equal(inside.state, "READY");
+  assert.equal(inside.result.metrics[0].fitRatio, 1);
+  assert.equal(inside.result.metrics[0].uncertainRatio, 0);
+
+  const outside = evaluateSoil({
+    crop: "CUCUMBER",
+    cultivationMode: "OPEN_FIELD",
+    rules,
+    metrics: measured(5.1),
+  });
+  assert.equal(outside.state, "READY");
+  assert.equal(outside.result.metrics[0].outsideRatio, 1);
+  assert.equal(outside.result.metrics[0].uncertainRatio, 0);
+});
+
 test("request validation rejects invalid crop-mode, unconfirmed location, and injected coordinates", () => {
   assert.throws(
     () =>
@@ -647,6 +751,152 @@ test("climate coverage keeps missing planned weights and gates aggregate deviati
     denominator: 7,
     plannedDenominator: 10,
   });
+});
+
+test("annual verified profile derives a season mean from the twelve monthly normals", () => {
+  const rules = [
+    climateRule({
+      ruleId: "apple-annual",
+      crop: "APPLE",
+      seasonProfileId: "APPLE_OPEN_FIELD_ANNUAL",
+      evaluationPeriod: { grain: "SEASON_AGGREGATE", aggregation: "MEAN" },
+      optimalRange: [8, 11],
+    }),
+  ];
+  // 월평균 12.5도 → 최적 상한 11도를 1.5도 초과, 폭 3도이므로 0.5
+  const observations = Array.from({ length: 12 }, (_, index) => ({
+    metric: "meanTemperature",
+    month: index + 1,
+    value: index < 6 ? 10 : 15,
+    unit: "degC",
+  }));
+
+  const module = evaluateClimate({
+    crop: "APPLE",
+    cultivationMode: "OPEN_FIELD",
+    season: {
+      kind: "VERIFIED_PROFILE",
+      profileId: "APPLE_OPEN_FIELD_ANNUAL",
+      startMonth: null,
+      endMonth: null,
+    },
+    rules,
+    observations,
+  });
+
+  assert.equal(module.state, "READY");
+  assert.equal(module.coverage, 1);
+  assert.equal(module.result.deviations.length, 1);
+  assert.equal(module.result.deviations[0].observedValue, 12.5);
+  assert.deepEqual(module.result.deviations[0].physicalDeviation, {
+    direction: "ABOVE",
+    amount: 1.5,
+  });
+  assert.equal(module.result.deviations[0].normalizedDeviation, 0.5);
+});
+
+test("custom season aggregates only the months inside that season", () => {
+  const rules = [
+    climateRule({
+      ruleId: "custom-aggregate",
+      evaluationPeriod: { grain: "SEASON_AGGREGATE", aggregation: "MEAN" },
+      optimalRange: [10, 20],
+    }),
+  ];
+  const observations = Array.from({ length: 12 }, (_, index) => ({
+    metric: "meanTemperature",
+    month: index + 1,
+    // 4~6월만 20도, 나머지는 집계에 들어가면 안 되는 0도
+    value: index + 1 >= 4 && index + 1 <= 6 ? 20 : 0,
+    unit: "degC",
+  }));
+
+  const module = evaluateClimate({
+    cultivationMode: "OPEN_FIELD",
+    season: {
+      kind: "CUSTOM",
+      profileId: "CUSTOM",
+      startMonth: 4,
+      endMonth: 6,
+    },
+    rules,
+    observations,
+  });
+
+  assert.equal(module.state, "READY");
+  assert.equal(module.result.deviations[0].observedValue, 20);
+});
+
+test("a season aggregate is not derived when a month inside the season is missing", () => {
+  const rules = [
+    climateRule({
+      ruleId: "incomplete-aggregate",
+      evaluationPeriod: { grain: "SEASON_AGGREGATE", aggregation: "MEAN" },
+    }),
+  ];
+  const module = evaluateClimate({
+    cultivationMode: "OPEN_FIELD",
+    season: {
+      kind: "CUSTOM",
+      profileId: "CUSTOM",
+      startMonth: 4,
+      endMonth: 6,
+    },
+    rules,
+    observations: [4, 5].map((month) => ({
+      metric: "meanTemperature",
+      month,
+      value: 15,
+      unit: "degC",
+    })),
+  });
+
+  assert.equal(module.state, "HOLD");
+  assert.deepEqual(module.result.excludedRules, [
+    { ruleId: "incomplete-aggregate", reason: "MISSING_VALUE" },
+  ]);
+});
+
+test("an adapter supplied season aggregate is preferred over a derived one", () => {
+  const rules = [
+    climateRule({
+      ruleId: "provided-aggregate",
+      crop: "APPLE",
+      seasonProfileId: "APPLE_OPEN_FIELD_ANNUAL",
+      evaluationPeriod: { grain: "SEASON_AGGREGATE", aggregation: "MEAN" },
+      optimalRange: [10, 20],
+    }),
+  ];
+  const observations = [
+    ...Array.from({ length: 12 }, (_, index) => ({
+      metric: "meanTemperature",
+      month: index + 1,
+      value: 30,
+      unit: "degC",
+    })),
+    {
+      metric: "meanTemperature",
+      grain: "SEASON_AGGREGATE",
+      aggregation: "MEAN",
+      value: 15,
+      unit: "degC",
+    },
+  ];
+
+  const module = evaluateClimate({
+    crop: "APPLE",
+    cultivationMode: "OPEN_FIELD",
+    season: {
+      kind: "VERIFIED_PROFILE",
+      profileId: "APPLE_OPEN_FIELD_ANNUAL",
+      startMonth: null,
+      endMonth: null,
+    },
+    rules,
+    observations,
+  });
+
+  assert.equal(module.result.deviations[0].observedValue, 15);
 });
 
 test("critical climate missing input hides aggregate even at 70 percent coverage", () => {

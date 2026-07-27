@@ -138,9 +138,19 @@ function requirePnu(value, field = "pnuCode") {
   return normalized;
 }
 
+/**
+ * 1:5,000 토양도에 속성이 없는 필지(임야·하천 등)는 태그는 오지만 값이 비어
+ * 있다. 이건 계약이 바뀐 것이 아니라 그 필지에 자료가 없는 것이므로
+ * NO_DATA로 구분한다. 값이 있는데 형식이 틀린 경우만 스키마 변경으로 본다.
+ */
 function requireCode(row, tagName, field) {
   const value = extractField(row, tagName, field);
-  if (value === null || !/^\d{2}$/u.test(value)) {
+  if (value === null || value.trim() === "") {
+    throw new NoDataError(
+      `${field} is empty for this parcel in the 1:5,000 soil map.`,
+    );
+  }
+  if (!/^\d{2}$/u.test(value)) {
     throw new SchemaChangedError(`${field} must contain a two-digit code.`);
   }
   return value;
@@ -160,7 +170,7 @@ export function parseSoilFieldCharacteristics(
   validateProviderResult(xml);
   const row = extractSingleItem(xml);
   const responsePnu = requirePnu(
-    extractField(row, "PNU_Code", "soil field PNU"),
+    extractField(row, "PNU_Cd", "soil field PNU"),
     "response PNU",
   );
   if (responsePnu !== requestedPnu) {
@@ -171,15 +181,15 @@ export function parseSoilFieldCharacteristics(
   return {
     parcelMatched: true,
     mapScale: "1:5000",
-    drainageCode: requireCode(row, "Soildra_Code", "drainage code"),
+    drainageCode: requireCode(row, "Soildra_Cd", "drainage code"),
     effectiveDepthCode: requireCode(
       row,
-      "Vldsoildep_Code",
+      "Vldsoildep_Cd",
       "effective soil-depth code",
     ),
     topsoilTextureCode: requireCode(
       row,
-      "Surtture_Code",
+      "Surtture_Cd",
       "topsoil texture code",
     ),
     codeLabelsVerified: false,
@@ -301,7 +311,8 @@ export function createSoilFieldAdapter({
         }) => {
           const url = new URL(endpoint);
           url.searchParams.set("serviceKey", apiKey.trim());
-          url.searchParams.set("PNU_Code", normalizedPnu);
+          // 공공데이터포털 명세상 요청 파라미터는 PNU_CD, 응답 필드는 PNU_Cd다.
+          url.searchParams.set("PNU_CD", normalizedPnu);
           const xml = await requestProviderText({
             fetchImpl,
             url,

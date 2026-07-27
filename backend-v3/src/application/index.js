@@ -15,6 +15,7 @@ export {
 export { latestKmaMidIssue, latestKmaShortIssue } from './forecast-issue.js';
 export {
   resolveLocationKeys,
+  resolveOfficialCatalogMapping,
   toKmaGrid,
   validateVerifiedLocationMappings,
 } from './location-keys.js';

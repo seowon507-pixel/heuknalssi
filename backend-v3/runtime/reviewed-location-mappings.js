@@ -98,6 +98,16 @@ export const REVIEWED_LOCATION_MAPPINGS = Object.freeze(
       landRegId: "11B00000",
     }),
     stationMapping({
+      areaCode: "2820000000",
+      displayName: "인천광역시 남동구",
+      stationId: "112",
+      stationName: "인천",
+      stationLatitude: 37.47772,
+      stationLongitude: 126.6249,
+      temperatureRegId: "11B20201",
+      landRegId: "11B00000",
+    }),
+    stationMapping({
       areaCode: "4476000000",
       displayName: "충청남도 부여군",
       stationId: "236",
@@ -136,6 +146,20 @@ export const REVIEWED_LOCATION_MAPPINGS = Object.freeze(
       stationLongitude: 128.68862,
       temperatureRegId: "11H10502",
       landRegId: "11H10000",
+    }),
+    // 평창군에는 종관관측소가 대관령(100) 하나뿐이다. 지점명이 같은 평창(526)은
+    // 방재(AWS) 지점이라 ASOS 일자료 조회에서 resultCode 03(자료 없음)을 돌려준다.
+    // 대관령 관측소 주소가 '강원특별자치도 평창군 대관령면 경강로 5372'로
+    // 군 안에 있으므로 이 지점을 쓴다.
+    stationMapping({
+      areaCode: "5176000000",
+      displayName: "강원특별자치도 평창군",
+      stationId: "100",
+      stationName: "대관령",
+      stationLatitude: 37.67713,
+      stationLongitude: 128.71834,
+      temperatureRegId: "11D10503",
+      landRegId: "11D10000",
     }),
   ]),
 );

@@ -5,6 +5,14 @@ export {
   normalizeTrustedProxyConfig,
 } from "./client-ip.js";
 export {
+  DeviceBackupError,
+  assertStorablePayload,
+  createDeviceBackupStore,
+  generateAccountKey,
+  hashAccountKey,
+  normalizeAccountKey,
+} from "./device-backup.js";
+export {
   IdempotencyStore,
   hashNormalizedPayload,
   idempotencyDefaults,

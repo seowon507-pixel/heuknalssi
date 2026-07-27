@@ -117,6 +117,36 @@ const ERROR_DEFINITIONS = Object.freeze({
     message: "The requested API route was not found.",
     retryable: false,
   },
+  INVALID_ACCOUNT_KEY: {
+    status: 400,
+    message: "The account key is not in the expected format.",
+    retryable: false,
+  },
+  INVALID_PAYLOAD: {
+    status: 400,
+    message: "The backup payload contains unsupported fields.",
+    retryable: false,
+  },
+  BACKUP_NOT_FOUND: {
+    status: 404,
+    message: "No backup exists for this account key.",
+    retryable: false,
+  },
+  BACKUP_NOT_CONFIGURED: {
+    status: 503,
+    message: "Device backup storage is not configured.",
+    retryable: false,
+  },
+  BACKUP_STORE_UNAVAILABLE: {
+    status: 503,
+    message: "The backup store is temporarily unreachable.",
+    retryable: true,
+  },
+  BACKUP_STORE_ERROR: {
+    status: 502,
+    message: "The backup store rejected the request.",
+    retryable: true,
+  },
   METHOD_NOT_ALLOWED: {
     status: 405,
     message: "The HTTP method is not allowed for this route.",

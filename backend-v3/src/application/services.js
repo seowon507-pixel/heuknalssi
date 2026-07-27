@@ -16,6 +16,7 @@ import {
   validateAndNormalizeRequest,
 } from '../domain/index.js';
 import {
+  createDataEnvelope,
   createUnavailableEnvelope,
   validateDataEnvelope,
 } from '../adapters/data-envelope.js';
@@ -58,6 +59,21 @@ const ANALYSIS_LIFECYCLE_ORDER = Object.freeze([
 ]);
 
 const SOURCE_BASES = Object.freeze({
+  locationCatalog: Object.freeze({
+    sourceId: 'kma-location-catalog',
+    sourceName: '기상청 지상관측 지점·예보구역 정보',
+    sourceUrl:
+      'https://apihub.kma.go.kr/apiList.do?seqApi=10&seqApiSub=321',
+    spatialLevel: 'FORECAST_REGION',
+    spatialLabel: '전국 공식 지점·예보구역 목록',
+    provenance: {
+      adapterId: 'kma-location-catalog',
+      adapterVersion: 'unconfigured',
+      operationId: 'get-current-stations-and-forecast-zones',
+      contractVersion: null,
+      providerIssueTime: null,
+    },
+  }),
   climate: Object.freeze({
     sourceId: 'kma-climate-normal',
     sourceName: '기상청 기후평년',
@@ -96,6 +112,34 @@ const SOURCE_BASES = Object.freeze({
       adapterId: 'soil-v2',
       adapterVersion: 'unconfigured',
       operationId: 'soil-distribution',
+      contractVersion: null,
+      providerIssueTime: null,
+    },
+  }),
+  soilTest: Object.freeze({
+    sourceId: 'user-soil-test',
+    sourceName: '사용자 등록 토양검정 결과',
+    sourceUrl: 'https://soil.rda.go.kr/',
+    spatialLevel: 'FIELD',
+    spatialLabel: '사용자가 등록한 검정 필지',
+    provenance: {
+      adapterId: 'user-soil-test',
+      adapterVersion: '1',
+      operationId: 'user-submitted-soil-exam',
+      contractVersion: 'user-soil-test-v1',
+      providerIssueTime: null,
+    },
+  }),
+  soilExam: Object.freeze({
+    sourceId: 'soil-exam-v2',
+    sourceName: '토양검정 화학성 상세정보 V2',
+    sourceUrl: 'https://www.data.go.kr/data/15144647/openapi.do',
+    spatialLevel: 'FIELD',
+    spatialLabel: '선택 필지 최근 토양검정',
+    provenance: {
+      adapterId: 'soil-exam-v2',
+      adapterVersion: 'unconfigured',
+      operationId: 'getSoilExam',
       contractVersion: null,
       providerIssueTime: null,
     },
@@ -187,6 +231,7 @@ export function createApplicationServices({
     satellite: 'DISABLED',
     persistence: 'NOT_AVAILABLE',
     assistant: 'FALLBACK',
+    deviceBackup: 'NOT_AVAILABLE',
   },
 } = {}) {
   validateDependencies({
@@ -324,10 +369,26 @@ export function createApplicationServices({
     }
 
     const resolvedLocation = candidate.resolvedLocation;
+    const catalogDeadlineAt = clock() + Math.min(coreDeadlineMs, 3_000);
+    const catalogEnvelope = await callSource(
+      adapters.locationCatalog?.getCatalog,
+      adapters.locationCatalog,
+      {},
+      SOURCE_BASES.locationCatalog,
+      signal,
+      catalogDeadlineAt,
+      clock,
+      'LOCATION_CATALOG_UNAVAILABLE',
+    );
     const locationKeys = resolveLocationKeys(
       resolvedLocation,
       verifiedLocationMappings,
-      { now: () => new Date(clock()) },
+      {
+        now: () => new Date(clock()),
+        officialCatalog: envelopeHasUsableData(catalogEnvelope)
+          ? catalogEnvelope.data
+          : null,
+      },
     );
     const moduleRules = {
       climate: ruleRegistry.resolve(request, 'CLIMATE'),
@@ -365,17 +426,41 @@ export function createApplicationServices({
       moduleRules.climate,
       envelopes.climate,
     );
+    // 필지 실측값은 지역 면적통계보다 우선한다. 사용자 등록값이 있으면 가장
+    // 먼저 사용하고, 없으면 공공 API의 최신 검정값을 사용한다. 자료끼리
+    // 평균하거나 빈 값을 지역값으로 채우지 않는다.
+    const soilMeasurement = buildSoilTestEnvelope(request.soilTest, clock);
+    const providerSoilMeasurement = envelopeHasUsableData(envelopes.soilExam)
+      ? envelopes.soilExam
+      : null;
+    const soilBasisEnvelope =
+      soilMeasurement ?? providerSoilMeasurement ?? envelopes.soil;
+    const soilMeasurementBasis = soilMeasurement
+      ? 'USER_SOIL_TEST'
+      : providerSoilMeasurement
+        ? 'PROVIDER_SOIL_TEST'
+        : 'REGIONAL_STATISTICS';
+    const soilRulesForAvailableBasis = selectSoilRulesForBasis(
+      moduleRules.soil,
+      soilMeasurementBasis,
+    );
     let soil = withEvidence(
       evaluateSoil({
         request,
-        rules: moduleRules.soil,
-        metrics: envelopes.soil.data?.metrics ?? [],
+        rules: soilRulesForAvailableBasis,
+        metrics: soilBasisEnvelope.data?.metrics ?? [],
       }),
       buildSoilEvidence,
-      moduleRules.soil,
-      envelopes.soil,
+      soilRulesForAvailableBasis,
+      soilBasisEnvelope,
     );
+    soil = attachSoilMeasurement(soil, {
+      userSoilTest: request.soilTest,
+      providerEnvelope: envelopes.soilExam,
+      regionalEnvelope: envelopes.soil,
+    });
     soil = attachFieldSoilProfile(soil, envelopes.fieldSoil);
+    if (soilMeasurement !== null) envelopes.soilTest = soilMeasurement;
     const shortDays = decorateForecastDays(
       envelopes.shortForecast.data?.days ?? [],
       envelopes.shortForecast,
@@ -414,7 +499,7 @@ export function createApplicationServices({
         );
 
     applyEnvelopeQuality(climate, envelopes.climate);
-    applyEnvelopeQuality(soil, envelopes.soil);
+    applyEnvelopeQuality(soil, soilBasisEnvelope);
     applyObservationEnvelopeQuality(observations, envelopes.observations);
     applyEnvelopeQuality(forecast, [
       envelopes.shortForecast,
@@ -493,7 +578,7 @@ export function createApplicationServices({
       soil,
       observations,
       forecast,
-      smartfarm: smartfarmModule(request, envelopes.smartfarm),
+      smartfarm: null,
       satellite: request.options.includeSatelliteObservation
         ? unavailableModule('SATELLITE_P2_NOT_ENABLED', 'UNSUPPORTED')
         : null,
@@ -502,6 +587,7 @@ export function createApplicationServices({
         smartfarm: capabilities.smartfarm ?? 'DISABLED',
         satellite: capabilities.satellite ?? 'DISABLED',
         persistence: capabilities.persistence ?? 'NOT_AVAILABLE',
+        deviceBackup: capabilities.deviceBackup ?? 'NOT_AVAILABLE',
       },
       persistenceState: request.options.saveConsent
         ? 'NOT_AVAILABLE'
@@ -651,11 +737,6 @@ export function createApplicationServices({
         'getForecast',
       ),
     };
-    const smartfarmState = adapterCapability(
-      adapters.smartfarm,
-      runtimeStatus?.adapters?.smartfarm,
-      'getReference',
-    );
     const activeRuleCount = ruleRegistry.rules.length;
     const decisionRules = ruleRegistry.rules.filter(isDecisionCapableRule);
     const decisionRuleCount = decisionRules.length;
@@ -710,18 +791,23 @@ export function createApplicationServices({
       },
       adapters: adapterStates,
       optionalAdapters: {
+        soilExam: adapterCapability(
+          adapters.soilExam,
+          runtimeStatus?.adapters?.soilExam,
+          'getLatestExam',
+        ),
         soilField: adapterCapability(
           adapters.soilField,
           runtimeStatus?.adapters?.soilField,
           'getFieldProfile',
         ),
-        smartfarm: smartfarmState,
       },
       contracts: sanitizeRuntimeContracts(runtimeStatus?.contracts),
       capabilities: {
-        smartfarm: smartfarmState,
+        smartfarm: 'DISABLED',
         satellite: capabilities.satellite ?? 'DISABLED',
         persistence: capabilities.persistence ?? 'NOT_AVAILABLE',
+        deviceBackup: capabilities.deviceBackup ?? 'NOT_AVAILABLE',
         report: 'DETERMINISTIC_TEMPLATE',
         assistant: capabilities.assistant ?? assistant?.state ?? 'FALLBACK',
       },
@@ -835,6 +921,20 @@ async function collectCoreEnvelopes({
       clock,
       'FIELD_PNU_UNAVAILABLE',
     ),
+    soilExam: callSource(
+      adapters.soilExam?.getLatestExam,
+      adapters.soilExam,
+      !request.soilTest && fieldParcelLookupKey
+        ? { pnuCode: fieldParcelLookupKey }
+        : null,
+      SOURCE_BASES.soilExam,
+      signal,
+      deadlineAt,
+      clock,
+      request.soilTest
+        ? 'USER_SOIL_TEST_ALREADY_PROVIDED'
+        : 'FIELD_PNU_UNAVAILABLE',
+    ),
     shortForecast: callSource(
       adapters.kmaShort?.getForecast,
       adapters.kmaShort,
@@ -859,32 +959,157 @@ async function collectCoreEnvelopes({
       clock,
       'VERIFIED_MID_FORECAST_REGION_UNAVAILABLE',
     ),
-    ...(request.options.includeSmartfarmBenchmark &&
-    smartfarmContextSupported(request)
-      ? {
-          smartfarm: callSource(
-            adapters.smartfarm?.getReference,
-            adapters.smartfarm,
-            {
-              crop: request.crop,
-              cultivationMode: request.cultivationMode,
-              growthStage: request.growthStage,
-              regionLabel,
-            },
-            SOURCE_BASES.smartfarm,
-            signal,
-            deadlineAt,
-            clock,
-            'SMARTFARM_REFERENCE_UNAVAILABLE',
-          ),
-        }
-      : {}),
   };
   const entries = await Promise.all(
     Object.entries(calls).map(async ([key, promise]) => [key, await promise]),
   );
   if (signal?.aborted) throw signal.reason;
   return Object.fromEntries(entries);
+}
+
+/**
+ * 사용자가 등록한 검정 pH를 토양 규칙이 읽는 면적통계 형태로 바꾼다.
+ * 실측값은 폭이 없는 값이므로 도메인이 이미 지원하는 점 구간
+ * (lower === upper, 양끝 포함)으로 표현한다. 면적 비율을 꾸며내지 않으므로
+ * 경계 불확실 면적은 0이 되고 적합/이탈이 분명하게 갈린다.
+ */
+// 검정 항목 → 검수된 규칙이 읽는 지표 이름·단위. 흙토람 결과지 표기를 따른다.
+const SOIL_TEST_METRICS = Object.freeze([
+  { field: 'ph', metric: 'PH', unit: 'pH' },
+  { field: 'electricalConductivity', metric: 'EC', unit: 'dS/m' },
+  { field: 'organicMatter', metric: 'ORGANIC_MATTER', unit: 'g/kg' },
+  { field: 'availablePhosphate', metric: 'AVAILABLE_PHOSPHATE', unit: 'mg/kg' },
+  { field: 'exchangeableK', metric: 'EXCHANGEABLE_K', unit: 'cmol+/kg' },
+  { field: 'exchangeableCa', metric: 'EXCHANGEABLE_CA', unit: 'cmol+/kg' },
+  { field: 'exchangeableMg', metric: 'EXCHANGEABLE_MG', unit: 'cmol+/kg' },
+]);
+
+function measuredPointMetric({ metric, unit }, value) {
+  return {
+    metric,
+    unit,
+    boundarySemanticsVerified: true,
+    totalValidArea: 1,
+    areaUnit: 'MEASURED_POINT',
+    intervals: [
+      {
+        lower: value,
+        upper: value,
+        lowerInclusive: true,
+        upperInclusive: true,
+        area: 1,
+        areaUnit: 'MEASURED_POINT',
+      },
+    ],
+  };
+}
+
+/**
+ * 지역 통계 API는 작물 판정에 필요한 핵심 pH 분포만 제공한다. 필지 토양검정용
+ * 보조 화학성 규칙을 지역 통계의 결측으로 계산하면, 정상 수신한 핵심 pH까지
+ * HOLD로 내려가므로 지역 통계에서는 검수된 핵심 규칙만 평가한다.
+ * 실제 필지·사용자 검사값에서는 보조 화학성 규칙도 그대로 평가한다.
+ */
+function selectSoilRulesForBasis(rules, measurementBasis) {
+  const safeRules = Array.isArray(rules) ? rules : [];
+  if (measurementBasis !== 'REGIONAL_STATISTICS') return safeRules;
+  const criticalRules = safeRules.filter((rule) => rule?.critical === true);
+  return criticalRules.length > 0 ? criticalRules : safeRules;
+}
+
+function buildSoilTestEnvelope(soilTest, clock) {
+  if (!soilTest || typeof soilTest !== 'object') return null;
+  const ph = soilTest.ph;
+  if (!Number.isFinite(ph)) return null;
+
+  const envelope = createDataEnvelope(
+    {
+      ...SOURCE_BASES.soilTest,
+      observedAt: `${soilTest.sampledOn}T00:00:00.000Z`,
+      issuedAt: null,
+      validFrom: null,
+      validTo: null,
+      distanceKm: null,
+      unit: 'pH',
+      adapterState: 'SUCCESS',
+      deliveryState: 'LIVE',
+      qualityFlags: ['SOIL_VALUE_FROM_USER_SUBMITTED_EXAM'],
+      data: {
+        dataRole: 'USER_SOIL_TEST',
+        sampledOn: soilTest.sampledOn,
+        issuer: soilTest.issuer ?? null,
+        // 등록된 항목만 싣는다. 비어 있는 항목을 추정해서 채우지 않는다.
+        metrics: SOIL_TEST_METRICS.filter((entry) =>
+          Number.isFinite(soilTest[entry.field]),
+        ).map((entry) => measuredPointMetric(entry, soilTest[entry.field])),
+      },
+    },
+    { now: () => new Date(clock()) },
+  );
+  return envelope;
+}
+
+/**
+ * 실측 검정값과 지역 면적통계를 구분해서 남긴다. 같은 필드에 합치지 않는다.
+ */
+function attachSoilMeasurement(
+  module,
+  { userSoilTest, providerEnvelope, regionalEnvelope },
+) {
+  if (!module || typeof module !== 'object') return module;
+  const regionalStatistics = envelopeHasUsableData(regionalEnvelope)
+    ? { state: regionalEnvelope.adapterState, usedForDecision: false }
+    : {
+        state: regionalEnvelope?.adapterState ?? 'UNAVAILABLE',
+        usedForDecision: false,
+      };
+  if (userSoilTest) {
+    const { userConfirmed, ...measured } = userSoilTest;
+    return {
+      ...module,
+      result: {
+        ...(module.result ?? {}),
+        measurementBasis: 'USER_SOIL_TEST',
+        userSoilTest: measured,
+        providerSoilTest: null,
+        regionalStatistics,
+      },
+    };
+  }
+  if (envelopeHasUsableData(providerEnvelope)) {
+    const providerData = providerEnvelope.data;
+    return {
+      ...module,
+      result: {
+        ...(module.result ?? {}),
+        measurementBasis: 'PROVIDER_SOIL_TEST',
+        userSoilTest: null,
+        providerSoilTest: {
+          sampledOn: providerData.sampledOn,
+          examType: providerData.examType,
+          measurements: providerData.metrics.map((metric) => ({
+            metric: metric.metric,
+            unit: metric.unit,
+            value: metric.intervals[0]?.lower ?? null,
+          })),
+        },
+        regionalStatistics,
+      },
+    };
+  }
+  return {
+    ...module,
+    result: {
+      ...(module.result ?? {}),
+      measurementBasis: 'REGIONAL_STATISTICS',
+      userSoilTest: null,
+      providerSoilTest: null,
+      regionalStatistics: {
+        ...regionalStatistics,
+        usedForDecision: envelopeHasUsableData(regionalEnvelope),
+      },
+    },
+  };
 }
 
 function attachFieldSoilProfile(module, envelope) {
@@ -1294,15 +1519,6 @@ function applyEnvelopeQuality(module, envelopeOrEnvelopes) {
     module.blockingReasons = [
       ...new Set([...(module.blockingReasons ?? []), ...qualityReasons]),
     ];
-  }
-  if (
-    qualityReasons.length > 0 &&
-    module.result?.noActiveRisksConfirmed === true
-  ) {
-    module.result.noActiveRisksConfirmed = false;
-    if (module.result.riskState === 'READY') {
-      module.result.riskState = 'PARTIAL';
-    }
   }
 }
 

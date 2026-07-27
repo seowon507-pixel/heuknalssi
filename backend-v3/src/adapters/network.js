@@ -10,6 +10,7 @@ export const PROVIDER_HOST_ALLOWLIST = Object.freeze({
   KMA: Object.freeze(["apis.data.go.kr", "apihub.kma.go.kr"]),
   SOIL_V2: Object.freeze(["apis.data.go.kr"]),
   SOIL_FIELD_V3: Object.freeze(["apis.data.go.kr"]),
+  SOIL_EXAM_V2: Object.freeze(["apis.data.go.kr"]),
   SMARTFARM: Object.freeze([
     "smartfarmkorea.net",
     "www.smartfarmkorea.net"

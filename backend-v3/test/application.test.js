@@ -620,6 +620,122 @@ test('field soil profile is attached without exposing the private parcel lookup 
   assert.equal(JSON.stringify(result).includes(privatePnu), false);
 });
 
+test('latest provider field exam is used before regional soil statistics', async () => {
+  const privatePnu = '4111710500100010001';
+  const calls = {
+    climate: [],
+    observations: [],
+    soil: [],
+    short: [],
+    mid: [],
+    soilExam: [],
+  };
+  const adapters = completeAdapters(calls);
+  adapters.kakao = locationAdapter({
+    fieldParcelLookupKey: privatePnu,
+  });
+  adapters.soilExam = {
+    id: 'soil-exam-fixture',
+    async getLatestExam(params) {
+      calls.soilExam.push(params);
+      return envelope({
+        sourceId: 'soil-exam-v2',
+        spatialLevel: 'FIELD',
+        observedAt: '2026-07-19T15:00:00.000Z',
+        data: {
+          dataRole: 'PROVIDER_SOIL_TEST',
+          sampledOn: '2026-07-20',
+          examType: '밭',
+          metrics: [
+            {
+              metric: 'PH',
+              unit: 'pH',
+              boundarySemanticsVerified: true,
+              totalValidArea: 1,
+              areaUnit: 'MEASURED_POINT',
+              intervals: [
+                {
+                  lower: 6.2,
+                  upper: 6.2,
+                  lowerInclusive: true,
+                  upperInclusive: true,
+                  area: 1,
+                  areaUnit: 'MEASURED_POINT',
+                },
+              ],
+            },
+          ],
+        },
+      });
+    },
+  };
+  const rules = reviewedRules().map((rule) =>
+    rule.module === 'SOIL' ? { ...rule, metric: 'PH' } : rule,
+  );
+  const services = createApplicationServices({
+    adapters,
+    rules,
+    verifiedLocationMappings: sixVerifiedMappings(),
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+  });
+  const candidateToken = await confirmedCandidate(services);
+  const result = await services.createAnalysis({
+    ownerSessionId: 'owner-a',
+    analysisId: 'analysis-provider-soil-exam',
+    input: analysisInput(candidateToken),
+  });
+
+  assert.deepEqual(calls.soilExam, [{ pnuCode: privatePnu }]);
+  assert.equal(result.soil.result.measurementBasis, 'PROVIDER_SOIL_TEST');
+  assert.deepEqual(result.soil.result.providerSoilTest, {
+    sampledOn: '2026-07-20',
+    examType: '밭',
+    measurements: [{ metric: 'PH', unit: 'pH', value: 6.2 }],
+  });
+  assert.equal(result.soil.result.metrics[0].areaUnit, 'MEASURED_POINT');
+  assert.equal(result.soil.result.regionalStatistics.usedForDecision, false);
+  assert.equal(JSON.stringify(result).includes(privatePnu), false);
+});
+
+test('regional pH is not held back by field-only supporting chemistry rules', async () => {
+  const calls = {
+    climate: [],
+    observations: [],
+    soil: [],
+    short: [],
+    mid: [],
+  };
+  const baseRules = reviewedRules();
+  const supportingEcRule = {
+    ...baseRules[1],
+    ruleId: 'soil-ec-supporting-field-only',
+    metric: 'EC',
+    unit: 'dS/m',
+    sensitivityTier: 'SUPPORTING',
+    critical: false,
+  };
+  const services = createApplicationServices({
+    adapters: completeAdapters(calls),
+    rules: [...baseRules, supportingEcRule],
+    verifiedLocationMappings: sixVerifiedMappings(),
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+  });
+  const candidateToken = await confirmedCandidate(services);
+  const result = await services.createAnalysis({
+    ownerSessionId: 'owner-a',
+    analysisId: 'analysis-regional-soil',
+    input: analysisInput(candidateToken),
+  });
+
+  assert.equal(result.soil.state, 'READY');
+  assert.equal(result.soil.coverage, 1);
+  assert.equal(result.soil.result.measurementBasis, 'REGIONAL_STATISTICS');
+  assert.deepEqual(result.soil.result.includedRuleIds, ['soil-ph']);
+  assert.equal(result.soil.result.regionalStatistics.usedForDecision, true);
+});
+
 test('application integrates verified modules without a composite score or hidden reweighting', async () => {
   const calls = {
     climate: [],
@@ -955,7 +1071,7 @@ test('facility no-risk state triggers resolve to current eligible evidence', asy
   );
 });
 
-test('facility partial forecast still gives an internal sensor check action', async () => {
+test('facility keeps its sensor action when an unrelated mid-forecast field is partial', async () => {
   const calls = {
     climate: [],
     observations: [],
@@ -997,7 +1113,8 @@ test('facility partial forecast still gives an internal sensor check action', as
   });
 
   assert.equal(result.forecast.state, 'PARTIAL');
-  assert.equal(result.decision.code, 'FACILITY_DATA_NEEDED');
+  assert.equal(result.forecast.result.riskState, 'READY');
+  assert.equal(result.decision.code, 'FACILITY_SENSOR_NEXT');
   assert.equal(
     result.actions.some(
       ({ actionId }) => actionId === 'CHECK_INTERNAL_SENSORS',
@@ -2245,7 +2362,7 @@ test('malformed location adapter returns are contained before candidate mapping'
   }
 });
 
-test('partial provider failures block READY risk and no-risk conclusions', async () => {
+test('an unrelated partial mid-forecast field does not cancel a complete temperature risk evaluation', async () => {
   const calls = {
     climate: [],
     observations: [],
@@ -2281,16 +2398,64 @@ test('partial provider failures block READY risk and no-risk conclusions', async
   });
 
   assert.equal(result.forecast.state, 'PARTIAL');
-  assert.notEqual(result.riskState, 'READY');
-  assert.equal(result.forecast.result.noActiveRisksConfirmed, false);
-  assert.notEqual(result.decision.code, 'FIELD_TEST_NEXT');
-  const action = result.actions.find(
-    ({ actionId }) => actionId === 'REVIEW_CONDITION_EVIDENCE',
+  assert.equal(result.forecast.result.riskState, 'READY');
+  assert.equal(result.forecast.result.noActiveRisksConfirmed, true);
+  assert.equal(result.riskState, 'READY');
+  assert.ok(
+    result.forecast.blockingReasons.includes('PARTIAL_PROVIDER_FAILURE'),
   );
-  assert.ok(action);
-  assert.notDeepEqual(
-    [action.evidenceStrength, action.sourceFreshness],
-    ['CONFIRMED_RANGE', 'CURRENT'],
+});
+
+test('a missing temperature required by an active crop rule still blocks the no-risk conclusion', async () => {
+  const calls = {
+    climate: [],
+    observations: [],
+    soil: [],
+    short: [],
+    mid: [],
+  };
+  const adapters = completeAdapters(calls);
+  adapters.kmaShort.getForecast = async () =>
+    envelope({
+      sourceId: 'kma-short-forecast',
+      spatialLevel: 'FORECAST_GRID',
+      validFrom: '2026-07-24T00:00:00.000Z',
+      validTo: '2026-07-24T23:59:59.000Z',
+      data: {
+        days: [
+          {
+            ...forecastDay('2026-07-24', 'SHORT_GRID'),
+            maxTemperature: null,
+          },
+        ],
+      },
+    });
+  const services = createApplicationServices({
+    adapters,
+    rules: reviewedRules(),
+    verifiedLocationMappings: {
+      '4111710500': verifiedMapping(),
+    },
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+  });
+  const candidateToken = await confirmedCandidate(services);
+  const result = await services.createAnalysis({
+    ownerSessionId: 'owner-a',
+    analysisId: 'analysis-missing-required-temperature',
+    input: analysisInput(candidateToken),
+  });
+
+  assert.equal(result.forecast.result.riskState, 'PARTIAL');
+  assert.equal(result.forecast.result.noActiveRisksConfirmed, false);
+  assert.equal(result.riskState, 'PARTIAL');
+  assert.ok(
+    result.forecast.result.missingMetrics.some(
+      (item) =>
+        item.metric === 'maxTemperature' &&
+        item.date === '2026-07-24' &&
+        item.reason === 'MISSING_VALUE',
+    ),
   );
 });
 
@@ -2376,7 +2541,7 @@ test('climate evidence traces single targets, aggregate math, deviations, and ex
   );
 });
 
-test('soil evidence preserves classified areas, coverage weights, and excluded planned weight', async () => {
+test('regional soil evidence uses critical pH without field-only supporting chemistry', async () => {
   const calls = {
     climate: [],
     observations: [],
@@ -2480,13 +2645,13 @@ test('soil evidence preserves classified areas, coverage weights, and excluded p
   assert.equal(byId.get('SOIL_soil-ph').value, 0.5);
   assert.equal(byId.get('SOIL_soil-ph').unit, 'ratio');
   assert.equal(byId.get('SOIL_soil-ph').reference, null);
-  assert.equal(byId.get('SOIL_COVERAGE').value, 0.75);
+  assert.equal(byId.get('SOIL_COVERAGE').value, 1);
   assert.deepEqual(byId.get('SOIL_COVERAGE').calculation, {
     numerator: 3,
-    denominator: 4,
-    coverage: 0.75,
+    denominator: 3,
+    coverage: 1,
   });
-  assert.equal(byId.get('SOIL_EXCLUDED_soil-ec').rawWeight, 1);
+  assert.equal(byId.has('SOIL_EXCLUDED_soil-ec'), false);
 });
 
 test('forecast evidence records actual values, thresholds, and both source provenances', async () => {
@@ -2638,7 +2803,7 @@ test('application core deadline contains adapters that ignore AbortSignal', asyn
   );
 });
 
-test('SmartFarm reference is returned separately and cannot change core decisions or actions', async () => {
+test('SmartFarm is excluded even when a request asks for the benchmark', async () => {
   const calls = {
     climate: [],
     observations: [],
@@ -2732,27 +2897,18 @@ test('SmartFarm reference is returned separately and cannot change core decision
     },
   });
 
-  assert.equal(withReference.smartfarm.state, 'READY');
-  assert.equal(withReference.smartfarm.affectsDecision, false);
-  assert.equal(withReference.smartfarm.affectsScore, false);
-  assert.equal(withReference.smartfarm.result.farmCount, 28);
+  assert.equal(withReference.smartfarm, null);
   assert.deepEqual(withReference.decision, withoutReference.decision);
   assert.deepEqual(withReference.actions, withoutReference.actions);
   assert.equal(withReference.state, withoutReference.state);
   assert.equal(withReference.conditionState, withoutReference.conditionState);
   assert.equal(withReference.riskState, withoutReference.riskState);
-  assert.equal(calls.smartfarm.length, 1);
-  assert.deepEqual(calls.smartfarm[0], {
-    crop: 'CUCUMBER',
-    cultivationMode: 'FACILITY_HYDRO',
-    growthStage: 'UNSPECIFIED',
-    regionLabel: '경기도 수원시',
-  });
+  assert.equal(calls.smartfarm.length, 0);
   assert.equal(
     withReference.dataSources.some(
       ({ sourceId }) => sourceId === 'smartfarm-reference',
     ),
-    true,
+    false,
   );
   assert.equal(
     withReference.limitations.some((value) =>
@@ -2767,7 +2923,7 @@ test('SmartFarm reference is returned separately and cannot change core decision
   assert.equal(withoutReference.smartfarm, null);
 });
 
-test('SmartFarm provider failure does not block a completed core analysis', async () => {
+test('excluded SmartFarm provider is never called', async () => {
   const calls = {
     climate: [],
     observations: [],
@@ -2776,8 +2932,10 @@ test('SmartFarm provider failure does not block a completed core analysis', asyn
     mid: [],
   };
   const adapters = completeAdapters(calls);
+  let smartfarmCalls = 0;
   adapters.smartfarm = {
     async getReference() {
+      smartfarmCalls += 1;
       throw new Error('provider unavailable');
     },
   };
@@ -2807,9 +2965,8 @@ test('SmartFarm provider failure does not block a completed core analysis', asyn
     },
   });
 
-  assert.equal(result.smartfarm.state, 'UNAVAILABLE');
-  assert.equal(result.smartfarm.affectsDecision, false);
-  assert.equal(result.smartfarm.affectsScore, false);
+  assert.equal(result.smartfarm, null);
+  assert.equal(smartfarmCalls, 0);
   assert.equal(result.state, 'COMPLETE');
   assert.equal(result.conditionState, 'NOT_APPLICABLE');
   assert.equal(result.riskState, 'READY');

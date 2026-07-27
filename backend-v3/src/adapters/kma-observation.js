@@ -19,11 +19,16 @@ import {
   requestProviderText,
 } from "./network.js";
 import { ProviderExecutionGuard } from "./provider-control.js";
+import BUNDLED_CLIMATE_NORMALS from "../../runtime/climate-normal-1991-2020.json" with { type: "json" };
 
 const ASOS_ENDPOINT =
   "https://apis.data.go.kr/1360000/AsosDalyInfoService/getWthrDataList";
 const CLIMATE_NORMAL_ENDPOINT =
-  "https://apihub.kma.go.kr/api/typ01/url/sun_sfc_norm.php";
+  "https://apihub.kma.go.kr/api/typ01/url/sfc_norm1.php";
+// API 허브가 미승인·일시 장애여도 평년값을 임의 생성하지 않는다. 기상청이
+// 배포한 같은 기준기간의 엑셀을 변환한 검수본만 보조 출처로 사용한다.
+const CLIMATE_NORMAL_SOURCE_URL =
+  "https://data.kma.go.kr/climate/average30Years/selectAverage30YearsMonthList.do";
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -191,6 +196,16 @@ function normalizeHeaderLine(line) {
     .trim();
 }
 
+function parseClimateNumber(value, field, { min, max }) {
+  const number = Number(String(value ?? "").trim());
+  if (!Number.isFinite(number) || number < min || number > max) {
+    throw new SchemaChangedError(
+      `KMA climate-normal ${field} is outside its contract.`,
+    );
+  }
+  return number;
+}
+
 function climateColumns(text) {
   const lines = text.split(/\r?\n/u);
   const headerLine = lines
@@ -212,16 +227,10 @@ function climateColumns(text) {
   };
 }
 
-function parseClimateNumber(value, field, { min, max }) {
-  const number = Number(String(value ?? "").trim());
-  if (!Number.isFinite(number) || number < min || number > max) {
-    throw new SchemaChangedError(
-      `KMA climate-normal ${field} is outside its contract.`,
-    );
-  }
-  return number;
-}
-
+/**
+ * Parses the KMA API Hub `sfc_norm1.php` monthly normal response.
+ * `ST=2021` is KMA's identifier for the 1991-2020 normal period.
+ */
 export function parseKmaClimateNormals(text, { stationId } = {}) {
   if (typeof text !== "string" || text.length === 0) {
     throw new SchemaChangedError("KMA climate-normal response must be text.");
@@ -231,19 +240,27 @@ export function parseKmaClimateNormals(text, { stationId } = {}) {
     throw new TypeError("KMA climate-normal stationId is invalid.");
   }
   const { fields, lines } = climateColumns(text);
-  const index = Object.fromEntries(fields.map((field, position) => [field, position]));
+  const index = Object.fromEntries(
+    fields.map((field, position) => [field, position]),
+  );
   const rows = lines
     .map((line) => line.trim())
-    .filter((line) => line !== "" && !line.startsWith("#") && line.includes(","))
-    .map((line) => line.replace(/,?\s*=\s*$/u, "").split(",").map((value) => value.trim()))
+    .filter(
+      (line) => line !== "" && !line.startsWith("#") && line.includes(","),
+    )
+    .map((line) =>
+      line
+        .replace(/,?\s*=\s*$/u, "")
+        .split(",")
+        .map((value) => value.trim()),
+    )
     .filter(
       (values) =>
         String(values[index.STN] ?? "").trim() === normalizedStationId,
     );
   const byMonth = new Map();
   for (const values of rows) {
-    const period = String(values[index.ST] ?? "").trim();
-    if (period !== "2021") continue;
+    if (String(values[index.ST] ?? "").trim() !== "2021") continue;
     const month = parseClimateNumber(values[index.MM], "MM", {
       min: 1,
       max: 12,
@@ -271,6 +288,62 @@ export function parseKmaClimateNormals(text, { stationId } = {}) {
   const observations = [...byMonth.values()].sort(
     (left, right) => left.month - right.month,
   );
+  return {
+    stationId: normalizedStationId,
+    normalPeriod: "1991-2020",
+    observations,
+    monthlyNormals: observations.map((observation) => ({
+      stationId: normalizedStationId,
+      month: observation.month,
+      meanTemperature: observation.value,
+      normalPeriod: "1991-2020",
+    })),
+  };
+}
+
+/**
+ * 저장소에 포함된 월별 기후평년값(1991-2020)에서 한 지점을 고른다.
+ * 반환 형태는 이전의 실시간 CSV 파서와 동일하게 유지한다.
+ */
+export function selectKmaClimateNormals(
+  dataset = BUNDLED_CLIMATE_NORMALS,
+  { stationId } = {},
+) {
+  const normalizedStationId = String(stationId ?? "").trim();
+  if (!/^\d{2,4}$/u.test(normalizedStationId)) {
+    throw new TypeError("KMA climate-normal stationId is invalid.");
+  }
+  if (dataset === null || typeof dataset !== "object") {
+    throw new SchemaChangedError("KMA climate-normal dataset must be an object.");
+  }
+  if (dataset.normalPeriod !== "1991-2020") {
+    throw new SchemaChangedError(
+      "KMA climate-normal dataset is not the 1991-2020 normal period.",
+    );
+  }
+
+  const station = dataset.stations?.[normalizedStationId];
+  if (station === undefined) {
+    throw new NoDataError(
+      "KMA climate-normal dataset has no entry for the requested station.",
+    );
+  }
+  const monthlyValues = station.metrics?.meanTemperature;
+  if (!Array.isArray(monthlyValues) || monthlyValues.length !== 12) {
+    throw new NoDataError(
+      "KMA climate-normal dataset does not contain all 12 monthly values.",
+    );
+  }
+
+  const observations = monthlyValues.map((value, index) => ({
+    metric: "meanTemperature",
+    month: index + 1,
+    value: parseClimateNumber(value, "meanTemperature", {
+      min: -100,
+      max: 100,
+    }),
+    unit: "degC",
+  }));
   return {
     stationId: normalizedStationId,
     normalPeriod: "1991-2020",
@@ -490,7 +563,8 @@ export function createKmaClimateNormalAdapter({
   fetchImpl = globalThis.fetch,
   endpoint = CLIMATE_NORMAL_ENDPOINT,
   timeoutMs = 5000,
-  adapterVersion = "1",
+  dataset = BUNDLED_CLIMATE_NORMALS,
+  adapterVersion = "3",
   contractVersion = null,
   cache,
   singleFlight,
@@ -508,14 +582,24 @@ export function createKmaClimateNormalAdapter({
     maxEntries: 50,
     maxTtlMs: 90 * DAY_MS,
   });
-  const base = envelopeBase({
+  const liveBase = envelopeBase({
     sourceId: "kma-climate-normal",
     sourceName: "기상청 기후평년 1991~2020",
     sourceUrl: providerDisclosureUrl(endpoint, "KMA"),
     spatialLevel: "NORMAL_STATION",
     spatialLabel: "기후평년 지점",
     adapterVersion,
-    operationId: "sun_sfc_norm",
+    operationId: "sfc_norm1",
+    contractVersion,
+  });
+  const bundledBase = envelopeBase({
+    sourceId: "kma-climate-normal",
+    sourceName: "기상청 기후평년 1991~2020",
+    sourceUrl: CLIMATE_NORMAL_SOURCE_URL,
+    spatialLevel: "NORMAL_STATION",
+    spatialLabel: "기후평년 지점",
+    adapterVersion,
+    operationId: "climate-normal-monthly-bundled",
     contractVersion,
   });
 
@@ -523,26 +607,30 @@ export function createKmaClimateNormalAdapter({
     id: "kmaClimate",
     async getNormals({ stationId } = {}, { signal, deadlineAt } = {}) {
       const normalizedStationId = String(stationId ?? "").trim();
-      const cacheKey = makeAdapterCacheKey({
+      const liveCacheKey = makeAdapterCacheKey({
         adapterVersion,
-        operationId: "sun_sfc_norm",
+        operationId: "sfc_norm1",
         verifiedLocationKey: { stationId: normalizedStationId || null },
         requestedPeriod: { normalPeriod: "1991-2020" },
         providerIssueTime: null,
-        normalizedParameters: { contractVersion, norm: "M", tmst: 2021 },
+        normalizedParameters: {
+          contractVersion,
+          norm: "M",
+          tmst: 2021,
+        },
       });
-      return runCachedAdapterCall({
+      const liveEnvelope = await runCachedAdapterCall({
         enabled,
         credential: apiKey,
         contractVersion,
         allowedContractVersions: [
           VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
         ],
-        envelopeBase: base,
+        envelopeBase: liveBase,
         cache: control.cache,
         singleFlight: control.singleFlight,
         executionGuard: control.executionGuard,
-        cacheKey,
+        cacheKey: liveCacheKey,
         cacheFreshForMs,
         signal,
         deadlineAt,
@@ -557,9 +645,9 @@ export function createKmaClimateNormalAdapter({
           const url = new URL(endpoint);
           const query = {
             authKey: apiKey.trim(),
-            stn: normalizedStationId,
             norm: "M",
             tmst: 2021,
+            stn: normalizedStationId,
             MM1: 1,
             DD1: 1,
             MM2: 12,
@@ -587,6 +675,58 @@ export function createKmaClimateNormalAdapter({
             adapterState: "SUCCESS",
             validFrom: "1990-12-31T15:00:00.000Z",
             validTo: "2020-12-31T14:59:59.999Z",
+            qualityFlags: ["KMA_API_HUB_LIVE"],
+            data: {
+              dataRole: "CLIMATE_NORMAL",
+              ...data,
+            },
+          };
+        },
+      });
+      if (
+        liveEnvelope.adapterState === "SUCCESS" ||
+        enabled !== true
+      ) {
+        return liveEnvelope;
+      }
+
+      const bundledCacheKey = makeAdapterCacheKey({
+        adapterVersion,
+        operationId: "climate-normal-monthly-bundled",
+        verifiedLocationKey: { stationId: normalizedStationId || null },
+        requestedPeriod: { normalPeriod: "1991-2020" },
+        providerIssueTime: null,
+        normalizedParameters: { contractVersion, fallback: true },
+      });
+      return runCachedAdapterCall({
+        enabled,
+        credential: null,
+        credentialRequired: false,
+        contractVersion,
+        allowedContractVersions: [
+          VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
+        ],
+        envelopeBase: bundledBase,
+        cache: control.cache,
+        singleFlight: control.singleFlight,
+        executionGuard: null,
+        cacheKey: bundledCacheKey,
+        cacheFreshForMs,
+        signal,
+        deadlineAt,
+        now,
+        operation: async () => {
+          const data = selectKmaClimateNormals(dataset, {
+            stationId: normalizedStationId,
+          });
+          return {
+            adapterState: "SUCCESS",
+            validFrom: "1990-12-31T15:00:00.000Z",
+            validTo: "2020-12-31T14:59:59.999Z",
+            qualityFlags: [
+              "BUNDLED_OFFICIAL_CLIMATE_NORMALS",
+              `KMA_API_HUB_${liveEnvelope.adapterState}_FALLBACK`,
+            ],
             data: {
               dataRole: "CLIMATE_NORMAL",
               ...data,

@@ -69,6 +69,11 @@ export function evaluateClimate(input = {}) {
   const observations = normalizeObservations(
     input.observations ?? input.values ?? [],
   );
+  // 평년값 어댑터는 월별 관측값만 내보낸다. 계절 범위를 아는 것은 이
+  // 계층이므로 SEASON_AGGREGATE 규칙이 필요한 집계는 여기서 만든다.
+  observations.push(
+    ...deriveSeasonAggregateObservations(observations, activeRules, season, input),
+  );
   const excludedRules = [];
   const deviations = [];
   const singleTargetDeviations = [];
@@ -274,6 +279,81 @@ function normalizeObservations(observations) {
       ? { ruleId, ...observation }
       : { ruleId, value: observation },
   );
+}
+
+/**
+ * 월별 평년값에서 계절 집계 관측값을 파생시킨다.
+ * 원본 관측값은 그대로 두고 부족한 집계만 덧붙이므로, 어댑터가 이미
+ * 집계를 제공하면 그 값을 우선한다. 필요한 달이 하나라도 비면 만들지
+ * 않고 규칙이 MISSING_VALUE로 제외되게 둔다.
+ */
+function deriveSeasonAggregateObservations(observations, rules, season, input) {
+  const wanted = new Map();
+  for (const rule of rules) {
+    const period = rule.evaluationPeriod;
+    if (period?.grain !== "SEASON_AGGREGATE") continue;
+    if (period.aggregation !== "MEAN") continue;
+    const key = `${rule.metric}:${period.aggregation}`;
+    if (!wanted.has(key)) {
+      wanted.set(key, { metric: rule.metric, aggregation: period.aggregation });
+    }
+  }
+  if (wanted.size === 0) return [];
+
+  const months = seasonAggregateMonths(season, input);
+  if (months === null) return [];
+
+  const derived = [];
+  for (const { metric, aggregation } of wanted.values()) {
+    const alreadyProvided = observations.some(
+      (value) =>
+        value?.metric === metric &&
+        value?.grain === "SEASON_AGGREGATE" &&
+        value?.aggregation === aggregation,
+    );
+    if (alreadyProvided) continue;
+
+    const monthly = months.map((month) =>
+      observations.find(
+        (value) => value?.metric === metric && value?.month === month,
+      ),
+    );
+    if (monthly.some((value) => value === undefined)) continue;
+    if (!monthly.every((value) => Number.isFinite(value.value))) continue;
+    const units = unique(monthly.map((value) => value.unit));
+    if (units.length !== 1) continue;
+
+    const total = monthly.reduce((sum, value) => sum + value.value, 0);
+    derived.push({
+      metric,
+      grain: "SEASON_AGGREGATE",
+      aggregation,
+      value: Number((total / monthly.length).toFixed(2)),
+      unit: units[0],
+      derivedFromMonths: [...months],
+    });
+  }
+  return derived;
+}
+
+/**
+ * 사과·배의 VERIFIED_PROFILE은 연간 프로파일이라 startMonth/endMonth가
+ * null이다. 이 경우 12개월 전체를 집계 범위로 본다.
+ */
+function seasonAggregateMonths(season, input) {
+  const explicit =
+    input.seasonMonths ?? input.request?.seasonMonths ?? season?.months;
+  if (Array.isArray(explicit) && explicit.length > 0) return explicit;
+  if (
+    Number.isInteger(season?.startMonth) &&
+    Number.isInteger(season?.endMonth)
+  ) {
+    return expandSeasonMonths(season.startMonth, season.endMonth);
+  }
+  if (season?.kind === "VERIFIED_PROFILE") {
+    return Array.from({ length: 12 }, (_, index) => index + 1);
+  }
+  return null;
 }
 
 function findObservation(observations, rule) {

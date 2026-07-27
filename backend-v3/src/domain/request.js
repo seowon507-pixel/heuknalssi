@@ -49,6 +49,7 @@ export function validateAndNormalizeRequest(raw, options = {}) {
     "season",
     "growthStage",
     "parcel",
+    "soilTest",
     "options",
   ]);
   domainAssert(
@@ -95,6 +96,8 @@ export function validateAndNormalizeRequest(raw, options = {}) {
   });
   const normalizedOptions = normalizeOptions(raw.options);
   const parcel = raw.parcel === undefined ? undefined : normalizeParcel(raw.parcel);
+  const soilTest =
+    raw.soilTest === undefined ? undefined : normalizeSoilTest(raw.soilTest);
 
   if (normalizedOptions.includeSatelliteObservation) {
     domainAssert(
@@ -121,6 +124,7 @@ export function validateAndNormalizeRequest(raw, options = {}) {
         : null,
     growthStage,
     ...(parcel === undefined ? {} : { parcel }),
+    ...(soilTest === undefined ? {} : { soilTest }),
     options: normalizedOptions,
   };
 }
@@ -339,6 +343,105 @@ function normalizeOptions(value) {
     result[key] = value[key];
   }
   return result;
+}
+
+/**
+ * 사용자가 등록한 토양검정 결과지 값. 공개 지역통계와 달리 선택한 필지의
+ * 실측값이므로 별도 필드로 유지하고, 검증된 범위를 벗어나면 거부한다.
+ * 검정 항목 중 검수된 규칙이 있는 것은 pH뿐이며 나머지는 화면 표시용이다.
+ */
+const SOIL_TEST_MEASUREMENTS = Object.freeze({
+  ph: Object.freeze({ min: 3, max: 10, unit: "pH" }),
+  electricalConductivity: Object.freeze({ min: 0, max: 30, unit: "dS/m" }),
+  organicMatter: Object.freeze({ min: 0, max: 500, unit: "g/kg" }),
+  availablePhosphate: Object.freeze({ min: 0, max: 3000, unit: "mg/kg" }),
+  exchangeableK: Object.freeze({ min: 0, max: 100, unit: "cmol+/kg" }),
+  exchangeableCa: Object.freeze({ min: 0, max: 100, unit: "cmol+/kg" }),
+  exchangeableMg: Object.freeze({ min: 0, max: 100, unit: "cmol+/kg" }),
+});
+const SOIL_TEST_FIELDS = Object.freeze([
+  ...Object.keys(SOIL_TEST_MEASUREMENTS),
+  "sampledOn",
+  "issuer",
+  "userConfirmed",
+]);
+
+function normalizeSoilTest(value) {
+  domainAssert(
+    isPlainObject(value),
+    "INVALID_SOIL_TEST",
+    "soilTest must be an object",
+  );
+  for (const key of Object.keys(value)) {
+    domainAssert(
+      SOIL_TEST_FIELDS.includes(key),
+      "INVALID_SOIL_TEST",
+      `unsupported soilTest field: ${key}`,
+    );
+  }
+  domainAssert(
+    value.userConfirmed === true,
+    "SOIL_TEST_NOT_CONFIRMED",
+    "soilTest must be confirmed by the user",
+  );
+
+  const measurements = {};
+  for (const [field, spec] of Object.entries(SOIL_TEST_MEASUREMENTS)) {
+    const raw = value[field];
+    if (raw === undefined || raw === null || raw === "") continue;
+    domainAssert(
+      typeof raw === "number" && Number.isFinite(raw),
+      "INVALID_SOIL_TEST",
+      `${field} must be a finite number`,
+      { field },
+    );
+    domainAssert(
+      raw >= spec.min && raw <= spec.max,
+      "SOIL_TEST_OUT_OF_RANGE",
+      `${field} must be between ${spec.min} and ${spec.max} ${spec.unit}`,
+      { field, min: spec.min, max: spec.max },
+    );
+    measurements[field] = raw;
+  }
+  domainAssert(
+    measurements.ph !== undefined,
+    "SOIL_TEST_PH_REQUIRED",
+    "soilTest requires a measured pH",
+  );
+
+  return {
+    ...measurements,
+    sampledOn: normalizeSampledOn(value.sampledOn),
+    issuer: normalizeIssuer(value.issuer),
+    source: "USER_SOIL_TEST",
+    userConfirmed: true,
+  };
+}
+
+function normalizeSampledOn(value) {
+  domainAssert(
+    typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/u.test(value),
+    "INVALID_SOIL_TEST",
+    "sampledOn must be a YYYY-MM-DD date",
+  );
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  domainAssert(
+    Number.isFinite(parsed.getTime()) &&
+      parsed.toISOString().slice(0, 10) === value,
+    "INVALID_SOIL_TEST",
+    "sampledOn is not a real date",
+  );
+  return value;
+}
+
+function normalizeIssuer(value) {
+  if (value === undefined || value === null || value === "") return null;
+  domainAssert(
+    typeof value === "string" && value.trim() !== "" && value.trim().length <= 60,
+    "INVALID_SOIL_TEST",
+    "issuer must be a short non-empty string",
+  );
+  return value.trim();
 }
 
 function normalizeParcel(value) {

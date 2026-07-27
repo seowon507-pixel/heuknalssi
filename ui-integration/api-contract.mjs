@@ -75,6 +75,9 @@ export function buildAnalysisRequests(values, candidateToken) {
         analysisMonth: values?.analysisMonth,
         growth: cropSettings.growth ?? values?.growth,
         saveConsent: values?.saveConsent,
+        smartfarmAvailable: values?.smartfarmAvailable === true,
+        // 등록된 토양검정 결과는 작물과 무관하게 같은 필지 값이므로 모두에 싣는다.
+        soilTest: values?.soilTest,
       },
       candidateToken,
     );
@@ -123,6 +126,7 @@ export function buildAnalysisRequest(values, candidateToken) {
       includeSmartfarmBenchmark: smartfarmReferenceAvailable(
         crop,
         cultivationMode,
+        values?.smartfarmAvailable === true,
       ),
       includeSatelliteObservation: false,
       saveConsent: values?.saveConsent === true,
@@ -150,7 +154,64 @@ export function buildAnalysisRequest(values, candidateToken) {
     request.growthStage = growthStage;
   }
 
+  const soilTest = soilTestFor(values?.soilTest);
+  if (soilTest) request.soilTest = soilTest;
+
   return request;
+}
+
+// 서버(domain/request.js)가 받는 항목과 범위를 그대로 따른다.
+const SOIL_TEST_RANGES = Object.freeze({
+  ph: [3, 10],
+  electricalConductivity: [0, 30],
+  organicMatter: [0, 500],
+  availablePhosphate: [0, 3000],
+  exchangeableK: [0, 100],
+  exchangeableCa: [0, 100],
+  exchangeableMg: [0, 100],
+});
+
+function soilTestFor(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object") {
+    throw new ContractValidationError(
+      "SOIL_TEST_INVALID",
+      "토양검정 결과를 다시 입력해 주세요.",
+      "soilTest",
+    );
+  }
+
+  const measurements = {};
+  for (const [field, [min, max]] of Object.entries(SOIL_TEST_RANGES)) {
+    const raw = value[field];
+    if (raw === undefined || raw === null || raw === "") continue;
+    const parsed = typeof raw === "number" ? raw : Number(String(raw).trim());
+    if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+      throw new ContractValidationError(
+        "SOIL_TEST_OUT_OF_RANGE",
+        `검정 결과 값이 입력할 수 있는 범위를 벗어났습니다. (${min}~${max})`,
+        `soilTest.${field}`,
+      );
+    }
+    measurements[field] = parsed;
+  }
+
+  if (measurements.ph === undefined) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(String(value.sampledOn ?? ""))) {
+    throw new ContractValidationError(
+      "SOIL_TEST_DATE_REQUIRED",
+      "검정을 받은 날짜를 입력해 주세요.",
+      "soilTest.sampledOn",
+    );
+  }
+
+  const issuer = String(value.issuer ?? "").trim();
+  return {
+    ...measurements,
+    sampledOn: value.sampledOn,
+    ...(issuer === "" ? {} : { issuer: issuer.slice(0, 60) }),
+    userConfirmed: true,
+  };
 }
 
 function growthStageForContext(crop, cultivationMode, growthValue) {
@@ -175,7 +236,14 @@ export function requestFingerprint(request) {
   return JSON.stringify(request);
 }
 
-function smartfarmReferenceAvailable(crop, cultivationMode) {
+/**
+ * SmartFarm은 핵심 판정이 아니라 동종 농가 참고자료다.
+ * 서버 사전점검에서 실제 사용 가능하다고 확인된 경우에만, 백엔드가
+ * 지원하는 작물·재배환경 조합으로 요청한다. 공급자 장애는 핵심 분석과
+ * 분리되어 있으므로 실패해도 기상·토양 판정을 막지 않는다.
+ */
+function smartfarmReferenceAvailable(crop, cultivationMode, available) {
+  if (!available) return false;
   if (
     crop === "CUCUMBER" &&
     ["FACILITY_SOIL", "FACILITY_HYDRO"].includes(cultivationMode)
