@@ -96,6 +96,9 @@ export function loadConfig(env = process.env) {
     env.GEMINI_API_KEY ||
     env.GOOGLE_API_KEY ||
     null;
+  const supabaseUrl = env.SUPABASE_URL || null;
+  const supabaseSecretKey =
+    env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || null;
 
   return Object.freeze({
     nodeEnv,
@@ -170,9 +173,14 @@ export function loadConfig(env = process.env) {
     },
     // 기기 이관 백업 저장소. 미설정이면 기능만 꺼지고 분석에는 영향이 없다.
     deviceBackupConfig: {
-      url: env.SUPABASE_URL || null,
-      secretKey:
-        env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || null,
+      url: supabaseUrl,
+      secretKey: supabaseSecretKey,
+    },
+    // 세션·후보·분석·멱등성·속도 제한은 동일한 서버 전용 경로를 쓴다.
+    // 설정만으로 READY가 되지 않으며 런타임 원자 probe를 통과해야 한다.
+    sharedStateConfig: {
+      url: supabaseUrl,
+      secretKey: supabaseSecretKey,
     },
     assistantConfig: {
       enabled: enabledWhenConfigured(env.ENABLE_GOOGLE_AI, googleAiApiKey),
@@ -182,14 +190,16 @@ export function loadConfig(env = process.env) {
     capabilities: {
       smartfarm: 'DISABLED',
       satellite: enabled(env.ENABLE_SATELLITE) ? 'UNSUPPORTED' : 'DISABLED',
-      persistence: 'NOT_AVAILABLE',
+      persistence:
+        supabaseUrl && supabaseSecretKey
+          ? 'CONFIGURED_UNVERIFIED'
+          : 'NOT_AVAILABLE',
       llmReport: enabled(env.ENABLE_LLM_REPORT) ? 'UNSUPPORTED' : 'DISABLED',
       assistant: enabledWhenConfigured(env.ENABLE_GOOGLE_AI, googleAiApiKey)
         ? 'READY'
         : 'FALLBACK',
       deviceBackup:
-        env.SUPABASE_URL &&
-        (env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)
+        supabaseUrl && supabaseSecretKey
           ? 'CONFIGURED_UNVERIFIED'
           : 'NOT_AVAILABLE',
     },

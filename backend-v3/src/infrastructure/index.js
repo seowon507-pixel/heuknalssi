@@ -32,3 +32,8 @@ export {
   TtlMemoryStore,
   ttlStoreDefaults,
 } from "./ttl-memory-store.js";
+export {
+  SharedStateError,
+  createSupabaseSharedState,
+  supabaseSharedStateDefaults,
+} from "./supabase-shared-state.js";

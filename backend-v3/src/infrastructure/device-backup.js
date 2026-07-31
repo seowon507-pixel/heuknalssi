@@ -1,5 +1,7 @@
 import { createHash, randomInt } from "node:crypto";
 
+import { createSupabaseServerHeaders } from "./supabase-server-headers.js";
+
 /**
  * 기기 간 데이터 이관.
  *
@@ -113,11 +115,7 @@ export function createDeviceBackupStore({
         method: "POST",
         body: JSON.stringify(args),
         signal: controller.signal,
-        headers: {
-          apikey: serviceKey,
-          Authorization: `Bearer ${serviceKey}`,
-          "Content-Type": "application/json",
-        },
+        headers: createSupabaseServerHeaders(serviceKey),
       });
       if (!response.ok) {
         throw new DeviceBackupError(

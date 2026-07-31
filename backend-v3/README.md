@@ -153,6 +153,17 @@ Google AI는 허용된 항목 ID만 선택하며 최종 문장은 서버가 작�
 - 미검증 규칙·계약·선택 기능은 외부 호출 없이 닫힙니다.
 - P0 보고서는 자유형 LLM 문장을 생성하지 않습니다.
 
-## 운영 한계
+## 공유 상태와 배포 준비
 
-인메모리 세션·분석·멱등 저장은 단일 인스턴스 P0에 한정됩니다. 다중 인스턴스나 영구저장 전환 전에는 공유 저장소, 삭제·보관정책, 암호화, 분산 rate limit을 별도로 설계해야 합니다.
+`SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`를 설정하면 세션·위치 후보·
+분석·멱등성·속도 제한을 Supabase 공유 상태로 전환합니다. 설정값이 있다는
+이유만으로 배포 준비 상태를 올리지 않으며, `/api/health/preflight` 요청마다
+같은 Data API 권한으로 원자 쓰기·잠금 읽기·비교·삭제 probe를 통과해야
+`storage.state: "READY"`가 됩니다. 규칙·위치·공급자 조건도 모두 충족된
+경우에만 `deploymentState: "READY"`를 반환합니다.
+
+테이블/RPC, 명시적 GRANT, RLS, 키 주입과 배포 검증 절차는
+[`supabase/README.md`](./supabase/README.md)를 따릅니다. Supabase CLI가 없는
+환경에서 임의 마이그레이션 이름을 만들지 않도록 검수 SQL과 실제 migration
+생성 절차를 분리했습니다. 공유 저장소를 설정하지 않은 로컬 개발에서는
+기존 bounded 인메모리 저장소를 사용하지만 배포 상태는 항상 `HOLD`입니다.

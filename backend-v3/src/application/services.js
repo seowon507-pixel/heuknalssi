@@ -225,6 +225,7 @@ export function createApplicationServices({
   reportLockTtlMs = REPORT_LOCK_TTL_MS,
   coreDeadlineMs = 5_000,
   runtimeStatus = null,
+  sharedStateProbe = null,
   minimumVerifiedMappingCount = 6,
   capabilities = {
     smartfarm: 'DISABLED',
@@ -252,6 +253,9 @@ export function createApplicationServices({
     throw new TypeError(
       'minimumVerifiedMappingCount must be a positive integer',
     );
+  }
+  if (sharedStateProbe !== null && typeof sharedStateProbe !== 'function') {
+    throw new TypeError('sharedStateProbe must be a function or null');
   }
   const startupMappingValidation = validateVerifiedLocationMappings(
     verifiedLocationMappings,
@@ -299,7 +303,7 @@ export function createApplicationServices({
     return issueLocationCandidates(ownerSessionId, envelope);
   }
 
-  function issueLocationCandidates(ownerSessionId, envelope) {
+  async function issueLocationCandidates(ownerSessionId, envelope) {
     const expiresAtMs = clock() + candidateTtlMs;
     const candidates = [];
     const insertedTokens = [];
@@ -307,21 +311,41 @@ export function createApplicationServices({
       if (envelopeHasUsableData(envelope)) {
         for (const candidate of envelope.data.candidates) {
           const candidateToken = createOpaqueId(randomBytes, 16);
-          if (candidateStore.get(candidateToken) !== undefined) {
+          const storedValue = {
+            ownerSessionId,
+            resolvedLocation: normalizeResolvedLocation(candidate),
+          };
+          let inserted;
+          if (typeof candidateStore.setIfAbsent === 'function') {
+            inserted = await Promise.resolve(
+              candidateStore.setIfAbsent(
+                candidateToken,
+                storedValue,
+                candidateTtlMs,
+              ),
+            );
+          } else if (
+            (await Promise.resolve(candidateStore.get(candidateToken))) ===
+            undefined
+          ) {
+            await Promise.resolve(
+              candidateStore.set(
+                candidateToken,
+                storedValue,
+                candidateTtlMs,
+              ),
+            );
+            inserted = true;
+          } else {
+            inserted = false;
+          }
+          if (!inserted) {
             throw serviceError(
               'LOCATION_TOKEN_COLLISION',
               'A unique location candidate token could not be allocated.',
               500,
             );
           }
-          candidateStore.set(
-            candidateToken,
-            {
-              ownerSessionId,
-              resolvedLocation: normalizeResolvedLocation(candidate),
-            },
-            candidateTtlMs,
-          );
           insertedTokens.push(candidateToken);
           candidates.push({
             candidateToken,
@@ -333,7 +357,7 @@ export function createApplicationServices({
       }
     } catch (error) {
       for (const candidateToken of insertedTokens) {
-        candidateStore.delete(candidateToken);
+        await Promise.resolve(candidateStore.delete(candidateToken));
       }
       throw error;
     }
@@ -359,7 +383,9 @@ export function createApplicationServices({
     lifecycle.transition('VALIDATING');
     const request = normalizeAnalysisInput(input);
     lifecycle.transition('RESOLVING_LOCATION');
-    const candidate = candidateStore.get(request.location.candidateToken);
+    const candidate = await Promise.resolve(
+      candidateStore.get(request.location.candidateToken),
+    );
     if (!candidate || candidate.ownerSessionId !== ownerSessionId) {
       throw serviceError(
         'LOCATION_TOKEN_INVALID',
@@ -607,12 +633,13 @@ export function createApplicationServices({
     };
 
     const expiresAtMs = clock() + analysisTtlMs;
-    persistAnalysisRecord(
+    await persistAnalysisRecord(
       result.analysisId,
       {
         ownerSessionId,
         result: structuredClone(result),
         reportPending: false,
+        reportLockExpiresAtMs: null,
         expiresAtMs,
       },
     );
@@ -624,7 +651,7 @@ export function createApplicationServices({
   }
 
   async function getAnalysis({ ownerSessionId, analysisId }) {
-    const record = analysisStore.get(analysisId);
+    const record = await Promise.resolve(analysisStore.get(analysisId));
     if (!record || record.ownerSessionId !== ownerSessionId) return null;
     return structuredClone(record.result);
   }
@@ -635,7 +662,7 @@ export function createApplicationServices({
     question,
     signal,
   }) {
-    const record = analysisStore.get(analysisId);
+    const record = await Promise.resolve(analysisStore.get(analysisId));
     if (!record || record.ownerSessionId !== ownerSessionId) return null;
     const normalizedQuestion = normalizeQuestion(question);
     if (!normalizedQuestion) {
@@ -655,52 +682,116 @@ export function createApplicationServices({
   }
 
   async function requestReport({ ownerSessionId, analysisId }) {
-    const record = analysisStore.get(analysisId);
-    if (!record || record.ownerSessionId !== ownerSessionId) return null;
+    const storedRecord = await Promise.resolve(analysisStore.get(analysisId));
+    if (!storedRecord || storedRecord.ownerSessionId !== ownerSessionId) {
+      return null;
+    }
+    const record = structuredClone(storedRecord);
     if (['READY', 'FALLBACK'].includes(record.result.report.state)) {
       return { analysis: structuredClone(record.result), started: false };
     }
-    if (record.reportPending) {
+    if (
+      record.reportPending &&
+      Number.isFinite(record.reportLockExpiresAtMs) &&
+      record.reportLockExpiresAtMs > clock()
+    ) {
       return { analysis: structuredClone(record.result), started: true };
     }
 
     record.reportPending = true;
+    record.reportLockExpiresAtMs = clock() + reportLockTtlMs;
     record.result.report = { state: 'PENDING', value: null };
-    appendLifecycleTransition(
-      record.result,
-      'REPORT_PENDING',
-      clock,
-    );
+    if (record.result.lifecycle?.currentState !== 'REPORT_PENDING') {
+      appendLifecycleTransition(
+        record.result,
+        'REPORT_PENDING',
+        clock,
+      );
+    }
     record.expiresAtMs = Math.max(
       record.expiresAtMs,
-      clock() + reportLockTtlMs,
+      record.reportLockExpiresAtMs,
     );
-    persistAnalysisRecord(analysisId, record);
+    let acquired;
+    if (typeof analysisStore.compareAndSet === 'function') {
+      acquired = await Promise.resolve(
+        analysisStore.compareAndSet(
+          analysisId,
+          storedRecord,
+          record,
+          Math.max(1, record.expiresAtMs - clock()),
+        ),
+      );
+    } else {
+      acquired = await persistAnalysisRecord(analysisId, record);
+    }
+    if (!acquired) {
+      const latest = await Promise.resolve(analysisStore.get(analysisId));
+      if (!latest || latest.ownerSessionId !== ownerSessionId) return null;
+      return {
+        analysis: structuredClone(latest.result),
+        started: !['READY', 'FALLBACK'].includes(latest.result.report.state),
+      };
+    }
+
     queueMicrotask(() => {
-      const current = analysisStore.get(analysisId);
-      if (!current || current.ownerSessionId !== ownerSessionId) return;
+      void completeDeterministicReport({ ownerSessionId, analysisId });
+    });
+    return { analysis: structuredClone(record.result), started: true };
+  }
+
+  async function completeDeterministicReport({ ownerSessionId, analysisId }) {
+    try {
+      const storedRecord = await Promise.resolve(
+        analysisStore.get(analysisId),
+      );
+      if (!storedRecord || storedRecord.ownerSessionId !== ownerSessionId) {
+        return;
+      }
+      const current = structuredClone(storedRecord);
       current.result.report = {
         state: 'FALLBACK',
         value: buildDeterministicReport(current.result),
       };
       appendLifecycleTransition(current.result, 'COMPLETE', clock);
       current.reportPending = false;
-      persistAnalysisRecord(analysisId, current);
-    });
-    return { analysis: structuredClone(record.result), started: true };
+      current.reportLockExpiresAtMs = null;
+      if (typeof analysisStore.compareAndSet === 'function') {
+        await Promise.resolve(
+          analysisStore.compareAndSet(
+            analysisId,
+            storedRecord,
+            current,
+            Math.max(1, current.expiresAtMs - clock()),
+          ),
+        );
+      } else {
+        await persistAnalysisRecord(analysisId, current);
+      }
+    } catch {
+      // The request already returned PENDING. A transient store failure keeps
+      // that state until the short lock/record TTL instead of fabricating a
+      // completed report in process memory.
+    }
   }
 
-  function persistAnalysisRecord(analysisId, record) {
+  async function persistAnalysisRecord(analysisId, record) {
     const remainingTtlMs = record.expiresAtMs - clock();
     if (remainingTtlMs <= 0) {
-      analysisStore.delete(analysisId);
+      await Promise.resolve(analysisStore.delete(analysisId));
       return false;
     }
-    analysisStore.set(analysisId, record, remainingTtlMs);
+    await Promise.resolve(
+      analysisStore.set(analysisId, record, remainingTtlMs),
+    );
     return true;
   }
 
   async function getPreflight() {
+    const persistenceHealth = await verifySharedStateCapability({
+      configuredState: capabilities.persistence ?? 'NOT_AVAILABLE',
+      probe: sharedStateProbe,
+    });
     const mappingValidation = validateVerifiedLocationMappings(
       verifiedLocationMappings,
       { now: () => new Date(clock()) },
@@ -762,9 +853,7 @@ export function createApplicationServices({
       mappingValidation.valid &&
       p0ReadyLocationMappingCount >= minimumVerifiedMappingCount;
     const ready = requiredAdaptersReady && rulesReady && mappingsReady;
-    const sharedStateReady = isReadyCapability(
-      capabilities.persistence ?? 'NOT_AVAILABLE',
-    );
+    const sharedStateReady = persistenceHealth.ready;
     return {
       ready,
       serviceState: ready ? 'READY' : 'HOLD',
@@ -811,7 +900,7 @@ export function createApplicationServices({
       capabilities: {
         smartfarm: 'DISABLED',
         satellite: capabilities.satellite ?? 'DISABLED',
-        persistence: capabilities.persistence ?? 'NOT_AVAILABLE',
+        persistence: persistenceHealth.capability,
         deviceBackup: capabilities.deviceBackup ?? 'NOT_AVAILABLE',
         report: 'DETERMINISTIC_TEMPLATE',
         assistant: capabilities.assistant ?? assistant?.state ?? 'FALLBACK',
@@ -821,6 +910,11 @@ export function createApplicationServices({
         missingValueReweighting: false,
         unverifiedSoilRepresentativeValue: false,
         freeFormLlm: false,
+      },
+      storage: {
+        state: persistenceHealth.state,
+        verifiedAt: persistenceHealth.verifiedAt,
+        probe: 'ATOMIC_WRITE_READ_DELETE',
       },
       blockers: [
         ...(!rulesReady ? ['VERIFIED_RULES_NOT_CONFIGURED'] : []),
@@ -841,7 +935,13 @@ export function createApplicationServices({
           .map(([name, state]) => `ADAPTER_${name}:${state}`),
       ],
       deploymentBlockers: [
-        ...(!sharedStateReady ? ['SHARED_STATE_NOT_CONFIGURED'] : []),
+        ...(!sharedStateReady
+          ? [
+              persistenceHealth.state === 'NOT_CONFIGURED'
+                ? 'SHARED_STATE_NOT_CONFIGURED'
+                : 'SHARED_STATE_PROBE_FAILED',
+            ]
+          : []),
       ],
     };
   }
@@ -2302,6 +2402,50 @@ function adapterCapability(adapter, declaredState, requiredMethod) {
 
 function isReadyCapability(state) {
   return state === 'READY';
+}
+
+async function verifySharedStateCapability({ configuredState, probe }) {
+  const configured = ![
+    'NOT_AVAILABLE',
+    'DISABLED',
+    'UNSUPPORTED',
+  ].includes(configuredState);
+  if (typeof probe !== 'function') {
+    return {
+      ready: false,
+      state: configured ? 'CONFIGURED_UNVERIFIED' : 'NOT_CONFIGURED',
+      capability: configured ? 'CONFIGURED_UNVERIFIED' : 'NOT_AVAILABLE',
+      verifiedAt: null,
+    };
+  }
+  try {
+    const result = await probe();
+    if (result?.ready === true && result.state === 'READY') {
+      return {
+        ready: true,
+        state: 'READY',
+        capability: 'READY',
+        verifiedAt:
+          typeof result.verifiedAt === 'string' ? result.verifiedAt : null,
+      };
+    }
+    return {
+      ready: false,
+      state:
+        typeof result?.state === 'string'
+          ? result.state
+          : 'PROBE_FAILED',
+      capability: 'CONFIGURED_UNVERIFIED',
+      verifiedAt: null,
+    };
+  } catch {
+    return {
+      ready: false,
+      state: 'UNAVAILABLE',
+      capability: 'CONFIGURED_UNVERIFIED',
+      verifiedAt: null,
+    };
+  }
 }
 
 function isDecisionCapableRule(rule) {

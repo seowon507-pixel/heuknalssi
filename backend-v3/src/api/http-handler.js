@@ -353,11 +353,11 @@ function selectIpRateConfig(config, routeName) {
   return config.rateLimits;
 }
 
-function consumeRateLimit(rateLimiter, key, rateLimit) {
+async function consumeRateLimit(rateLimiter, key, rateLimit) {
   if (!rateLimit) {
     return null;
   }
-  return rateLimiter.consume(key, rateLimit);
+  return Promise.resolve(rateLimiter.consume(key, rateLimit));
 }
 
 function enforceRateLimitOutcome(res, outcome) {
@@ -367,8 +367,8 @@ function enforceRateLimitOutcome(res, outcome) {
   }
 }
 
-function enforceRateLimit(res, rateLimiter, key, rateLimit) {
-  const outcome = consumeRateLimit(rateLimiter, key, rateLimit);
+async function enforceRateLimit(res, rateLimiter, key, rateLimit) {
+  const outcome = await consumeRateLimit(rateLimiter, key, rateLimit);
   if (outcome) {
     enforceRateLimitOutcome(res, outcome);
   }
@@ -506,6 +506,7 @@ export function createHttpHandler({
       secure: production || config.secureCookies === true,
       sessionTtlMs: config.sessionTtlMs,
       maxEntries: config.sessionMaxEntries,
+      store: config.sessionStore,
     });
   const rateLimiter =
     config.rateLimiter ??
@@ -573,7 +574,7 @@ export function createHttpHandler({
           route.name,
           DEFAULT_IP_RATE_LIMITS,
         );
-        ingressRateOutcome = consumeRateLimit(
+        ingressRateOutcome = await consumeRateLimit(
           rateLimiter,
           JSON.stringify(["ip", route.name, clientIp]),
           ipRateLimit,
@@ -624,7 +625,7 @@ export function createHttpHandler({
 
       abortContext = createAbortContext(req, res, requestTimeoutMs);
 
-      const { session, setCookie } = sessionManager.resolve(
+      const { session, setCookie } = await sessionManager.resolve(
         getHeader(req, "cookie"),
       );
       if (setCookie) {
@@ -632,7 +633,7 @@ export function createHttpHandler({
       }
 
       const rateLimit = normalizeRateLimit(config.rateLimits, route.name);
-      enforceRateLimit(
+      await enforceRateLimit(
         res,
         rateLimiter,
         JSON.stringify([
@@ -769,7 +770,7 @@ export function createHttpHandler({
                 !Array.isArray(value),
             );
           }
-          const beginning = idempotencyStore.begin({
+          const beginning = await idempotencyStore.begin({
             ownerSessionId: session.id,
             route: route.name,
             key: idempotencyKey,
@@ -828,7 +829,13 @@ export function createHttpHandler({
           location,
         };
         if (idempotencyToken) {
-          idempotencyStore.complete(idempotencyToken, response);
+          const completed = await idempotencyStore.complete(
+            idempotencyToken,
+            response,
+          );
+          if (!completed) {
+            throw new ApiError("INTERNAL_ERROR");
+          }
           idempotencyToken = undefined;
         }
         sendJson(res, response.status, response.body, {
@@ -989,7 +996,13 @@ export function createHttpHandler({
       throw new ApiError("NOT_FOUND");
     } catch (caught) {
       if (idempotencyToken) {
-        idempotencyStore.fail(idempotencyToken);
+        try {
+          await idempotencyStore.fail(idempotencyToken);
+        } catch {
+          // A failed cleanup leaves the key in-progress until its TTL. This is
+          // safer than allowing a duplicate mutation and must not mask the
+          // original request error.
+        }
       }
       if (
         abortContext?.signal.aborted &&

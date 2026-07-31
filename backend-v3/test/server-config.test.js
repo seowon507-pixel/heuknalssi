@@ -61,6 +61,11 @@ test('device backup is unavailable without both server-side values and accepts a
     url: null,
     secretKey: null,
   });
+  assert.equal(disabled.capabilities.persistence, 'NOT_AVAILABLE');
+  assert.deepEqual(disabled.sharedStateConfig, {
+    url: null,
+    secretKey: null,
+  });
 
   const enabled = loadConfig({
     SUPABASE_URL: 'https://project.supabase.co',
@@ -74,6 +79,11 @@ test('device backup is unavailable without both server-side values and accepts a
     enabled.deviceBackupConfig.secretKey,
     'server-side-secret-for-test',
   );
+  assert.equal(enabled.capabilities.persistence, 'CONFIGURED_UNVERIFIED');
+  assert.deepEqual(enabled.sharedStateConfig, {
+    url: 'https://project.supabase.co',
+    secretKey: 'server-side-secret-for-test',
+  });
 });
 
 test('default server preflight reports deployment HOLD without verified assets', async () => {
@@ -97,6 +107,40 @@ test('default server preflight reports deployment HOLD without verified assets',
   const serialized = JSON.stringify(preflight);
   assert.equal(serialized.includes(PRODUCTION_SECRET), false);
   assert.equal(/api[_-]?key|session[_-]?secret/iu.test(serialized), false);
+});
+
+test('server composition promotes persistence only after its live RPC probe', async () => {
+  const calls = [];
+  const backend = createBackend({
+    env: {
+      NODE_ENV: 'development',
+      SESSION_SECRET: 'development-session-secret-longer-than-thirty-two',
+      ALLOWED_ORIGINS: 'http://localhost:3000',
+      SUPABASE_URL: 'https://project.supabase.co',
+      SUPABASE_SECRET_KEY: 'sb_secret_server-composition-test',
+    },
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return new Response('true', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
+    logger: { info() {}, error() {} },
+  });
+
+  const preflight = await backend.services.getPreflight();
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /heuknalssi_shared_state_probe$/u);
+  assert.equal(calls[0].options.headers.apikey, 'sb_secret_server-composition-test');
+  assert.equal(
+    Object.hasOwn(calls[0].options.headers, 'Authorization'),
+    false,
+  );
+  assert.equal(preflight.capabilities.persistence, 'READY');
+  assert.equal(preflight.storage.state, 'READY');
+  assert.deepEqual(preflight.deploymentBlockers, []);
+  assert.equal(preflight.deploymentState, 'HOLD');
 });
 
 test('preflight accepts only the exact frozen live-adapter contract versions', async () => {

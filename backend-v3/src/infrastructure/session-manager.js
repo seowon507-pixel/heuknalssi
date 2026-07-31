@@ -113,20 +113,51 @@ export class SessionManager {
       });
   }
 
-  resolve(cookieHeader) {
+  async resolve(cookieHeader) {
     const signedCookie = parseCookies(cookieHeader).get(this.#cookieName);
     const sessionId = this.#verifyCookie(signedCookie);
-    let session = sessionId ? this.#sessions.get(sessionId) : undefined;
+    let session = sessionId
+      ? await Promise.resolve(this.#sessions.get(sessionId))
+      : undefined;
     let isNew = false;
 
     if (!session) {
-      session = this.#createSession();
+      session = await this.#createAndStoreSession();
       isNew = true;
     } else if (session.csrfExpiresAt <= this.#clock()) {
-      session = this.#rotateSessionCsrf(session);
+      const expected = structuredClone(session);
+      const rotated = this.#rotateSessionCsrf(session);
+      if (typeof this.#sessions.compareAndSet === "function") {
+        const replaced = await Promise.resolve(
+          this.#sessions.compareAndSet(
+            session.id,
+            expected,
+            rotated,
+            this.#sessionTtlMs,
+          ),
+        );
+        if (replaced) {
+          session = rotated;
+        } else {
+          session = await Promise.resolve(this.#sessions.get(session.id));
+          if (!session) {
+            session = await this.#createAndStoreSession();
+            isNew = true;
+          }
+        }
+      } else {
+        session = rotated;
+        await Promise.resolve(
+          this.#sessions.set(session.id, session, this.#sessionTtlMs),
+        );
+      }
     }
 
-    this.#sessions.set(session.id, session, this.#sessionTtlMs);
+    if (!isNew && session.csrfExpiresAt > this.#clock()) {
+      await Promise.resolve(
+        this.#sessions.set(session.id, session, this.#sessionTtlMs),
+      );
+    }
     return {
       session,
       isNew,
@@ -157,14 +188,52 @@ export class SessionManager {
     );
   }
 
-  rotateCsrf(sessionId) {
-    const session = this.#sessions.get(sessionId);
+  async rotateCsrf(sessionId) {
+    const session = await Promise.resolve(this.#sessions.get(sessionId));
     if (!session) {
       return undefined;
     }
     const rotated = this.#rotateSessionCsrf(session);
-    this.#sessions.set(rotated.id, rotated, this.#sessionTtlMs);
+    if (typeof this.#sessions.compareAndSet === "function") {
+      const replaced = await Promise.resolve(
+        this.#sessions.compareAndSet(
+          rotated.id,
+          session,
+          rotated,
+          this.#sessionTtlMs,
+        ),
+      );
+      if (!replaced) {
+        return Promise.resolve(this.#sessions.get(sessionId));
+      }
+    } else {
+      await Promise.resolve(
+        this.#sessions.set(rotated.id, rotated, this.#sessionTtlMs),
+      );
+    }
     return rotated;
+  }
+
+  async #createAndStoreSession() {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const session = this.#createSession();
+      if (typeof this.#sessions.setIfAbsent === "function") {
+        const inserted = await Promise.resolve(
+          this.#sessions.setIfAbsent(
+            session.id,
+            session,
+            this.#sessionTtlMs,
+          ),
+        );
+        if (inserted) return session;
+      } else {
+        await Promise.resolve(
+          this.#sessions.set(session.id, session, this.#sessionTtlMs),
+        );
+        return session;
+      }
+    }
+    throw new Error("a unique session id could not be allocated");
   }
 
   #createSession() {

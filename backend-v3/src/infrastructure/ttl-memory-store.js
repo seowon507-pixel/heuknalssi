@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 function defaultClock() {
   return Date.now();
 }
@@ -107,6 +109,19 @@ export class TtlMemoryStore {
 
   delete(key) {
     return this.#entries.delete(key);
+  }
+
+  setIfAbsent(key, value, ttlMs) {
+    if (this.has(key)) return false;
+    this.set(key, value, ttlMs);
+    return true;
+  }
+
+  compareAndSet(key, expected, value, ttlMs) {
+    const current = this.get(key);
+    if (!isDeepStrictEqual(current, expected)) return false;
+    this.set(key, value, ttlMs);
+    return true;
   }
 
   clear() {

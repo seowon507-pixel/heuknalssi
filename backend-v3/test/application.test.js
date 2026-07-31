@@ -1529,6 +1529,37 @@ test('preflight is HOLD until rules, mappings, and every P0 adapter are actually
     Object.values(ready.adapters).every((state) => state === 'READY'),
     true,
   );
+
+  let probeCalls = 0;
+  const storageVerified = createApplicationServices({
+    adapters: completeAdapters(calls),
+    rules: fullyCompatibleRulesForAllContexts(),
+    verifiedLocationMappings: sixVerifiedMappings(() =>
+      structuredClone(mapping),
+    ),
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+    runtimeStatus: readyRuntimeStatus(),
+    capabilities: { persistence: 'CONFIGURED_UNVERIFIED' },
+    async sharedStateProbe() {
+      probeCalls += 1;
+      return {
+        ready: true,
+        state: 'READY',
+        verifiedAt: new Date(FIXED_TIME).toISOString(),
+      };
+    },
+  });
+  const deploymentReady = await storageVerified.getPreflight();
+  assert.equal(probeCalls, 1);
+  assert.equal(deploymentReady.deploymentReady, true);
+  assert.equal(deploymentReady.deploymentState, 'READY');
+  assert.deepEqual(deploymentReady.deploymentBlockers, []);
+  assert.deepEqual(deploymentReady.storage, {
+    state: 'READY',
+    verifiedAt: new Date(FIXED_TIME).toISOString(),
+    probe: 'ATOMIC_WRITE_READ_DELETE',
+  });
 });
 
 test('preflight requires declared runtime readiness and each adapter method contract', async () => {

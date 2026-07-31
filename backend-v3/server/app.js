@@ -17,7 +17,10 @@ import {
 import { createHttpHandler } from '../src/api/index.js';
 import { createApplicationServices } from '../src/application/index.js';
 import { createRuleRegistry } from '../src/domain/index.js';
-import { createDeviceBackupStore } from '../src/infrastructure/index.js';
+import {
+  createDeviceBackupStore,
+  createSupabaseSharedState,
+} from '../src/infrastructure/index.js';
 import { loadConfig } from './config.js';
 
 export function createBackend({
@@ -34,6 +37,12 @@ export function createBackend({
   soilContract = null,
 } = {}) {
   const config = loadConfig(env);
+  const sharedState = createSupabaseSharedState({
+    url: config.sharedStateConfig.url,
+    serviceKey: config.sharedStateConfig.secretKey,
+    fetchImpl,
+    now: clock,
+  });
   const activeRuleRegistry = ruleRegistry ?? createRuleRegistry(rules);
   const activeAdapters =
     adapters ??
@@ -160,6 +169,13 @@ export function createBackend({
     candidateTtlMs: config.candidateTtlMs,
     analysisTtlMs: config.analysisTtlMs,
     reportLockTtlMs: config.reportLockTtlMs,
+    ...(sharedState.configured
+      ? {
+          candidateStore: sharedState.createTtlStore('candidates'),
+          analysisStore: sharedState.createTtlStore('analyses'),
+          sharedStateProbe: sharedState.probe,
+        }
+      : {}),
     runtimeStatus: activeRuntimeStatus,
     capabilities: {
       ...config.capabilities,
@@ -179,6 +195,13 @@ export function createBackend({
       trustedProxy: config.trustedProxy,
       logger,
       requestTimeoutMs: 15_000,
+      ...(sharedState.configured
+        ? {
+            sessionStore: sharedState.createTtlStore('sessions'),
+            rateLimiter: sharedState.createRateLimiter(),
+            idempotencyStore: sharedState.createIdempotencyStore(),
+          }
+        : {}),
       rateLimits: {
         'locations.search': { limit: 30, windowMs: 60_000 },
         'analyses.create': { limit: 10, windowMs: 60_000 },
