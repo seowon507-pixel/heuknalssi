@@ -103,7 +103,8 @@ def footer(c, page_num, label="흙날씨 · 본선 제품 업그레이드"):
     text(c, f"{page_num:02d}", PAGE_W - 42, 13, 8, SLATE, anchor="right")
 
 
-def image_box(c, path, x, y, w, h, contain=False, radius=12, bg=white):
+def image_box(c, path, x, y, w, h, contain=False, radius=12, bg=white,
+              focus_y=0.5):
     path = Path(path)
     rounded(c, x, y, w, h, bg, LINE, radius=radius)
     if not path.exists():
@@ -113,7 +114,9 @@ def image_box(c, path, x, y, w, h, contain=False, radius=12, bg=white):
         iw, ih = im.size
     scale = min(w / iw, h / ih) if contain else max(w / iw, h / ih)
     dw, dh = iw * scale, ih * scale
-    dx, dy = x + (w - dw) / 2, y + (h - dh) / 2
+    dx = x + (w - dw) / 2
+    dy = y + h / 2 - dh * focus_y
+    dy = min(y, max(y + h - dh, dy))
     c.saveState()
     p = c.beginPath()
     p.roundRect(x, y, w, h, radius)
@@ -241,13 +244,15 @@ def slide_parallel(c):
 
 def slide_before_after(c):
     c.setFillColor(PAPER); c.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
-    title(c, "04 · BEFORE / AFTER", "자료 상태 화면을 행동 제품으로 교체했습니다", "같은 컬러 시스템을 유지하면서 정보 위계, 근거 연결, 시각 밀도를 다시 설계했습니다.")
-    image_box(c, ROOT / "product_first_baseline/r3/01_r3_dashboard_desktop.png", 42, 126, 366, 342)
-    image_box(c, ROOT / "output/finalist_final_dashboard.png", 434, 126, 366, 342)
-    pill(c, "BEFORE", 56, 438, fill=SAND, fg=AMBER, width=72)
-    pill(c, "AFTER", 448, 438, fill=GREEN_100, fg=GREEN_800, width=72)
-    paragraph(c, "샘플·운영 보류·자료 상태가 첫 행동보다 앞섬", 56, 108, 340, 9, 13, SLATE, max_lines=2)
-    paragraph(c, "실제 7일 예보와 작물 기준선, 오늘의 행동을 한 화면에 연결", 448, 108, 340, 9, 13, SLATE, max_lines=2)
+    title(c, "04 · BEFORE / AFTER", "이번 업그레이드 직전과 최종 버전을 비교했습니다", "동일 농장·작물·화면 크기·외부자료 모드에서 직전 팀 버전과 최종 제품을 다시 실행했습니다.")
+    image_box(c, ROOT / "output/finalist_upgrade_before_full.png", 42, 126, 366, 342,
+              focus_y=0.465)
+    image_box(c, ROOT / "output/finalist_upgrade_after_full.png", 434, 126, 366, 342,
+              focus_y=0.400)
+    pill(c, "BEFORE · 127dfb3", 56, 438, fill=SAND, fg=AMBER, width=126)
+    pill(c, "AFTER · d598890", 448, 438, fill=GREEN_100, fg=GREEN_800, width=126)
+    paragraph(c, "날씨 60%+토양 40% 합산점수와 일회성 안내", 56, 108, 340, 9, 13, SLATE, max_lines=2)
+    paragraph(c, "자료축 분리와 기한·근거·완료 상태를 가진 지속형 행동계획", 448, 108, 340, 9, 13, SLATE, max_lines=2)
     footer(c, 5); c.showPage()
 
 
