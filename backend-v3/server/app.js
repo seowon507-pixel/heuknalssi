@@ -22,6 +22,7 @@ import {
   createPersistentStore,
   createSupabaseKvStore,
   createWebPushSender,
+  sessionDefaults,
 } from '../src/infrastructure/index.js';
 import { loadConfig } from './config.js';
 
@@ -188,7 +189,9 @@ export function createBackend({
           clock,
           onError: onPersistenceError,
         }),
-        sessionTtlMs: config.sessionTtlMs,
+        // 세션 TTL은 config에 없고 SessionManager 기본값을 쓴다. 되살릴 때도
+        // 같은 값을 써야 저장소에서 읽은 세션이 곧바로 만료되지 않는다.
+        sessionTtlMs: config.sessionTtlMs ?? sessionDefaults.sessionTtlMs,
         analysisTtlMs: config.analysisTtlMs,
       }
     : null;

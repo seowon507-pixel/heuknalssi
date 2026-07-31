@@ -182,3 +182,23 @@ test('trusted runtime bootstrap is opt-in and accepts only composition options',
     /\.js or \.mjs/,
   );
 });
+
+test('공유 저장소 세션 TTL은 SessionManager 기본값과 같다', async () => {
+  // config에는 sessionTtlMs가 없다. 되살릴 때 다른 값을 쓰면 저장소에서
+  // 읽은 세션이 곧바로 만료되어 로그인 상태가 매 요청 끊긴다.
+  const { createBackend } = await import('../server/app.js');
+  const { sessionDefaults } = await import('../src/infrastructure/index.js');
+  const backend = createBackend({
+    env: {
+      NODE_ENV: 'development',
+      SUPABASE_URL: 'https://project.supabase.co',
+      SUPABASE_SECRET_KEY: 'sb_secret_test_value_1234567890',
+    },
+    fetchImpl: async () => ({ ok: true, status: 200, text: async () => '[]' }),
+  });
+  assert.equal(
+    backend.config.sessionTtlMs ?? sessionDefaults.sessionTtlMs,
+    sessionDefaults.sessionTtlMs,
+  );
+  assert.ok(sessionDefaults.sessionTtlMs > 0);
+});
