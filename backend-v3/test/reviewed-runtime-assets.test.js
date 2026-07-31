@@ -379,3 +379,71 @@ test("preflight configures all five reviewed crops while preserving adapter and 
     Object.keys(REVIEWED_LOCATION_MAPPINGS).length,
   );
 });
+
+test('구가 있는 시는 토양 코드를 구 단위로 만든다', () => {
+  // 농경지화학성 V2는 시 단위 코드에 result_Code 301(자료 없음)을 준다.
+  // 용인 처인구 주소가 들어오면 시 매핑에 걸리되 토양 코드는 구 단위여야 한다.
+  const keys = resolveLocationKeys(
+    {
+      resolutionMode: 'ADDRESS_RESOLVED',
+      latitude: 37.2342,
+      longitude: 127.2015,
+      legalDongCode: '4146125000',
+      displayName: '경기 용인시 처인구',
+    },
+    REVIEWED_LOCATION_MAPPINGS,
+  );
+  assert.equal(keys.verifiedSoilAreaCode, '4146100000');
+});
+
+test('구가 없는 시는 시 단위 토양 코드를 그대로 쓴다', () => {
+  const keys = resolveLocationKeys(
+    {
+      resolutionMode: 'ADDRESS_RESOLVED',
+      latitude: 37.2794,
+      longitude: 127.4425,
+      legalDongCode: '4150025000',
+      displayName: '경기 이천시',
+    },
+    REVIEWED_LOCATION_MAPPINGS,
+  );
+  assert.equal(keys.verifiedSoilAreaCode, '4150000000');
+});
+
+test('구가 있는 시의 어느 구에서든 같은 시 매핑을 찾는다', () => {
+  // 수원 팔달구 법정동코드는 41115로 시작해 시 매핑 4111000000과 어긋난다.
+  // 4자리 접두어 후보가 없으면 매핑을 못 찾고 예보·관측이 비어 버린다.
+  for (const legalDongCode of [
+    '4111110100', // 장안구
+    '4111310100', // 권선구
+    '4111510100', // 팔달구
+    '4111710100', // 영통구
+  ]) {
+    const keys = resolveLocationKeys(
+      {
+        resolutionMode: 'ADDRESS_RESOLVED',
+        latitude: 37.2636,
+        longitude: 127.0286,
+        legalDongCode,
+        displayName: '경기 수원시',
+      },
+      REVIEWED_LOCATION_MAPPINGS,
+    );
+    assert.equal(keys.midForecastRegionIds?.temperatureRegId, '11B20601');
+    assert.equal(keys.observationStationId, '119');
+    assert.equal(keys.normalStationId, '119');
+    assert.equal(keys.verifiedSoilAreaCode, `${legalDongCode.slice(0, 5)}00000`);
+  }
+});
+
+test('경기 31개 시·군과 서울 25개 자치구가 모두 검수 상태다', () => {
+  const codes = Object.keys(REVIEWED_LOCATION_MAPPINGS);
+  assert.equal(codes.filter((code) => code.startsWith('41')).length, 31);
+  assert.equal(codes.filter((code) => code.startsWith('11')).length, 25);
+  const validation = validateVerifiedLocationMappings(
+    REVIEWED_LOCATION_MAPPINGS,
+    { now: () => new Date('2026-07-31T00:00:00.000Z') },
+  );
+  assert.equal(validation.valid, true);
+  assert.equal(validation.p0ReadyCount, codes.length);
+});

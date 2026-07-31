@@ -146,8 +146,7 @@ export function resolveLocationKeys(
 
   return Object.freeze({
     legalDongCode10,
-    verifiedSoilAreaCode:
-      mapping?.soil?.verified === true ? mapping.soil.code : legalDongCode10,
+    verifiedSoilAreaCode: resolveSoilAreaCode(mapping, legalDongCode10),
     shortForecastGrid: grid,
     shortForecastScope: isAddressResolved
       ? 'ADDRESS_GRID'
@@ -301,6 +300,29 @@ function findActiveVerifiedMapping(location, verifiedMappings, at) {
   return null;
 }
 
+/**
+ * 농경지화학성 통계정보 V2에 넘길 지역 코드.
+ *
+ * 예보·관측은 시 단위로 충분하다. 같은 시 안에서는 예보 격자와 관측지점이
+ * 사실상 같다. 그런데 토양 통계는 다르다. 구가 있는 시는 시 단위 코드로
+ * 조회하면 result_Code 301(자료 없음)이 오고, 구 단위 코드로 조회해야 실제
+ * 농경지 면적이 나온다. 실측으로 확인했다(2026-07-31).
+ *
+ *   고양시 4128000000 → 0ha      덕양구 4128100000 → 2710ha
+ *   용인시 4146000000 → 0ha      처인구 4146100000 → 2725ha
+ *
+ * 그래서 그런 시는 매핑에 soilScope: 'DISTRICT'를 달고, 사용자의 실제
+ * 법정동코드에서 구 단위 접두어를 만들어 쓴다. 서울 자치구는 그 자체가
+ * 매핑 단위라 해당하지 않는다.
+ */
+function resolveSoilAreaCode(mapping, legalDongCode10) {
+  if (mapping?.soil?.verified !== true) return legalDongCode10;
+  if (mapping.soil.scope !== 'DISTRICT') return mapping.soil.code;
+  return typeof legalDongCode10 === 'string' && /^\d{10}$/u.test(legalDongCode10)
+    ? `${legalDongCode10.slice(0, 5)}00000`
+    : mapping.soil.code;
+}
+
 function mappingAreaCodeCandidates(location) {
   const rawCodes = [
     location?.adminAreaCode,
@@ -310,7 +332,16 @@ function mappingAreaCodeCandidates(location) {
   for (const code of rawCodes) {
     candidates.push(code);
     if (code.length === 10) {
-      candidates.push(`${code.slice(0, 5)}00000`, code.slice(0, 5));
+      // 법정동코드는 시도(2) + 시군구(3) + 읍면동(5)이다.
+      // 구가 있는 시는 5자리 접두어가 구 코드라(수원 팔달구 41115)
+      // 시 단위 매핑(4111000000)과 어긋난다. 시·군 단위인 4자리
+      // 접두어까지 후보에 넣어 같은 시의 어느 구에서든 찾게 한다.
+      // 서울 자치구는 그 자체가 매핑 단위이므로 5자리에서 먼저 맞는다.
+      candidates.push(
+        `${code.slice(0, 5)}00000`,
+        code.slice(0, 5),
+        `${code.slice(0, 4)}000000`,
+      );
     }
   }
   return [...new Set(candidates)];
