@@ -39,6 +39,7 @@ const ITEM_FIELDS = new Set([
   "updatedAt",
 ]);
 const STATUS_PRIORITY = Object.freeze({ OPEN: 0, DONE: 1, SKIPPED: 2 });
+const DUPLICATE_STATUS_PRIORITY = Object.freeze({ DONE: 0, SKIPPED: 1, OPEN: 2 });
 
 export function createActionItem(draft, { actionId, now } = {}) {
   assertRecord(draft, "INVALID_ACTION_DRAFT", "action draft must be an object");
@@ -130,11 +131,12 @@ export function transitionActionStatus(action, status, { now } = {}) {
 }
 
 export function ruleActionDedupeKey({ farmId, cropId, ruleId, dueAt } = {}) {
+  const dueTimestamp = utcTimestamp(dueAt, "dueAt");
   const parts = [
     requiredIdentifier(farmId, "farmId"),
     requiredIdentifier(cropId, "cropId"),
     requiredIdentifier(ruleId, "ruleId"),
-    utcTimestamp(dueAt, "dueAt"),
+    seoulDateKey(dueTimestamp),
   ];
   return `action-rule:v1:${parts.map(lengthPrefix).join("")}`;
 }
@@ -148,13 +150,13 @@ export function buildActionPlan(items, { farmId, cropId = null } = {}) {
     cropId === null || cropId === undefined
       ? null
       : requiredIdentifier(cropId, "cropId");
-  const scoped = items
+  const scoped = collapseDuplicateRuleActions(items
     .map(assertActionItem)
     .filter(
       (item) =>
         item.farmId === farmScope &&
         (cropScope === null || item.cropId === cropScope),
-    );
+    ));
   const today = scoped.filter(({ horizon }) => horizon === "TODAY").sort(compare);
   const upcoming = scoped
     .filter(({ horizon }) => horizon === "UPCOMING")
@@ -170,6 +172,48 @@ export function buildActionPlan(items, { farmId, cropId = null } = {}) {
     today: structuredClone(today),
     upcoming: structuredClone(upcoming),
   };
+}
+
+function collapseDuplicateRuleActions(items) {
+  const selected = new Map();
+  const passthrough = [];
+  for (const item of items) {
+    if (item.origin !== "RULE") {
+      passthrough.push(item);
+      continue;
+    }
+    const key = [
+      item.cropId,
+      item.seasonId,
+      item.title,
+      item.horizon,
+      seoulDateKey(item.dueAt),
+    ].join("\u0000");
+    const previous = selected.get(key);
+    if (!previous || preferDuplicateRuleAction(item, previous)) {
+      selected.set(key, item);
+    }
+  }
+  return [...passthrough, ...selected.values()];
+}
+
+function preferDuplicateRuleAction(candidate, current) {
+  return (
+    DUPLICATE_STATUS_PRIORITY[candidate.status] <
+      DUPLICATE_STATUS_PRIORITY[current.status] ||
+    (DUPLICATE_STATUS_PRIORITY[candidate.status] ===
+      DUPLICATE_STATUS_PRIORITY[current.status] &&
+      candidate.updatedAt.localeCompare(current.updatedAt) > 0)
+  );
+}
+
+function seoulDateKey(value) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
 }
 
 function compare(left, right) {

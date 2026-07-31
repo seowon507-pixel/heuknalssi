@@ -155,7 +155,7 @@ function toViewItem(item, expectedHorizon) {
     statusLabel: STATUS_LABELS[item.status],
     dueLabel: formatKoreanTimestamp(item.dueAt),
     recheckLabel: formatKoreanTimestamp(item.recheckAt),
-    evidence: item.evidenceRefs.map(toEvidenceLabel),
+    evidence: [...new Set(item.evidenceRefs.map(toEvidenceLabel))],
   };
 }
 

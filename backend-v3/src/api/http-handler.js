@@ -28,6 +28,13 @@ const DEFAULT_RATE_LIMITS = Object.freeze({
   "analyses.report": { limit: 5, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
+  "actions.list": { limit: 60, windowMs: 60_000 },
+  "actions.create": { limit: 20, windowMs: 60_000 },
+  "actions.update": { limit: 30, windowMs: 60_000 },
+  "parcel.get": { limit: 60, windowMs: 60_000 },
+  "parcel.put": { limit: 10, windowMs: 60_000 },
+  "satellite.get": { limit: 30, windowMs: 60_000 },
+  "satellite.refresh": { limit: 5, windowMs: 60_000 },
 });
 
 const DEFAULT_IP_RATE_LIMITS = Object.freeze({
@@ -39,6 +46,13 @@ const DEFAULT_IP_RATE_LIMITS = Object.freeze({
   "analyses.report": { limit: 5, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
+  "actions.list": { limit: 60, windowMs: 60_000 },
+  "actions.create": { limit: 20, windowMs: 60_000 },
+  "actions.update": { limit: 30, windowMs: 60_000 },
+  "parcel.get": { limit: 60, windowMs: 60_000 },
+  "parcel.put": { limit: 10, windowMs: 60_000 },
+  "satellite.get": { limit: 30, windowMs: 60_000 },
+  "satellite.refresh": { limit: 5, windowMs: 60_000 },
 });
 
 const ROUTES = Object.freeze([
@@ -96,6 +110,30 @@ const ROUTES = Object.freeze([
     pattern: /^\/api\/health\/preflight$/,
     methods: ["GET"],
   },
+  {
+    name: "actions.list",
+    pattern: /^\/api\/farms\/([^/]+)\/actions$/,
+    methods: ["GET", "POST"],
+    parameter: "farmId",
+  },
+  {
+    name: "actions.update",
+    pattern: /^\/api\/farms\/([^/]+)\/actions\/([^/]+)$/,
+    methods: ["PATCH"],
+    parameters: ["farmId", "actionId"],
+  },
+  {
+    name: "parcel.get",
+    pattern: /^\/api\/farms\/([^/]+)\/parcel$/,
+    methods: ["GET", "PUT"],
+    parameter: "farmId",
+  },
+  {
+    name: "satellite.get",
+    pattern: /^\/api\/farms\/([^/]+)\/satellite\/observations$/,
+    methods: ["GET", "POST"],
+    parameter: "farmId",
+  },
 ]);
 
 function normalizeAllowedOrigins(origins) {
@@ -137,7 +175,15 @@ function matchRoute(pathname) {
       continue;
     }
     const parameters = {};
-    if (route.parameter) {
+    if (route.parameters) {
+      route.parameters.forEach((parameter, index) => {
+        try {
+          parameters[parameter] = decodeURIComponent(match[index + 1]);
+        } catch {
+          parameters[parameter] = match[index + 1];
+        }
+      });
+    } else if (route.parameter) {
       try {
         parameters[route.parameter] = decodeURIComponent(match[1]);
       } catch {
@@ -147,6 +193,16 @@ function matchRoute(pathname) {
     return { ...route, parameters };
   }
   return null;
+}
+
+function operationName(route, method) {
+  if (!route) return "unmatched";
+  const mutationNames = {
+    "actions.list:POST": "actions.create",
+    "parcel.get:PUT": "parcel.put",
+    "satellite.get:POST": "satellite.refresh",
+  };
+  return mutationNames[`${route.name}:${method}`] ?? route.name;
 }
 
 function appendVary(res, value) {
@@ -467,12 +523,14 @@ function validateServices(services) {
 
 export function createHttpHandler({
   services,
+  featureServices = {},
   config = {},
   clock = Date.now,
   randomBytes = nodeRandomBytes,
   deviceBackup = null,
 } = {}) {
   validateServices(services);
+  validateFeatureServices(featureServices);
   if (typeof clock !== "function") {
     throw new TypeError("clock must be a function");
   }
@@ -563,20 +621,20 @@ export function createHttpHandler({
         throw new ApiError("INVALID_INPUT");
       }
       const route = matchRoute(url.pathname);
-      routeName = route?.name ?? "unmatched";
+      routeName = operationName(route, req.method);
 
       let clientIp;
       let ingressRateOutcome;
       if (route) {
         clientIp = resolveClientIp(req);
         const ipRateLimit = normalizeRateLimit(
-          selectIpRateConfig(config, route.name),
-          route.name,
+          selectIpRateConfig(config, routeName),
+          routeName,
           DEFAULT_IP_RATE_LIMITS,
         );
         ingressRateOutcome = await consumeRateLimit(
           rateLimiter,
-          JSON.stringify(["ip", route.name, clientIp]),
+          JSON.stringify(["ip", routeName, clientIp]),
           ipRateLimit,
         );
       }
@@ -593,7 +651,7 @@ export function createHttpHandler({
       }
       if (origin && !originAllowed) {
         throw new ApiError(
-          req.method === "POST" ? "CSRF_REJECTED" : "ORIGIN_REJECTED",
+          isMutationMethod(req.method) ? "CSRF_REJECTED" : "ORIGIN_REJECTED",
         );
       }
 
@@ -632,20 +690,20 @@ export function createHttpHandler({
         res.setHeader("Set-Cookie", setCookie);
       }
 
-      const rateLimit = normalizeRateLimit(config.rateLimits, route.name);
+      const rateLimit = normalizeRateLimit(config.rateLimits, routeName);
       await enforceRateLimit(
         res,
         rateLimiter,
         JSON.stringify([
           "session-ip",
-          route.name,
+          routeName,
           session.id,
           clientIp,
         ]),
         rateLimit,
       );
 
-      if (req.method === "POST") {
+      if (isMutationMethod(req.method)) {
         if (
           !origin ||
           !allowedOrigins.has(origin) ||
@@ -993,6 +1051,105 @@ export function createHttpHandler({
         return;
       }
 
+      if (route.name === "actions.list") {
+        const actionService = featureServices.actionPlan;
+        if (!actionService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        if (req.method === "GET") {
+          const cropId = url.searchParams.get("cropId");
+          const seasonId = url.searchParams.get("seasonId");
+          const result = await actionService.listActions({
+            accountId: session.id,
+            farmId: route.parameters.farmId,
+            cropId: cropId || null,
+            seasonId: seasonId || null,
+          });
+          sendJson(res, 200, result);
+          return;
+        }
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        const idempotencyKey = requireIdempotencyHeader(req);
+        const result = await actionService.createAction({
+          accountId: session.id,
+          farmId: route.parameters.farmId,
+          draft: body.draft,
+          ruleId: body.ruleId ?? null,
+          confirmed: body.confirmed,
+          idempotencyKey,
+        });
+        sendJson(res, result.created ? 201 : 200, result);
+        return;
+      }
+
+      if (route.name === "actions.update") {
+        const actionService = featureServices.actionPlan;
+        if (!actionService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        const result = await actionService.updateActionStatus({
+          accountId: session.id,
+          farmId: route.parameters.farmId,
+          actionId: route.parameters.actionId,
+          status: body.status,
+          confirmed: body.confirmed,
+          idempotencyKey: requireIdempotencyHeader(req),
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (route.name === "parcel.get") {
+        const satelliteService = featureServices.satellite;
+        if (!satelliteService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        if (req.method === "GET") {
+          const result = await satelliteService.getParcel({
+            ownerSessionId: session.id,
+            farmId: route.parameters.farmId,
+          });
+          sendJson(res, 200, { parcel: result });
+          return;
+        }
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        if (body.confirmed !== true) throw new ApiError("CONFIRMATION_REQUIRED");
+        const result = await satelliteService.putParcel({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          geometry: body.geometry,
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (route.name === "satellite.get") {
+        const satelliteService = featureServices.satellite;
+        if (!satelliteService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        if (req.method === "GET") {
+          const result = await satelliteService.getLatest({
+            ownerSessionId: session.id,
+            farmId: route.parameters.farmId,
+          });
+          sendJson(res, 200, { observation: result });
+          return;
+        }
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        if (body.confirmed !== true) throw new ApiError("CONFIRMATION_REQUIRED");
+        try {
+          const result = await satelliteService.refresh({
+            ownerSessionId: session.id,
+            farmId: route.parameters.farmId,
+            signal: abortContext.signal,
+          });
+          sendJson(res, 200, result);
+        } catch (error) {
+          if (error?.message === "parcel is not registered for this farm") {
+            throw new ApiError("PARCEL_REQUIRED", { cause: error });
+          }
+          if (error?.message === "satellite adapter is not configured") {
+            throw new ApiError("FEATURE_NOT_CONFIGURED", { cause: error });
+          }
+          throw error;
+        }
+        return;
+      }
+
       throw new ApiError("NOT_FOUND");
     } catch (caught) {
       if (idempotencyToken) {
@@ -1020,6 +1177,43 @@ export function createHttpHandler({
       abortContext?.cleanup();
     }
   };
+}
+
+function validateFeatureServices(featureServices) {
+  if (!featureServices || typeof featureServices !== "object") {
+    throw new TypeError("featureServices must be an object");
+  }
+  if (featureServices.actionPlan !== undefined) {
+    for (const method of ["listActions", "createAction", "updateActionStatus"]) {
+      if (typeof featureServices.actionPlan?.[method] !== "function") {
+        throw new TypeError(`featureServices.actionPlan.${method} must be a function`);
+      }
+    }
+  }
+  if (featureServices.satellite !== undefined) {
+    for (const method of ["putParcel", "getParcel", "getLatest", "refresh"]) {
+      if (typeof featureServices.satellite?.[method] !== "function") {
+        throw new TypeError(`featureServices.satellite.${method} must be a function`);
+      }
+    }
+  }
+}
+
+function isMutationMethod(method) {
+  return ["POST", "PUT", "PATCH", "DELETE"].includes(method);
+}
+
+function requireIdempotencyHeader(req) {
+  const key = getHeader(req, "idempotency-key");
+  if (!isValidIdempotencyKey(key)) {
+    throw new ApiError("INVALID_INPUT", {
+      fieldErrors: {
+        idempotencyKey:
+          "Idempotency-Key must be 1-64 visible ASCII characters.",
+      },
+    });
+  }
+  return key;
 }
 
 export const httpDefaults = Object.freeze({

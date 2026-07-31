@@ -8,6 +8,15 @@ import {
 import { summarizeForecastEvaluation } from "./forecast-presentation.mjs";
 import { hasMissingSoilExamHistory } from "./soil-service-guidance.mjs";
 import { suggestAdministrativeAddresses } from "./address-suggestions.mjs";
+import { mountActionPlan } from "./action-plan.mjs";
+import {
+  analyzePhotoPixels,
+  assessPhotoQuality,
+  createLocalPhotoJournal,
+  reviewPhotoComparison,
+} from "./local-photo-journal.mjs";
+import { parseAssistantActionRequest } from "./assistant-action-request.mjs";
+import { projectAnalysisAction } from "./action-projection.mjs";
 
 window.__BACKEND_INTEGRATION_ENABLED__ = true;
 
@@ -142,6 +151,14 @@ const ERROR_MESSAGES = Object.freeze({
   INVALID_CULTIVATION_MODE: "선택한 작물에 맞는 재배 환경을 확인해 주세요.",
   INVALID_GROWTH_STAGE: "현재 지원하는 생육단계를 다시 선택해 주세요.",
   UNVERIFIED_SEASON_PROFILE: "검토된 작기 규칙이 없어 판단을 보류했습니다.",
+  FEATURE_NOT_CONFIGURED:
+    "이 기능은 현재 서버에 설정되지 않았습니다. 운영 설정을 확인해 주세요.",
+  PARCEL_REQUIRED: "위성 자료를 확인하려면 농장 경계를 먼저 저장해 주세요.",
+  CONFIRMATION_REQUIRED: "저장 또는 변경 내용을 먼저 확인해 주세요.",
+  ACTION_CONFIRMATION_REQUIRED: "할 일 변경 내용을 먼저 확인해 주세요.",
+  ACTION_UPDATE_CONFLICT:
+    "다른 화면에서 할 일이 변경되었습니다. 최신 목록을 다시 불러옵니다.",
+  ACTION_NOT_FOUND: "변경할 할 일을 찾지 못했습니다. 목록을 새로 확인해 주세요.",
 });
 
 class ApiRequestError extends Error {
@@ -230,6 +247,60 @@ class BackendApi {
         body: { question },
         csrf: true,
       },
+    );
+  }
+
+  async listActions(farmId, { cropId = null, seasonId = null } = {}) {
+    const query = new URLSearchParams();
+    if (cropId) query.set("cropId", cropId);
+    if (seasonId) query.set("seasonId", seasonId);
+    const suffix = query.size ? `?${query}` : "";
+    return this.request(`/api/farms/${encodeURIComponent(farmId)}/actions${suffix}`);
+  }
+
+  async createAction(farmId, payload, idempotencyKey) {
+    return this.request(`/api/farms/${encodeURIComponent(farmId)}/actions`, {
+      method: "POST",
+      body: payload,
+      csrf: true,
+      headers: { "Idempotency-Key": idempotencyKey },
+    });
+  }
+
+  async updateAction(farmId, actionId, status, idempotencyKey) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/actions/${encodeURIComponent(actionId)}`,
+      {
+        method: "PATCH",
+        body: { status, confirmed: true },
+        csrf: true,
+        headers: { "Idempotency-Key": idempotencyKey },
+      },
+    );
+  }
+
+  async getParcel(farmId) {
+    return this.request(`/api/farms/${encodeURIComponent(farmId)}/parcel`);
+  }
+
+  async saveParcel(farmId, geometry) {
+    return this.request(`/api/farms/${encodeURIComponent(farmId)}/parcel`, {
+      method: "PUT",
+      body: { geometry, confirmed: true },
+      csrf: true,
+    });
+  }
+
+  async getSatelliteObservation(farmId) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/satellite/observations`,
+    );
+  }
+
+  async refreshSatelliteObservation(farmId) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/satellite/observations`,
+      { method: "POST", body: { confirmed: true }, csrf: true },
     );
   }
 
@@ -325,6 +396,10 @@ let pendingAttempt = null;
 let connectionPromise = null;
 let assistantAnalysisId = null;
 let creatingNewFarm = false;
+let disposeActionPlan = null;
+let pendingParcelGeometry = null;
+const photoJournal = createLocalPhotoJournal();
+let photoObjectUrls = [];
 const savedSessionAtBoot = readStoredSession();
 
 initializeDashboardSurfaces();
@@ -481,6 +556,7 @@ async function performConnection() {
     preflight = await api.preflight();
     connected = true;
     renderRuntimeState();
+    applySatelliteAvailability();
     configureDeviceBackupControl();
   } catch (error) {
     const message = errorMessage(error);
@@ -962,13 +1038,14 @@ async function submitAnalysis() {
       completed.map((analysis) => [analysis?.inputSummary?.crop, analysis]),
     );
     currentAnalysis = completed[0];
-    renderAnalysis(currentAnalysis);
-    renderCropResultSwitcher();
-    pendingAttempt = null;
-    // 새로고침해도 같은 조건으로 이어서 볼 수 있게 기억한다.
+    // 행동·사진·위성 기능이 첫 렌더부터 같은 농장 ID를 사용하도록
+    // 사용자가 요청한 기기 저장을 기능 렌더링보다 먼저 확정한다.
     if (formValues.saveConsent === true) {
       writeStoredSession(formValues, selectedCandidate?.displayName ?? null);
     }
+    renderAnalysis(currentAnalysis);
+    renderCropResultSwitcher();
+    pendingAttempt = null;
     closeWizardAfterAnalysis();
     if (failed.length > 0) {
       const failedCrops = failed.map(({ index }) =>
@@ -1031,7 +1108,100 @@ function renderAnalysis(analysis) {
   renderTechnicalSettings(analysis);
   syncAssistantContext(analysis);
   writeStoredTodo(analysis);
+  void refreshActionPlan(analysis);
+  void refreshSatellitePanel(analysis);
+  void refreshPhotoJournal(analysis);
   setDashboardResultVisibility(true);
+}
+
+async function refreshActionPlan(analysis, { ensureRules = true } = {}) {
+  const root = document.querySelector("#action-plan-panel");
+  const scope = currentFeatureScope(analysis);
+  if (!root || !scope || !connected) return;
+  root.hidden = false;
+  root.setAttribute("aria-busy", "true");
+  if (!root.childElementCount) {
+    root.replaceChildren(element("p", "backend-empty", "오늘 할 일을 준비하고 있습니다."));
+  }
+  try {
+    let plan = await api.listActions(scope.farmId, scope);
+    if (ensureRules) {
+      const drafts = actionDraftsFromAnalysis(analysis, scope);
+      await Promise.all(
+        drafts.map(({ draft, ruleId }) =>
+          api.createAction(
+            scope.farmId,
+            { draft, ruleId, confirmed: true },
+            createIdempotencyKey(),
+          ),
+        ),
+      );
+      if (drafts.length > 0) plan = await api.listActions(scope.farmId, scope);
+    }
+    disposeActionPlan?.();
+    disposeActionPlan = mountActionPlan(root, plan, {
+      onStatusChange: async ({ actionId, status }) => {
+        await api.updateAction(scope.farmId, actionId, status, createIdempotencyKey());
+        await refreshActionPlan(analysis, { ensureRules: false });
+      },
+    });
+  } catch (error) {
+    root.replaceChildren(
+      element(
+        "p",
+        "backend-empty",
+        `할 일 기록을 불러오지 못했습니다. ${errorMessage(error)}`,
+      ),
+    );
+  } finally {
+    root.removeAttribute("aria-busy");
+  }
+}
+
+function currentFeatureScope(analysis) {
+  const summary = analysis?.inputSummary;
+  if (!summary?.crop) return null;
+  const stored = readStoredSession();
+  const safeAnalysisId = String(analysis?.analysisId ?? "current")
+    .replace(/[^A-Za-z0-9_-]+/g, "")
+    .slice(0, 48);
+  const farmId = stored?.id ?? `farm-${safeAnalysisId || "current"}`;
+  const cropId = `crop-${String(summary.crop).toLowerCase()}`;
+  const year = new Date(analysis?.createdAt ?? Date.now()).getUTCFullYear();
+  return { farmId, cropId, seasonId: `season-${year}-${String(summary.crop).toLowerCase()}` };
+}
+
+function actionDraftsFromAnalysis(analysis, scope) {
+  const actions = Array.isArray(analysis?.actions) ? analysis.actions : [];
+  return actions.slice(0, 5).flatMap((action, index) => {
+    const title = userActionTitle(action, analysis);
+    if (!title) return [];
+    const projection = projectAnalysisAction(action, analysis);
+    return [{
+      ruleId: projection.ruleId || `analysis-action-${index}`,
+      draft: {
+        ...scope,
+        title,
+        instruction: actionDetail(action.actionId, analysis) || title,
+        reason: actionReason(action, analysis),
+        horizon: projection.horizon,
+        dueAt: projection.dueAt,
+        recheckAt: projection.recheckAt,
+        evidenceRefs: projection.evidenceRefs,
+        origin: "RULE",
+      },
+    }];
+  });
+}
+
+function actionReason(action, analysis) {
+  const weather = forecastRiskGuide(analysis);
+  const soil = soilConditionGuide(analysis);
+  if (weather.risk && action.triggerIds?.some((id) => String(id).includes("forecast"))) {
+    return weather.reason || weather.summary || "예보 위험 규칙에서 확인된 행동입니다.";
+  }
+  if (soil.risk) return soil.reason || soil.summary || "토양 조건 확인이 필요한 행동입니다.";
+  return resolveDisplayAction(analysis).detail || "현재 분석 근거에서 우선 확인할 행동입니다.";
 }
 
 function renderLiveOutlook(analysis) {
@@ -1880,7 +2050,7 @@ function renderSummaryPanel(analysis, regionLabel, cropLabel) {
       `생육 상태 · ${uiContext?.growthLabel ?? "단계 공통 안내"}`,
     ),
     ...(uiContext?.growthRecommended
-      ? [element("span", "summary-context-chip is-ai", "날짜 기준 참고")]
+      ? [element("span", "summary-context-chip is-ai", "날짜 기준 AI 예상")]
       : []),
   );
   meta.append(title, contextList, created);
@@ -3156,7 +3326,7 @@ function userActionTitle(action, analysis = null) {
 }
 
 function actionDetail(actionId, analysis) {
-  const days = forecastDisplayDays(analysis);
+  const days = forecastDisplayDays(analysis).slice(0, 7);
   const period = days.length ? `${days.length}일 기상청 예보` : "현재 자료";
   if (actionId === "CHECK_CURRENT_FORECAST_RISK") {
     return `${period}에서 검토된 작물 기준의 주의 신호가 확인됐습니다. 해당 날짜의 작물 상태를 먼저 확인해 주세요.`;
@@ -3324,6 +3494,8 @@ function initializeDashboardSurfaces() {
   setupSoilTestPanel();
   setupAccountKeyPanel();
   setupNotificationPanel();
+  setupSatelliteService();
+  setupPhotoJournal();
   renderDashboardSoilTest();
   const legacyDetailPanel = document
     .querySelector("#detail-map-title")
@@ -3337,6 +3509,504 @@ function initializeDashboardSurfaces() {
     'aside.notice[aria-label="참고지수 이용 안내"]',
   );
   if (legacyScoreNotice) legacyScoreNotice.hidden = true;
+}
+
+function setupSatelliteService() {
+  const useLocation = document.querySelector("#parcel-use-location");
+  const save = document.querySelector("#parcel-save");
+  const refresh = document.querySelector("#satellite-refresh");
+  useLocation?.addEventListener("click", () => void prepareParcelFromLocation());
+  save?.addEventListener("click", () => void savePreparedParcel());
+  refresh?.addEventListener("click", () => void refreshSatellite());
+  applySatelliteAvailability();
+}
+
+function satelliteIsAvailable() {
+  return preflight?.capabilities?.satellite === "READY";
+}
+
+function applySatelliteAvailability() {
+  if (satelliteIsAvailable()) {
+    const size = document.querySelector("#parcel-size");
+    const useLocation = document.querySelector("#parcel-use-location");
+    if (size) size.disabled = false;
+    if (useLocation) useLocation.disabled = false;
+    return true;
+  }
+  const state = document.querySelector("#satellite-service-state");
+  const status = document.querySelector("#parcel-status");
+  if (state) state.textContent = "연결 준비 필요";
+  if (status) {
+    status.textContent =
+      "현재 실행 환경에는 위성 데이터 연결이 설정되지 않았습니다.";
+  }
+  for (const selector of [
+    "#parcel-size",
+    "#parcel-use-location",
+    "#parcel-save",
+    "#satellite-refresh",
+  ]) {
+    const control = document.querySelector(selector);
+    if (control) control.disabled = true;
+  }
+  return false;
+}
+
+async function prepareParcelFromLocation() {
+  if (!applySatelliteAvailability()) return;
+  const status = document.querySelector("#parcel-status");
+  const button = document.querySelector("#parcel-use-location");
+  if (!currentAnalysis) {
+    if (status) status.textContent = "먼저 농장 분석을 완료해 주세요.";
+    return;
+  }
+  if (!navigator.geolocation) {
+    if (status) status.textContent = "이 기기에서는 현재 위치를 사용할 수 없습니다.";
+    return;
+  }
+  setBusy(button, true, "위치 확인 중…");
+  try {
+    const position = await getCurrentPosition();
+    const size = Number(document.querySelector("#parcel-size")?.value ?? 100);
+    pendingParcelGeometry = squareGeometry(
+      position.coords.latitude,
+      position.coords.longitude,
+      size,
+    );
+    document.querySelector("#parcel-save").disabled = false;
+    updateParcelPreview(`${size}m × ${size}m 경계 준비됨`);
+    if (status) {
+      status.textContent =
+        "경계를 저장하기 전에 실제 농장 안에서 만든 범위가 맞는지 확인해 주세요.";
+    }
+  } catch {
+    if (status) status.textContent = "현재 위치를 확인하지 못했습니다. 위치 권한을 확인해 주세요.";
+  } finally {
+    setBusy(button, false, "현재 위치로 경계 만들기");
+  }
+}
+
+async function savePreparedParcel() {
+  if (!applySatelliteAvailability()) return;
+  const scope = currentFeatureScope(currentAnalysis);
+  const status = document.querySelector("#parcel-status");
+  const button = document.querySelector("#parcel-save");
+  if (!scope || !pendingParcelGeometry) return;
+  setBusy(button, true, "저장 중…");
+  try {
+    const parcel = await api.saveParcel(scope.farmId, pendingParcelGeometry);
+    pendingParcelGeometry = parcel.geometry;
+    document.querySelector("#satellite-refresh").disabled = false;
+    document.querySelector("#satellite-service-state").textContent = "필지 등록됨";
+    updateParcelPreview(`${formatNumber(parcel.areaSquareMeters)}㎡ 경계 저장됨`);
+    if (status) status.textContent = "필지 경계를 저장했습니다. 최신 위성 자료를 확인할 수 있습니다.";
+  } catch (error) {
+    if (status) status.textContent = errorMessage(error);
+  } finally {
+    setBusy(button, false, "이 경계 저장");
+  }
+}
+
+async function refreshSatellite() {
+  if (!applySatelliteAvailability()) return;
+  const scope = currentFeatureScope(currentAnalysis);
+  const status = document.querySelector("#parcel-status");
+  const button = document.querySelector("#satellite-refresh");
+  if (!scope) return;
+  setBusy(button, true, "위성 자료 확인 중…");
+  try {
+    const observation = await api.refreshSatelliteObservation(scope.farmId);
+    renderSatelliteObservation(observation);
+    if (status) status.textContent = "같은 필지의 최근 60일 위성 자료를 확인했습니다.";
+  } catch (error) {
+    if (status) status.textContent = errorMessage(error);
+  } finally {
+    setBusy(button, false, "최신 위성 자료 확인");
+  }
+}
+
+async function refreshSatellitePanel(analysis) {
+  const scope = currentFeatureScope(analysis);
+  const status = document.querySelector("#parcel-status");
+  if (!scope || !connected || !applySatelliteAvailability()) return;
+  try {
+    const [{ parcel }, { observation }] = await Promise.all([
+      api.getParcel(scope.farmId),
+      api.getSatelliteObservation(scope.farmId),
+    ]);
+    if (parcel) {
+      pendingParcelGeometry = parcel.geometry;
+      updateParcelPreview(`${formatNumber(parcel.areaSquareMeters)}㎡ 경계 저장됨`);
+      document.querySelector("#parcel-save").disabled = false;
+      document.querySelector("#satellite-refresh").disabled = false;
+      document.querySelector("#satellite-service-state").textContent = "필지 등록됨";
+      if (status) status.textContent = "저장된 필지 경계를 사용합니다.";
+    } else {
+      pendingParcelGeometry = null;
+      document.querySelector("#parcel-save").disabled = true;
+      document.querySelector("#satellite-refresh").disabled = true;
+      document.querySelector("#satellite-service-state").textContent = "필지 미등록";
+      if (status) status.textContent = "현재 위치에서 농장 경계를 먼저 만들어 주세요.";
+    }
+    if (observation) renderSatelliteObservation(observation);
+  } catch (error) {
+    if (status) status.textContent = `위성 기능 상태를 확인하지 못했습니다. ${errorMessage(error)}`;
+  }
+}
+
+function setupPhotoJournal() {
+  const form = document.querySelector("#photo-journal-form");
+  const observedAt = document.querySelector("#journal-observed-at");
+  const complete = document.querySelector("#season-complete");
+  if (observedAt && !observedAt.value) {
+    observedAt.value = new Date().toISOString().slice(0, 10);
+  }
+  form?.addEventListener("submit", (event) => void savePhotoJournalEntry(event));
+  complete?.addEventListener("click", () => void completeCurrentSeason());
+  if (!photoJournal) {
+    setPhotoJournalStatus(
+      "이 브라우저에서는 기기 내 사진 저장을 지원하지 않습니다.",
+      "error",
+    );
+    if (form) form.querySelectorAll("input, textarea, button").forEach((control) => {
+      control.disabled = true;
+    });
+  }
+}
+
+async function savePhotoJournalEntry(event) {
+  event.preventDefault();
+  const scope = currentFeatureScope(currentAnalysis);
+  const form = event.currentTarget;
+  const button = document.querySelector("#journal-save");
+  const file = form.elements.photo?.files?.[0] ?? null;
+  if (!scope) {
+    setPhotoJournalStatus("먼저 농장 분석을 완료해 주세요.", "error");
+    return;
+  }
+  if (!file || !file.type.startsWith("image/")) {
+    setPhotoJournalStatus("저장할 작물 사진을 선택해 주세요.", "error");
+    return;
+  }
+  if (form.elements.consent?.checked !== true) {
+    setPhotoJournalStatus("기기 내 비공개 저장 동의를 확인해 주세요.", "error");
+    return;
+  }
+  setBusy(button, true, "사진 확인 중…");
+  try {
+    const season = await photoJournal.getSeason(scope);
+    if (season?.status === "COMPLETED") {
+      setPhotoJournalStatus(
+        "마무리한 시즌에는 사진을 추가할 수 없습니다. 새 재배 조건으로 분석해 주세요.",
+        "error",
+      );
+      return;
+    }
+    const visualSignals = await analyzePhotoSignals(file);
+    const photoQuality = assessPhotoQuality(visualSignals);
+    if (!photoQuality.ready) {
+      setPhotoJournalStatus(photoQuality.message, "error");
+      return;
+    }
+    await photoJournal.addPhoto({
+      scope,
+      file,
+      observedAt: form.elements.observedAt?.value,
+      growthStage: form.elements.growthStage?.value,
+      note: form.elements.note?.value,
+      visualSignals,
+    });
+    form.reset();
+    form.elements.observedAt.value = new Date().toISOString().slice(0, 10);
+    setPhotoJournalStatus("사진을 이 기기에 비공개로 저장했습니다.", "success");
+    await refreshPhotoJournal(currentAnalysis);
+  } catch {
+    setPhotoJournalStatus(
+      "사진을 저장하지 못했습니다. 브라우저 저장 공간과 권한을 확인해 주세요.",
+      "error",
+    );
+  } finally {
+    setBusy(button, false, "사진 기록 저장");
+  }
+}
+
+async function completeCurrentSeason() {
+  const scope = currentFeatureScope(currentAnalysis);
+  if (!scope || !photoJournal) return;
+  const confirmed = window.confirm(
+    "이번 재배 시즌을 마무리할까요? 마무리 후에는 같은 시즌에 사진을 더 추가하지 않습니다.",
+  );
+  if (!confirmed) return;
+  const button = document.querySelector("#season-complete");
+  setBusy(button, true, "정리 중…");
+  try {
+    let completedActionCount = 0;
+    if (connected) {
+      const plan = await api.listActions(scope.farmId, scope);
+      const actions = [...(plan?.today ?? []), ...(plan?.upcoming ?? [])];
+      completedActionCount = actions.filter((action) => action.status === "DONE").length;
+    }
+    await photoJournal.completeSeason(scope, { completedActionCount });
+    setPhotoJournalStatus("이번 시즌의 사진과 완료 기록을 정리했습니다.", "success");
+    await refreshPhotoJournal(currentAnalysis);
+  } catch {
+    setPhotoJournalStatus("시즌 기록을 정리하지 못했습니다. 다시 시도해 주세요.", "error");
+  } finally {
+    setBusy(button, false, "시즌 마무리");
+  }
+}
+
+async function refreshPhotoJournal(analysis) {
+  const scope = currentFeatureScope(analysis);
+  const gallery = document.querySelector("#photo-journal-gallery");
+  if (!scope || !gallery || !photoJournal) return;
+  revokePhotoObjectUrls();
+  try {
+    const [photos, season] = await Promise.all([
+      photoJournal.listPhotos(scope),
+      photoJournal.getSeason(scope),
+    ]);
+    const state = document.querySelector("#photo-journal-state");
+    if (state) state.textContent = photos.length ? `${photos.length}장 기록` : "기록 없음";
+    const status = document.querySelector("#photo-journal-status");
+    if (status?.textContent?.includes("농장 분석을 완료하면")) {
+      setPhotoJournalStatus("사진과 저장 동의를 확인한 뒤 기록해 주세요.");
+    }
+    renderPhotoJournalGallery(gallery, photos, scope);
+    const completed = season?.status === "COMPLETED";
+    document.querySelector("#season-complete").disabled = completed;
+    document.querySelector("#journal-save").disabled = completed;
+    document.querySelector("#season-summary-title").textContent = completed
+      ? "이번 재배 시즌 마무리됨"
+      : "이번 재배 시즌 진행 중";
+    document.querySelector("#season-summary-copy").textContent = completed
+      ? `${photos.length}장 사진 · 완료한 할 일 ${season.completedActionCount ?? 0}건 · ${formatPhotoDate(season.completedAt)} 정리`
+      : `${photos.length}장 사진을 촬영일 순서로 보관 중입니다.`;
+  } catch {
+    gallery.replaceChildren(
+      element("div", "photo-journal-empty", "사진 기록을 불러오지 못했습니다."),
+    );
+  }
+}
+
+function renderPhotoJournalGallery(root, photos, scope) {
+  if (!photos.length) {
+    root.innerHTML = '<div class="photo-journal-empty"><p><strong>아직 저장한 사진이 없습니다.</strong><br>같은 위치와 비슷한 각도로 찍으면 변화를 비교하기 쉽습니다.</p></div>';
+    return;
+  }
+  const list = element("ol", "photo-journal-list");
+  list.replaceChildren(
+    ...photos.slice().reverse().map((photo) => photoJournalItem(photo, scope)),
+  );
+  const comparison = reviewPhotoComparison(
+    photos.at(-2)?.visualSignals,
+    photos.at(-1)?.visualSignals,
+  );
+  const comparisonCard = element("section", "photo-journal-compare");
+  comparisonCard.append(
+    element("h3", "", photos.length > 1 ? "최근 두 사진의 화면상 변화" : "비교할 사진이 한 장 더 필요합니다"),
+    element(
+      "p",
+      "muted no-margin",
+      "촬영 조명·각도·거리의 영향을 받는 색 신호입니다. 병해나 생육 악화를 확정하지 않습니다.",
+    ),
+  );
+  if (!comparison.ready && photos.length > 1) {
+    comparisonCard.append(
+      element("p", "photo-quality-guidance", comparison.message),
+    );
+  } else if (comparison.changes.length) {
+    const labels = { INCREASED: "늘어남", DECREASED: "줄어듦", SIMILAR: "비슷함" };
+    const changes = element("ul", "");
+    changes.replaceChildren(
+      ...comparison.changes.map((item) =>
+        element("li", "", `${item.label} ${labels[item.direction]}`),
+      ),
+    );
+    comparisonCard.append(changes);
+  }
+  root.replaceChildren(list, comparisonCard);
+}
+
+function photoJournalItem(photo, scope) {
+  const item = element("li", "photo-journal-item");
+  const url = URL.createObjectURL(photo.blob);
+  photoObjectUrls.push(url);
+  const image = document.createElement("img");
+  image.src = url;
+  image.alt = `${formatPhotoDate(photo.observedAt)}에 기록한 작물 사진`;
+  const body = element("div", "photo-journal-item-body");
+  const actions = element("div", "photo-journal-item-actions");
+  const remove = element("button", "button button-quiet", "삭제");
+  remove.type = "button";
+  remove.addEventListener("click", async () => {
+    if (!window.confirm("이 기기에 저장한 사진을 삭제할까요?")) return;
+    await photoJournal.deletePhoto(scope, photo.photoId);
+    await refreshPhotoJournal(currentAnalysis);
+  });
+  actions.append(
+    element("strong", "", formatPhotoDate(photo.observedAt)),
+    remove,
+  );
+  body.append(
+    actions,
+    element("p", "", [photo.growthStage, photo.note].filter(Boolean).join(" · ") || "현장 메모 없음"),
+  );
+  item.append(image, body);
+  return item;
+}
+
+async function analyzePhotoSignals(file) {
+  const image = await createImageBitmap(file);
+  try {
+    const width = Math.min(180, image.width);
+    const height = Math.max(1, Math.round((image.height / image.width) * width));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0, width, height);
+    return analyzePhotoPixels(context.getImageData(0, 0, width, height));
+  } finally {
+    image.close?.();
+  }
+}
+
+function setPhotoJournalStatus(message, state = "") {
+  const status = document.querySelector("#photo-journal-status");
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.state = state;
+}
+
+function revokePhotoObjectUrls() {
+  for (const url of photoObjectUrls) URL.revokeObjectURL(url);
+  photoObjectUrls = [];
+}
+
+function formatPhotoDate(value) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(date)
+    : "날짜 미확인";
+}
+
+function squareGeometry(latitude, longitude, sideMeters) {
+  const half = sideMeters / 2;
+  const latitudeOffset = half / 111_320;
+  const longitudeOffset = half /
+    (111_320 * Math.max(0.2, Math.cos((latitude * Math.PI) / 180)));
+  return {
+    type: "Polygon",
+    coordinates: [[
+      [longitude - longitudeOffset, latitude - latitudeOffset],
+      [longitude + longitudeOffset, latitude - latitudeOffset],
+      [longitude + longitudeOffset, latitude + latitudeOffset],
+      [longitude - longitudeOffset, latitude + latitudeOffset],
+      [longitude - longitudeOffset, latitude - latitudeOffset],
+    ]],
+  };
+}
+
+function updateParcelPreview(label) {
+  const target = document.querySelector("#parcel-preview-label");
+  if (target) target.textContent = label;
+}
+
+function renderSatelliteObservation(observation) {
+  const root = document.querySelector("#satellite-result");
+  if (!root || !observation) return;
+  const latestItem = observation.catalogue?.items?.[0] ?? null;
+  const series = Array.isArray(observation.vegetation?.observations)
+    ? observation.vegetation.observations
+      .filter(
+        (item) =>
+          Number.isFinite(item?.meanNdvi) &&
+          typeof item?.to === "string" &&
+          Number.isFinite(Date.parse(item.to)),
+      )
+      .sort((left, right) => Date.parse(left.to) - Date.parse(right.to))
+    : [];
+  const grid = element("div", "satellite-result-grid");
+  for (const [label, value] of [
+    ["촬영일", latestItem?.acquiredAt ? formatDateTime(latestItem.acquiredAt) : "확인되지 않음"],
+    ["구름량", Number.isFinite(latestItem?.cloudCoverPercent) ? `${formatNumber(latestItem.cloudCoverPercent)}%` : "확인되지 않음"],
+    ["해상도", Number.isFinite(observation.vegetation?.resolutionMeters) ? `${formatNumber(observation.vegetation.resolutionMeters)}m` : "확인되지 않음"],
+    ["관측 상태", stateLabel(observation.state)],
+  ]) {
+    const card = element("div");
+    card.append(element("span", "", label), element("strong", "", value));
+    grid.append(card);
+  }
+  const chart = satelliteTrendChart(series);
+  root.replaceChildren(
+    element("span", "service-eyebrow", "COPERNICUS SENTINEL-2"),
+    element("h3", "", observation.summary ?? "위성 관측 결과"),
+    element("p", "muted", observation.nextAction ?? "현장 자료와 함께 확인해 주세요."),
+    grid,
+    ...(chart ? [chart] : []),
+    element("p", "formula-note", "식생지수는 같은 필지의 변화 참고값이며 토양 상태·병해·수확량을 단독으로 판정하지 않습니다."),
+  );
+  root.hidden = false;
+  document.querySelector("#satellite-service-state").textContent = stateLabel(observation.state);
+}
+
+function satelliteTrendChart(series) {
+  if (series.length < 2) return null;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "satellite-trend-chart");
+  svg.setAttribute("viewBox", "0 0 520 160");
+  svg.setAttribute("role", "img");
+  const firstDate = formatShortDate(series[0].to);
+  const lastDate = formatShortDate(series.at(-1).to);
+  svg.setAttribute(
+    "aria-label",
+    `같은 필지의 식생지수 변화. ${firstDate} ${formatNumber(series[0].meanNdvi)}에서 ${lastDate} ${formatNumber(series.at(-1).meanNdvi)}까지`,
+  );
+  const values = series.map((item) => item.meanNdvi);
+  const points = values.map((value, index) => {
+    const x = 44 + (index / (values.length - 1)) * 448;
+    const y = 108 - ((value + 1) / 2) * 80;
+    return [x, y];
+  });
+  for (const [value, y] of [[1, 28], [0, 68], [-1, 108]]) {
+    const guide = document.createElementNS(svg.namespaceURI, "path");
+    guide.setAttribute("class", "axis");
+    guide.setAttribute("d", `M44 ${y}H492`);
+    svg.append(guide, satelliteChartText(8, y + 4, String(value), "axis-label"));
+  }
+  const line = document.createElementNS(svg.namespaceURI, "polyline");
+  line.setAttribute("class", "line");
+  line.setAttribute("points", points.map(([x, y]) => `${x},${y}`).join(" "));
+  svg.append(line);
+  for (const [index, [x, y]] of points.entries()) {
+    const point = document.createElementNS(svg.namespaceURI, "circle");
+    point.setAttribute("class", "point");
+    point.setAttribute("cx", String(x));
+    point.setAttribute("cy", String(y));
+    point.setAttribute("r", "4");
+    const title = document.createElementNS(svg.namespaceURI, "title");
+    title.textContent = `${formatShortDate(series[index].to)} · ${formatNumber(values[index])}`;
+    point.append(title);
+    svg.append(point);
+  }
+  svg.append(
+    satelliteChartText(44, 138, firstDate, "date-label"),
+    satelliteChartText(492, 138, lastDate, "date-label date-label-end"),
+    satelliteChartText(44, 154, `NDVI ${formatNumber(values[0])}`, "value-label"),
+    satelliteChartText(492, 154, `NDVI ${formatNumber(values.at(-1))}`, "value-label date-label-end"),
+  );
+  return svg;
+}
+
+function satelliteChartText(x, y, value, className) {
+  const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  text.setAttribute("x", String(x));
+  text.setAttribute("y", String(y));
+  text.setAttribute("class", className);
+  if (className.includes("date-label-end")) text.setAttribute("text-anchor", "end");
+  text.textContent = value;
+  return text;
 }
 
 function setDashboardResultVisibility(visible) {
@@ -3445,6 +4115,12 @@ async function submitAssistantQuestion(rawQuestion) {
   }
   appendAssistantMessage(question, { user: true });
   assistantInput.value = "";
+  const actionProposal = buildAssistantActionProposal(question, currentAnalysis);
+  if (actionProposal) {
+    renderAssistantActionProposal(actionProposal, currentAnalysis);
+    assistantInput.focus();
+    return;
+  }
   assistantInput.disabled = true;
   assistantSend.disabled = true;
   assistantSend.textContent = "확인 중";
@@ -3467,6 +4143,88 @@ async function submitAssistantQuestion(rawQuestion) {
       assistantInput.focus();
     }
   }
+}
+
+function buildAssistantActionProposal(question, analysis) {
+  const parsed = parseAssistantActionRequest(question);
+  if (!parsed) return null;
+  const scope = currentFeatureScope(analysis);
+  if (!scope) return null;
+  const now = new Date();
+  const { tomorrow, title } = parsed;
+  const due = new Date(now);
+  if (tomorrow) {
+    due.setDate(due.getDate() + 1);
+    due.setHours(8, 0, 0, 0);
+  } else {
+    due.setMinutes(due.getMinutes() + 30, 0, 0);
+  }
+  return {
+    title,
+    dueLabel: tomorrow ? "내일 오전" : "오늘",
+    draft: {
+      ...scope,
+      title,
+      instruction: `${title}을(를) 확인하고 완료 여부를 기록합니다.`,
+      reason: "사용자가 농장 분석 도우미에서 직접 요청한 할 일입니다.",
+      horizon: tomorrow ? "UPCOMING" : "TODAY",
+      dueAt: due.toISOString(),
+      recheckAt: due.toISOString(),
+      evidenceRefs: [{
+        sourceKind: "USER",
+        sourceId: "assistant-user-request",
+        observedAt: now.toISOString(),
+        fetchedAt: null,
+        spatialLevel: "USER_FARM",
+        state: "READY",
+        limitationCodes: [],
+      }],
+      origin: "ASSISTANT_PROPOSAL",
+    },
+  };
+}
+
+function renderAssistantActionProposal(proposal, analysis) {
+  const card = element("section", "assistant-message assistant-proposal");
+  card.append(
+    element("strong", "", "할 일 추가 전 확인"),
+    element("span", "", `${proposal.dueLabel} · ${proposal.title}`),
+    element("small", "", "확인 버튼을 누르기 전에는 저장되지 않습니다."),
+  );
+  const controls = element("div", "assistant-proposal-actions");
+  const confirm = element("button", "", "이대로 추가");
+  const cancel = element("button", "", "취소");
+  confirm.type = "button";
+  cancel.type = "button";
+  confirm.addEventListener("click", async () => {
+    const scope = currentFeatureScope(analysis);
+    if (!scope) return;
+    confirm.disabled = true;
+    cancel.disabled = true;
+    try {
+      await api.createAction(
+        scope.farmId,
+        { draft: proposal.draft, ruleId: null, confirmed: true },
+        createIdempotencyKey(),
+      );
+      card.replaceChildren(
+        element("strong", "", "할 일에 추가했습니다."),
+        element("span", "", `${proposal.dueLabel} · ${proposal.title}`),
+      );
+      await refreshActionPlan(analysis, { ensureRules: false });
+    } catch (error) {
+      confirm.disabled = false;
+      cancel.disabled = false;
+      card.append(element("small", "", assistantErrorMessage(error)));
+    }
+  });
+  cancel.addEventListener("click", () => {
+    card.replaceChildren(element("span", "", "추가하지 않았습니다."));
+  });
+  controls.append(confirm, cancel);
+  card.append(controls);
+  assistantMessages.append(card);
+  assistantMessages.scrollTop = assistantMessages.scrollHeight;
 }
 
 function assistantErrorMessage(error) {

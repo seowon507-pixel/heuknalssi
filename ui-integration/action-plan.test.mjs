@@ -91,6 +91,17 @@ test("완료/건너뜀 항목은 상태만 표시하고 재실행 버튼을 만�
   assert.doesNotMatch(markup, /data-action-status=/);
 });
 
+test("사용자에게 같은 종류·시각·상태의 근거를 반복해서 보여주지 않는다", () => {
+  const duplicate = action().evidenceRefs[0];
+  const markup = renderActionPlanMarkup({
+    firstAction: action({ evidenceRefs: [duplicate, { ...duplicate, sourceId: "forecast-b" }] }),
+    today: [],
+    upcoming: [],
+  });
+
+  assert.equal(markup.match(/공공자료/g)?.length, 1);
+});
+
 test("문구는 HTML로 실행되지 않도록 이스케이프한다", () => {
   const markup = renderActionPlanMarkup({
     firstAction: action({ title: '<img src=x onerror="alert(1)">' }),

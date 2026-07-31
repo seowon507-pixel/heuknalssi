@@ -37,3 +37,7 @@ export {
   createSupabaseSharedState,
   supabaseSharedStateDefaults,
 } from "./supabase-shared-state.js";
+export {
+  actionPlanRepositoryDefaults,
+  createActionPlanRepository,
+} from "./action-plan-repository.js";

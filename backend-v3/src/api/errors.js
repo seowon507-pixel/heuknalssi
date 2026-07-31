@@ -147,6 +147,31 @@ const ERROR_DEFINITIONS = Object.freeze({
     message: "The backup store rejected the request.",
     retryable: true,
   },
+  FEATURE_NOT_CONFIGURED: {
+    status: 503,
+    message: "The requested product feature is not configured.",
+    retryable: false,
+  },
+  CONFIRMATION_REQUIRED: {
+    status: 409,
+    message: "Explicit user confirmation is required.",
+    retryable: false,
+  },
+  ACTION_NOT_FOUND: {
+    status: 404,
+    message: "The farm action was not found.",
+    retryable: false,
+  },
+  ACTION_UPDATE_CONFLICT: {
+    status: 409,
+    message: "The farm action changed before this update was applied.",
+    retryable: true,
+  },
+  ACTION_CONFIRMATION_REQUIRED: {
+    status: 409,
+    message: "Explicit confirmation is required before changing a farm action.",
+    retryable: false,
+  },
   METHOD_NOT_ALLOWED: {
     status: 405,
     message: "The HTTP method is not allowed for this route.",
@@ -219,6 +244,8 @@ const REQUEST_VALIDATION_CODES = new Set([
 
 const TRUSTED_SERVICE_CODES = new Set([
   "ANALYSIS_NOT_FOUND",
+  "ACTION_NOT_FOUND",
+  "ACTION_UPDATE_CONFLICT",
   "INTERNAL_ERROR",
   "LOCATION_TOKEN_INVALID",
 ]);
@@ -282,11 +309,14 @@ export function normalizeApiError(error) {
       error.status >= 400 &&
       error.status < 500
     ) {
-      const code = REQUEST_VALIDATION_CODES.has(error.code)
+      if (REQUEST_VALIDATION_CODES.has(error.code)) {
+        return new ApiError(error.code, { status: 400, cause: error });
+      }
+      const code = Object.hasOwn(ERROR_DEFINITIONS, error.code)
         ? error.code
         : "INVALID_INPUT";
       return new ApiError(code, {
-        status: 400,
+        status: ERROR_DEFINITIONS[code].status,
         cause: error,
       });
     }

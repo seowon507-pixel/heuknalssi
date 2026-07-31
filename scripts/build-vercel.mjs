@@ -18,6 +18,10 @@ const BROWSER_ASSETS = Object.freeze([
   "address-suggestions.mjs",
   "forecast-presentation.mjs",
   "soil-service-guidance.mjs",
+  "action-plan.mjs",
+  "assistant-action-request.mjs",
+  "action-projection.mjs",
+  "local-photo-journal.mjs",
   "backend-integration.css",
 ]);
 

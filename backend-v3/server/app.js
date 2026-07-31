@@ -15,11 +15,17 @@ import {
   validateSoilV2Contract,
 } from '../src/adapters/index.js';
 import { createHttpHandler } from '../src/api/index.js';
-import { createApplicationServices } from '../src/application/index.js';
+import {
+  createActionPlanService,
+  createApplicationServices,
+  createSatelliteObservationService,
+} from '../src/application/index.js';
 import { createRuleRegistry } from '../src/domain/index.js';
 import {
+  createActionPlanRepository,
   createDeviceBackupStore,
   createSupabaseSharedState,
+  TtlMemoryStore,
 } from '../src/infrastructure/index.js';
 import { loadConfig } from './config.js';
 
@@ -142,6 +148,12 @@ export function createBackend({
         contractVersion:
           config.adapterConfig.smartfarm.contractVersion,
       },
+      satellite: {
+        enabled: config.adapterConfig.satellite.enabled,
+        clientId: config.adapterConfig.satellite.clientId,
+        clientSecret: config.adapterConfig.satellite.clientSecret,
+        contractVersion: config.adapterConfig.satellite.contractVersion,
+      },
     });
   const activeRuntimeStatus =
     runtimeStatus ??
@@ -183,10 +195,31 @@ export function createBackend({
         activeRuntimeStatus?.adapters?.smartfarm ??
         config.capabilities.smartfarm,
       assistant: assistant.state,
+      satellite:
+        activeAdapters.satellite?.state ?? config.capabilities.satellite,
     },
+  });
+  const actionStore = sharedState.configured
+    ? sharedState.createTtlStore('farm_actions')
+    : new TtlMemoryStore({ clock, capacityPolicy: 'reject' });
+  const satelliteStore = sharedState.configured
+    ? sharedState.createTtlStore('satellite')
+    : new TtlMemoryStore({ clock, capacityPolicy: 'reject' });
+  const actionPlanService = createActionPlanService({
+    repository: createActionPlanRepository({ store: actionStore }),
+    clock: () => new Date(clock()),
+  });
+  const satelliteService = createSatelliteObservationService({
+    adapter: activeAdapters.satellite,
+    store: persistentValueStore(satelliteStore),
+    clock,
   });
   const handler = createHttpHandler({
     services,
+    featureServices: {
+      actionPlan: actionPlanService,
+      satellite: satelliteService,
+    },
     config: {
       nodeEnv: config.nodeEnv,
       production: config.nodeEnv === 'production',
@@ -230,6 +263,18 @@ export function createBackend({
     services,
     handler,
     server: createServer(handler),
+  });
+}
+
+function persistentValueStore(store) {
+  const ttlMs = 365 * 24 * 60 * 60 * 1_000;
+  return Object.freeze({
+    get(key) {
+      return Promise.resolve(store.get(key));
+    },
+    set(key, value) {
+      return Promise.resolve(store.set(key, value, ttlMs));
+    },
   });
 }
 

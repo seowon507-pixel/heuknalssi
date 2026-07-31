@@ -2073,6 +2073,52 @@
       color: #5F7166;
       font-size: 11px;
     }
+    .assistant-proposal { display: grid; gap: 7px; border: 1px solid #B8D7C4; background: #F3FAF5; }
+    .assistant-proposal > span { color: #234332; font-size: 14px; font-weight: 700; }
+    .assistant-proposal-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 3px; }
+    .assistant-proposal-actions button { min-height: 44px; padding: 8px 12px; border: 1px solid #17683F; border-radius: 9px; background: #17683F; color: #FFFFFF; font: inherit; font-size: 13px; font-weight: 750; cursor: pointer; }
+    .assistant-proposal-actions button + button { background: #FFFFFF; color: #28513A; }
+    .product-action-plan { margin-bottom: 18px; padding: 24px; }
+    .service-eyebrow { display: block; margin-bottom: 5px; color: #247349; font-size: 12px; font-weight: 800; letter-spacing: .03em; }
+    .satellite-setup-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); gap: 18px; margin-top: 18px; }
+    .satellite-map-card { display: grid; gap: 10px; }
+    .satellite-map-card svg { width: 100%; min-height: 260px; border: 1px solid #D7E2DA; border-radius: 14px; background: #F5F8F5; }
+    .satellite-controls { display: grid; align-content: start; gap: 13px; padding: 18px; border: 1px solid #DDE6DF; border-radius: 14px; background: #F8FBF9; }
+    .satellite-result { margin-top: 18px; padding: 20px; border: 1px solid #CFE1D5; border-radius: 14px; background: #F5FAF7; }
+    .satellite-result-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 15px 0; }
+    .satellite-result-grid > div { padding: 12px; border: 1px solid #D9E5DC; border-radius: 11px; background: #FFFFFF; }
+    .satellite-result-grid span, .satellite-result-grid strong { display: block; }
+    .satellite-result-grid span { color: #657169; font-size: 11px; }
+    .satellite-result-grid strong { margin-top: 4px; color: #1F3B2B; font-size: 16px; }
+    .satellite-trend-chart { width: 100%; height: 160px; overflow: visible; }
+    .satellite-trend-chart .axis { stroke: #D7E3DA; stroke-width: 1; }
+    .satellite-trend-chart .line { fill: none; stroke: #248351; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .satellite-trend-chart .point { fill: #FFFFFF; stroke: #248351; stroke-width: 3; }
+    .satellite-trend-chart text { fill: #66756C; font-size: 11px; }
+    .satellite-trend-chart .value-label { fill: #244435; font-weight: 700; }
+    .photo-journal-layout { display: grid; grid-template-columns: minmax(280px, .72fr) minmax(0, 1.28fr); gap: 20px; margin-top: 18px; }
+    .photo-journal-form { display: grid; align-content: start; gap: 13px; padding: 18px; border: 1px solid #DDE6DF; border-radius: 14px; background: #F8FBF9; }
+    .photo-journal-form .inline-check { align-items: flex-start; }
+    .photo-journal-gallery { min-width: 0; }
+    .photo-journal-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding: 0; gap: 12px; list-style: none; }
+    .photo-journal-item { overflow: hidden; border: 1px solid #D9E4DC; border-radius: 13px; background: #FFFFFF; }
+    .photo-journal-item img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #EEF3EF; }
+    .photo-journal-item-body { display: grid; padding: 13px; gap: 7px; }
+    .photo-journal-item-body p { margin: 0; color: #526158; font-size: 13px; line-height: 1.5; }
+    .photo-journal-item-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .photo-journal-compare { margin-top: 14px; padding: 16px; border: 1px solid #CFE1D5; border-radius: 13px; background: #F3F9F5; }
+    .photo-journal-compare h3 { margin: 0 0 8px; font-size: 16px; }
+    .photo-journal-compare ul { margin: 8px 0 0; padding-left: 20px; }
+    .photo-journal-empty { display: grid; min-height: 240px; padding: 24px; place-items: center; border: 1px dashed #CAD9CF; border-radius: 14px; color: #5A695F; text-align: center; }
+    .season-summary-card { display: flex; margin-top: 16px; padding: 16px 18px; align-items: center; justify-content: space-between; gap: 16px; border-radius: 13px; background: #153F2B; color: #FFFFFF; }
+    .season-summary-card p { margin: 4px 0 0; color: #CDE3D5; font-size: 13px; }
+    @media (max-width: 780px) {
+      .satellite-setup-grid { grid-template-columns: 1fr; }
+      .satellite-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .photo-journal-layout { grid-template-columns: 1fr; }
+      .photo-journal-list { grid-template-columns: 1fr; }
+      .season-summary-card { display: grid; }
+    }
     .assistant-quick-questions {
       display: flex;
       padding: 8px 12px;
@@ -2491,6 +2537,7 @@
         </div>
         <nav class="crop-result-switcher" id="crop-result-switcher" aria-label="작물별 분석 결과" hidden></nav>
         <section class="live-outlook" id="live-outlook" aria-label="오늘 행동과 가까운 예보" hidden></section>
+        <section class="panel product-action-plan" id="action-plan-panel" aria-label="오늘과 당분간 할 일" hidden></section>
 
         <div class="decision-flow" hidden>
         <section class="panel summary-panel" aria-label="분석 조건 요약">
@@ -2702,10 +2749,90 @@
       </section>
       <section class="view" id="view-services" data-view-panel="services" aria-labelledby="services-title" hidden>
         <header class="page-header">
-          <div><h1 id="services-title" tabindex="-1">추가 서비스</h1><p class="muted">농장 분석의 정확도를 높이는 현장 지원을 확인합니다.</p></div>
+          <div><h1 id="services-title" tabindex="-1">추가 서비스</h1><p class="muted">농장 기록과 추가 확인 서비스를 한곳에서 관리합니다.</p></div>
         </header>
 
         <div class="settings-surface">
+        <section class="panel satellite-service" id="satellite-service-panel" aria-labelledby="satellite-service-title">
+          <div class="section-heading">
+            <div>
+              <span class="service-eyebrow">필지 단위 선택 분석</span>
+              <h2 id="satellite-service-title">위성으로 농장 변화 확인</h2>
+              <p class="muted">등록한 필지 경계 안의 Sentinel-2 촬영 자료만 비교합니다. 구름과 결측 화소는 제외하며 병해를 확정하지 않습니다.</p>
+            </div>
+            <span class="status-label" id="satellite-service-state">필지 미등록</span>
+          </div>
+          <div class="satellite-setup-grid">
+            <div class="satellite-map-card">
+              <svg id="parcel-preview" viewBox="0 0 480 260" role="img" aria-label="등록할 필지 경계 미리보기">
+                <defs><pattern id="parcel-grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#DDE9E1" stroke-width="1"/></pattern></defs>
+                <rect width="480" height="260" fill="#F5F8F5"/><rect width="480" height="260" fill="url(#parcel-grid)"/>
+                <path id="parcel-preview-shape" d="M144 62H336V198H144Z" fill="rgb(36 131 81 / 18%)" stroke="#248351" stroke-width="3" stroke-dasharray="8 5"/>
+                <text x="240" y="135" text-anchor="middle" fill="#52665A" font-size="15" font-weight="700" id="parcel-preview-label">경계를 만들면 여기에 표시됩니다</text>
+              </svg>
+              <p class="muted no-margin">실제 위성 지도 이미지를 대신하는 도식이 아니라, 저장 전 경계 크기를 확인하는 미리보기입니다.</p>
+            </div>
+            <div class="satellite-controls">
+              <div class="field">
+                <label for="parcel-size">현재 위치 주변 경계 크기</label>
+                <select id="parcel-size"><option value="50">가로·세로 50m</option><option value="100" selected>가로·세로 100m</option><option value="200">가로·세로 200m</option></select>
+                <p class="field-help">농장 안에서 실행하거나, 경계 좌표를 아는 경우에만 저장해 주세요.</p>
+              </div>
+              <div class="location-search-actions">
+                <button class="button button-secondary" id="parcel-use-location" type="button">현재 위치로 경계 만들기</button>
+                <button class="button button-primary" id="parcel-save" type="button" disabled>이 경계 저장</button>
+              </div>
+              <p class="location-search-status" id="parcel-status" role="status" aria-live="polite">농장 분석을 완료한 뒤 필지 경계를 등록할 수 있습니다.</p>
+              <button class="button button-primary" id="satellite-refresh" type="button" disabled>최신 위성 자료 확인</button>
+            </div>
+          </div>
+          <div class="satellite-result" id="satellite-result" hidden></div>
+        </section>
+
+        <section class="panel" id="photo-journal-panel" aria-labelledby="photo-journal-title">
+          <div class="section-heading">
+            <div>
+              <span class="service-eyebrow">작물별 비공개 현장 기록</span>
+              <h2 id="photo-journal-title">사진으로 생육 변화 기록</h2>
+              <p class="muted">촬영일 순서로 사진을 비교합니다. 색 변화는 참고 신호이며 병해·생육 악화를 확정하지 않습니다.</p>
+            </div>
+            <span class="status-label" id="photo-journal-state">기록 없음</span>
+          </div>
+          <div class="photo-journal-layout">
+            <form class="photo-journal-form" id="photo-journal-form">
+              <div class="field">
+                <label for="journal-photo">작물 사진</label>
+                <input id="journal-photo" name="photo" type="file" accept="image/*" capture="environment" required>
+              </div>
+              <div class="field">
+                <label for="journal-observed-at">촬영일</label>
+                <input id="journal-observed-at" name="observedAt" type="date" required>
+              </div>
+              <div class="field">
+                <label for="journal-growth-stage">생육 단계 <span class="muted">(선택)</span></label>
+                <input id="journal-growth-stage" name="growthStage" type="text" maxlength="60" placeholder="예: 한창 자라는 중">
+              </div>
+              <div class="field">
+                <label for="journal-note">현장 메모 <span class="muted">(선택)</span></label>
+                <textarea id="journal-note" name="note" maxlength="500" rows="3" placeholder="잎 색, 처짐, 물 준 시각 등 직접 본 사실"></textarea>
+              </div>
+              <div class="inline-check">
+                <input id="journal-consent" name="consent" type="checkbox" required>
+                <label for="journal-consent">사진을 이 기기에 비공개로 저장하는 데 동의합니다.</label>
+              </div>
+              <button class="button button-primary" id="journal-save" type="submit">사진 기록 저장</button>
+              <p class="location-search-status" id="photo-journal-status" role="status" aria-live="polite">농장 분석을 완료하면 작물별 기록을 저장할 수 있습니다.</p>
+            </form>
+            <div class="photo-journal-gallery" id="photo-journal-gallery">
+              <div class="photo-journal-empty"><p><strong>아직 저장한 사진이 없습니다.</strong><br>같은 위치와 비슷한 각도로 찍으면 변화를 비교하기 쉽습니다.</p></div>
+            </div>
+          </div>
+          <div class="season-summary-card">
+            <div><strong id="season-summary-title">이번 재배 시즌 진행 중</strong><p id="season-summary-copy">사진과 완료한 할 일을 시즌별로 정리합니다.</p></div>
+            <button class="button button-secondary" id="season-complete" type="button">시즌 마무리</button>
+          </div>
+        </section>
+
         <section class="panel" aria-labelledby="soil-exam-title">
           <h2 id="soil-exam-title" tabindex="-1">흙 검사 무료로 받는 방법 <span class="status-label good">무료</span></h2>
           <p class="muted">내 밭 흙의 산도(pH)와 양분은 <strong>직접 검사를 받아야</strong> 정확히 알 수 있습니다. 이 앱이 보여 드리는 토양 정보는 우리 동네 전체의 평균이라, 내 밭과는 다를 수 있습니다.</p>

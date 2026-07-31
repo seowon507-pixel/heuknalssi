@@ -109,9 +109,9 @@ test("온보딩은 복수 작물의 작기와 생육 상태를 사용자 확인�
   assert.match(markup, /id="growth-settings"/);
   assert.match(shell, /function recommendedGrowthStage/);
   assert.match(shell, /`growth-\$\{crop\}`/);
-  assert.match(shell, /날짜 기준 참고/);
+  assert.match(shell, /날짜 기준 AI 예상/);
   assert.match(shell, /`season-\$\{crop\}`/);
-  assert.match(shell, /cropGrowthState\[crop\] \|\| 'unknown'/);
+  assert.match(shell, /cropGrowthState\[crop\] \|\| recommendation/);
   assert.match(shell, /function wizardRoute/);
   assert.match(shell, /\? \[1, 2, 3, 5\]/);
   assert.match(html, /id="review-growth-row"/);
@@ -166,6 +166,22 @@ test("완료한 농장 설정은 이 기기에 저장하고 다음 방문에 자
   assert.match(html, /id="mobile-farm-trigger"/);
   assert.match(html, /id="mobile-farm-dialog"/);
   assert.match(shell, /heuknalssi:open-new-farm/);
+});
+
+test("농장 저장 ID를 행동·사진·위성 렌더링 전에 확정한다", async () => {
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+  const submitStart = client.indexOf("async function submitAnalysis()");
+  const submitEnd = client.indexOf("function collectUiAnalysisContexts", submitStart);
+  const submit = client.slice(submitStart, submitEnd);
+  assert.ok(submit.indexOf("writeStoredSession(formValues") > 0);
+  assert.ok(submit.indexOf("renderAnalysis(currentAnalysis)") > 0);
+  assert.ok(
+    submit.indexOf("writeStoredSession(formValues") <
+      submit.indexOf("renderAnalysis(currentAnalysis)"),
+  );
 });
 
 test("날씨·토양·예보를 합산하지 않고 독립 상태로 표시한다", async () => {
@@ -481,4 +497,32 @@ test("백엔드 결과는 primary action과 사용자용 자동 설명을 사용
   assert.match(client, /재배 시기를 선택하지 않아 시기별 기후 위험은 판단하지 않았습니다/);
   assert.match(client, /최근 관측자료가 검수한 형식과 맞지 않아 판단에 사용하지 않았습니다/);
   assert.doesNotMatch(client, /보고서 만들기/);
+});
+
+test("배포 빌드는 브라우저에서 import하는 제품 기능 모듈을 모두 포함한다", async () => {
+  const buildScript = await readFile(
+    path.join(import.meta.dirname, "..", "scripts", "build-vercel.mjs"),
+    "utf8",
+  );
+
+  for (const asset of [
+    "action-plan.mjs",
+    "action-projection.mjs",
+    "assistant-action-request.mjs",
+    "local-photo-journal.mjs",
+  ]) {
+    assert.match(buildScript, new RegExp(`"${asset.replaceAll(".", "\\.")}"`));
+  }
+});
+
+test("위성 연결이 비활성이면 필지 조작을 잠그고 준비 필요 상태를 알린다", async () => {
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(client, /capabilities\?\.satellite === "READY"/);
+  assert.match(client, /연결 준비 필요/);
+  assert.match(client, /현재 실행 환경에는 위성 데이터 연결이 설정되지 않았습니다/);
+  assert.match(client, /#parcel-use-location/);
 });

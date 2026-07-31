@@ -206,7 +206,7 @@
     if (dateReference) {
       const badge = document.createElement('span');
       badge.className = 'choice-recommendation';
-      badge.textContent = '날짜 기준 참고';
+      badge.textContent = '날짜 기준 AI 예상';
       titleRow.append(badge);
     }
     return label;
@@ -336,7 +336,7 @@
       : '작물별 현재 상태를 확인해 주세요';
     document.querySelector('#growth-step-help').textContent = planning
       ? '재배 전에는 실제 생육 단계가 없으므로 별도로 묻지 않습니다.'
-      : '현재 상태를 아는 경우에만 선택해 주세요. 모르면 단계 공통 안내를 제공합니다.';
+      : '오늘 날짜로 예상한 단계가 기본 선택되어 있습니다. 실제 작물과 다르면 바꾸고, 모르면 잘 모름을 선택해 주세요.';
     if (planning) {
       growthSettings.replaceChildren();
       updateNextState();
@@ -344,14 +344,14 @@
     }
     const cards = selectedValues('crop').map((crop) => {
       const recommendation = recommendedGrowthStage(crop);
-      const selected = cropGrowthState[crop] || 'unknown';
+      const selected = cropGrowthState[crop] || recommendation;
       cropGrowthState[crop] = selected;
       const card = document.createElement('section');
       card.className = 'crop-setting-card growth-crop-card';
       const title = document.createElement('h2');
       title.textContent = labels.crop[crop];
       const help = document.createElement('p');
-      help.textContent = '작물별 상태를 직접 확인합니다. 날짜만으로 생육단계를 확정하지 않습니다.';
+      help.textContent = '날짜 기준 AI 예상이 기본입니다. 실제 작물과 다르면 직접 바꿔 주세요.';
       const fieldset = document.createElement('fieldset');
       fieldset.className = 'settings-group';
       const legend = document.createElement('legend');
@@ -412,7 +412,7 @@
   function growthSettingSummary(crop) {
     const growth = selectedValue(`growth-${crop}`) || cropGrowthState[crop];
     const recommendation = recommendedGrowthStage(crop);
-    const suffix = growth !== 'unknown' && growth === recommendation ? ' · 날짜 기준 참고' : '';
+    const suffix = growth !== 'unknown' && growth === recommendation ? ' · 날짜 기준 AI 예상' : '';
     return `${labels.crop[crop]} · ${labels.growth[growth] || '단계 미선택'}${suffix}`;
   }
 

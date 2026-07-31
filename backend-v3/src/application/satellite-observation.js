@@ -4,6 +4,11 @@ import { normalizeParcelGeometry } from "../domain/parcel.js";
 
 const LOOKBACK_DAYS = 60;
 const TREND_THRESHOLD = 0.05;
+const MIN_VALID_PIXEL_RATIO = 0.5;
+const MIN_TREND_OBSERVATIONS = 2;
+const LOW_PIXEL_COVERAGE_LIMITATION = "SATELLITE_LOW_VALID_PIXEL_COVERAGE";
+const INSUFFICIENT_OBSERVATIONS_LIMITATION =
+  "SATELLITE_INSUFFICIENT_TREND_OBSERVATIONS";
 
 function requireIdentifier(value, label) {
   if (
@@ -65,18 +70,31 @@ function validNdviObservations(envelope) {
   if (envelope?.deliveryState !== "LIVE") return [];
   const observations = envelope.data?.observations;
   if (!Array.isArray(observations)) return [];
-  return observations.filter(
-    (item) =>
+  const byObservedTo = new Map();
+  for (const item of observations) {
+    if (
       Number.isFinite(item?.meanNdvi) &&
       item.meanNdvi >= -1 &&
       item.meanNdvi <= 1 &&
       Number.isFinite(item.validPixelRatio) &&
-      item.validPixelRatio > 0,
+      item.validPixelRatio >= MIN_VALID_PIXEL_RATIO &&
+      item.validPixelRatio <= 1 &&
+      typeof item.to === "string" &&
+      Number.isFinite(Date.parse(item.to))
+    ) {
+      const existing = byObservedTo.get(item.to);
+      if (!existing || item.validPixelRatio > existing.validPixelRatio) {
+        byObservedTo.set(item.to, item);
+      }
+    }
+  }
+  return [...byObservedTo.values()].sort(
+    (left, right) => Date.parse(left.to) - Date.parse(right.to),
   );
 }
 
 function describeTrend(observations) {
-  if (observations.length < 2) return null;
+  if (observations.length < MIN_TREND_OBSERVATIONS) return null;
   const first = observations[0];
   const latest = observations.at(-1);
   const change = latest.meanNdvi - first.meanNdvi;
@@ -135,6 +153,37 @@ function uniqueLimitations(envelopes) {
       envelopes.flatMap((envelope) => envelope?.qualityFlags ?? []),
     ),
   ];
+}
+
+function qualityLimitations(envelope, observations) {
+  if (envelope?.deliveryState !== "LIVE") return [];
+  const sourceObservations = envelope.data?.observations;
+  if (!Array.isArray(sourceObservations)) {
+    return [INSUFFICIENT_OBSERVATIONS_LIMITATION];
+  }
+  const limitations = [];
+  if (
+    sourceObservations.some(
+      (item) =>
+        !Number.isFinite(item?.validPixelRatio) ||
+        item.validPixelRatio < MIN_VALID_PIXEL_RATIO ||
+        item.validPixelRatio > 1,
+    )
+  ) {
+    limitations.push(LOW_PIXEL_COVERAGE_LIMITATION);
+  }
+  if (observations.length < MIN_TREND_OBSERVATIONS) {
+    limitations.push(INSUFFICIENT_OBSERVATIONS_LIMITATION);
+  }
+  return limitations;
+}
+
+function normalizedVegetation(envelope, observations) {
+  if (!envelope?.data) return null;
+  return {
+    ...envelope.data,
+    observations: structuredClone(observations),
+  };
 }
 
 export function createSatelliteObservationService({
@@ -210,6 +259,10 @@ export function createSatelliteObservationService({
       const state = trend ? "READY" : catalogueReady ? "PARTIAL" : "HOLD";
       const message = userMessage({ state, trend, catalogueReady });
       const envelopes = [catalogue, ndvi].filter(Boolean);
+      const limitations = [
+        ...uniqueLimitations(envelopes),
+        ...qualityLimitations(ndvi, observations),
+      ];
       const record = {
         observationId: String(randomId()),
         parcelId: parcel.parcelId,
@@ -221,9 +274,9 @@ export function createSatelliteObservationService({
         nextAction: message.nextAction,
         trend,
         catalogue: catalogue?.data ?? null,
-        vegetation: ndvi?.data ?? null,
+        vegetation: normalizedVegetation(ndvi, observations),
         evidenceRefs: envelopes.map((envelope) => evidenceRef(envelope)),
-        limitations: uniqueLimitations(envelopes),
+        limitations: [...new Set(limitations)],
         createdAt: to,
       };
       await activeStore.set(observationKey(ownerSessionId, farmId), record);
@@ -235,4 +288,6 @@ export function createSatelliteObservationService({
 export const satelliteObservationDefaults = Object.freeze({
   lookbackDays: LOOKBACK_DAYS,
   trendThreshold: TREND_THRESHOLD,
+  minValidPixelRatio: MIN_VALID_PIXEL_RATIO,
+  minTrendObservations: MIN_TREND_OBSERVATIONS,
 });

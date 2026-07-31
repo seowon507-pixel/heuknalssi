@@ -170,6 +170,12 @@ export function loadConfig(env = process.env) {
         serviceKey: null,
         contractVersion: null,
       },
+      satellite: {
+        enabled: enabled(env.ENABLE_SATELLITE),
+        clientId: env.COPERNICUS_CLIENT_ID || null,
+        clientSecret: env.COPERNICUS_CLIENT_SECRET || null,
+        contractVersion: env.COPERNICUS_CONTRACT_VERSION || null,
+      },
     },
     // 기기 이관 백업 저장소. 미설정이면 기능만 꺼지고 분석에는 영향이 없다.
     deviceBackupConfig: {
@@ -189,7 +195,11 @@ export function loadConfig(env = process.env) {
     },
     capabilities: {
       smartfarm: 'DISABLED',
-      satellite: enabled(env.ENABLE_SATELLITE) ? 'UNSUPPORTED' : 'DISABLED',
+      satellite: enabled(env.ENABLE_SATELLITE)
+        ? env.COPERNICUS_CLIENT_ID && env.COPERNICUS_CLIENT_SECRET
+          ? 'CONFIGURED_UNVERIFIED'
+          : 'CATALOG_ONLY'
+        : 'DISABLED',
       persistence:
         supabaseUrl && supabaseSecretKey
           ? 'CONFIGURED_UNVERIFIED'

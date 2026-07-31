@@ -137,7 +137,7 @@ test("목록은 열린 오늘 행동을 첫 행동으로 두고 농장/작물을
   ]);
 });
 
-test("규칙 행동 중복키는 농장+작물+규칙+기한에만 결정적으로 묶인다", () => {
+test("규칙 행동 중복키는 농장+작물+규칙+서울 기준 기한 날짜에 묶인다", () => {
   const input = {
     farmId: "farm-a",
     cropId: "crop-apple-a",
@@ -150,6 +150,10 @@ test("규칙 행동 중복키는 농장+작물+규칙+기한에만 결정적으�
     ruleActionDedupeKey(input),
     ruleActionDedupeKey({ ...input, cropId: "crop-pear-a" }),
   );
+  assert.equal(
+    ruleActionDedupeKey(input),
+    ruleActionDedupeKey({ ...input, dueAt: "2026-07-31T14:59:59.000Z" }),
+  );
   assert.notEqual(
     ruleActionDedupeKey(input),
     ruleActionDedupeKey({
@@ -157,6 +161,23 @@ test("규칙 행동 중복키는 농장+작물+규칙+기한에만 결정적으�
       dueAt: "2026-08-01T09:00:00.000Z",
     }),
   );
+});
+
+test("같은 날 생성된 규칙 행동은 한 건으로 정리하고 완료 상태를 보존한다", () => {
+  const open = item({ actionId: "open" });
+  const done = transitionActionStatus(
+    item({ actionId: "done" }),
+    "DONE",
+    { now: "2026-07-31T02:00:00.000Z" },
+  );
+  const plan = buildActionPlan([open, done], {
+    farmId: "farm-a",
+    cropId: "crop-apple-a",
+  });
+
+  assert.equal(plan.today.length, 1);
+  assert.equal(plan.today[0].actionId, "done");
+  assert.equal(plan.today[0].status, "DONE");
 });
 
 test("응용 서비스는 규칙 중복을 원자 저장 계약에 위임하고 새 기한은 새 행동으로 만든다", async () => {
