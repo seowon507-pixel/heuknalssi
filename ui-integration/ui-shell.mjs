@@ -29,6 +29,14 @@
     situation: { planning: '재배 전 환경 분석', growing: '재배 중 생육 점검' },
     crop: { apple: '사과', pear: '배', cucumber: '오이', potato: '감자', lettuce: '상추' },
     cultivation: { outdoor: '노지', 'facility-soil': '시설흙', 'facility-water': '시설물', unknown: '잘 모름' },
+    season: {
+      spring: '봄 작기',
+      summer: '여름 작기',
+      'highland-summer': '고랭지 여름 작기',
+      autumn: '가을 작기',
+      'autumn-winter': '가을·겨울 작기',
+      unknown: '잘 모름'
+    },
     growth: {
       early: '초기 생육',
       middle: '한창 자라는 중',
@@ -63,8 +71,12 @@
   function cropSettingsComplete() {
     return selectedValues('crop').every((crop) => {
       if (crop === 'cucumber' || crop === 'lettuce') {
-        return Boolean(selectedValue(`cultivation-${crop}`));
+        return Boolean(
+          selectedValue(`cultivation-${crop}`) &&
+          selectedValue(`season-${crop}`)
+        );
       }
+      if (crop === 'potato') return Boolean(selectedValue(`season-${crop}`));
       return true;
     });
   }
@@ -90,7 +102,8 @@
     if (step === 3) {
       const selectedCrops = selectedValues('crop');
       setError('cultivation-error', selectedCrops.some((crop) =>
-        ['cucumber', 'lettuce'].includes(crop) && !selectedValue(`cultivation-${crop}`)));
+        (['cucumber', 'lettuce'].includes(crop) && !selectedValue(`cultivation-${crop}`)) ||
+        (['cucumber', 'potato', 'lettuce'].includes(crop) && !selectedValue(`season-${crop}`))));
     }
     if (step === 4) setError('growth-error', !growthSettingsComplete());
     if (!complete) announce('선택하지 않은 항목이 있습니다. 안내 문구를 확인해 주세요.');
@@ -183,17 +196,17 @@
     return label;
   }
 
-  function createGrowthChoice(crop, value, title, help, recommended, checked) {
+  function createGrowthChoice(crop, value, title, help, dateReference, checked) {
     const label = createChoice(`growth-${crop}`, value, title, help, checked);
     const strong = label.querySelector('strong');
     const titleRow = document.createElement('span');
     titleRow.className = 'choice-title-row';
     strong.replaceWith(titleRow);
     titleRow.append(strong);
-    if (recommended) {
+    if (dateReference) {
       const badge = document.createElement('span');
       badge.className = 'choice-recommendation';
-      badge.textContent = '날짜 기준 AI 예상';
+      badge.textContent = '날짜 기준 참고';
       titleRow.append(badge);
     }
     return label;
@@ -202,7 +215,8 @@
   function rememberCropSettings() {
     Object.keys(labels.crop).forEach((crop) => {
       cropSettingsState[crop] = {
-        cultivation: selectedValue(`cultivation-${crop}`) || cropSettingsState[crop]?.cultivation || ''
+        cultivation: selectedValue(`cultivation-${crop}`) || cropSettingsState[crop]?.cultivation || '',
+        season: selectedValue(`season-${crop}`) || cropSettingsState[crop]?.season || 'unknown'
       };
     });
   }
@@ -211,8 +225,8 @@
     rememberCropSettings();
     const planning = selectedValue('situation') === 'planning';
     document.querySelector('#settings-step-help').textContent = planning
-      ? '오늘 날짜를 기준으로 후보 지역의 기후와 토양을 비교합니다.'
-      : '생육 상태는 날짜 기준 AI 예상으로 선택되며 필요할 때 직접 변경할 수 있습니다.';
+      ? '작물의 재배기간을 확인해 후보 지역의 기후와 토양을 비교합니다.'
+      : '재배 환경과 작기를 작물별로 확인합니다. 잘 모르면 가까운 예보만 먼저 볼 수 있습니다.';
     const cards = selectedValues('crop').map((crop) => {
       const card = document.createElement('section');
       card.className = 'crop-setting-card';
@@ -227,7 +241,7 @@
         const cultivation = document.createElement('fieldset');
         cultivation.className = 'settings-group';
         const legend = document.createElement('legend');
-        legend.textContent = '재배 환경';
+        legend.textContent = `${labels.crop[crop]} 재배 환경`;
         const grid = document.createElement('div');
         grid.className = 'choice-grid';
         grid.append(
@@ -237,6 +251,37 @@
         );
         cultivation.append(legend, grid);
         card.append(cultivation);
+      }
+      if (['cucumber', 'potato', 'lettuce'].includes(crop)) {
+        const season = document.createElement('fieldset');
+        season.className = 'settings-group';
+        const legend = document.createElement('legend');
+        legend.textContent = `${labels.crop[crop]} 재배기간`;
+        const grid = document.createElement('div');
+        grid.className = 'choice-grid';
+        const choices = crop === 'potato'
+          ? [
+              ['spring', '봄 작기', '3~6월'],
+              ['highland-summer', '고랭지 여름 작기', '4~9월'],
+              ['autumn', '가을 작기', '7~11월']
+            ]
+          : [
+              ['spring', '봄 작기', '3~5월'],
+              ['summer', '여름 작기', '6~8월'],
+              ['autumn-winter', '가을·겨울 작기', '9~2월']
+            ];
+        choices.push(['unknown', '잘 모름', '장기 기후는 보류하고 가까운 예보만 확인']);
+        choices.forEach(([value, title, help]) => {
+          grid.append(createChoice(
+            `season-${crop}`,
+            value,
+            title,
+            help,
+            (cropSettingsState[crop]?.season || 'unknown') === value
+          ));
+        });
+        season.append(legend, grid);
+        card.append(season);
       }
       const dateNote = document.createElement('div');
       dateNote.className = 'auto-date-note';
@@ -250,13 +295,9 @@
       dateCheck.textContent = '✓';
       const dateCopy = document.createElement('div');
       const dateTitle = document.createElement('strong');
-      dateTitle.textContent = planning
-        ? `${dateLabel} · 분석 기준일`
-        : `${dateLabel} · 날짜 기준 AI 예상`;
+      dateTitle.textContent = `${dateLabel} · 예보 기준일`;
       const dateHelp = document.createElement('p');
-      dateHelp.textContent = planning
-        ? '이 날짜를 기준으로 기후와 토양을 비교합니다.'
-        : '현재 날짜와 다음 단계의 생육 상태를 함께 사용합니다.';
+      dateHelp.textContent = '오늘부터의 예보를 확인합니다. 재배기간은 위에서 별도로 선택합니다.';
       dateCopy.append(dateTitle, dateHelp);
       dateNote.append(dateCheck, dateCopy);
       card.append(dateNote);
@@ -295,7 +336,7 @@
       : '작물별 현재 상태를 확인해 주세요';
     document.querySelector('#growth-step-help').textContent = planning
       ? '재배 전에는 실제 생육 단계가 없으므로 별도로 묻지 않습니다.'
-      : '오늘 날짜로 예상한 단계가 기본 선택되어 있습니다. 실제 작물과 다르면 작물별로 바꿔 주세요.';
+      : '현재 상태를 아는 경우에만 선택해 주세요. 모르면 단계 공통 안내를 제공합니다.';
     if (planning) {
       growthSettings.replaceChildren();
       updateNextState();
@@ -303,14 +344,14 @@
     }
     const cards = selectedValues('crop').map((crop) => {
       const recommendation = recommendedGrowthStage(crop);
-      const selected = cropGrowthState[crop] || recommendation;
+      const selected = cropGrowthState[crop] || 'unknown';
       cropGrowthState[crop] = selected;
       const card = document.createElement('section');
       card.className = 'crop-setting-card growth-crop-card';
       const title = document.createElement('h2');
       title.textContent = labels.crop[crop];
       const help = document.createElement('p');
-      help.textContent = '오늘 날짜의 일반적인 생육 흐름을 기준으로 예상했습니다. 실제 상태가 다르면 바꿔 주세요.';
+      help.textContent = '작물별 상태를 직접 확인합니다. 날짜만으로 생육단계를 확정하지 않습니다.';
       const fieldset = document.createElement('fieldset');
       fieldset.className = 'settings-group';
       const legend = document.createElement('legend');
@@ -360,17 +401,18 @@
   }
 
   function cropSettingSummary(crop) {
+    const season = labels.season[selectedValue(`season-${crop}`)] || null;
     if (!['cucumber', 'lettuce'].includes(crop)) {
-      return `${labels.crop[crop]} · 노지 · 날짜 기준 AI 예상`;
+      return `${labels.crop[crop]} · 노지${season ? ` · ${season}` : ' · 다년생 작물'}`;
     }
     const cultivation = labels.cultivation[selectedValue(`cultivation-${crop}`)] || '환경 미선택';
-    return `${labels.crop[crop]} · ${cultivation} · 날짜 기준 AI 예상`;
+    return `${labels.crop[crop]} · ${cultivation} · ${season || '작기 미선택'}`;
   }
 
   function growthSettingSummary(crop) {
     const growth = selectedValue(`growth-${crop}`) || cropGrowthState[crop];
     const recommendation = recommendedGrowthStage(crop);
-    const suffix = growth === recommendation ? ' · 날짜 기준 AI 예상' : '';
+    const suffix = growth !== 'unknown' && growth === recommendation ? ' · 날짜 기준 참고' : '';
     return `${labels.crop[crop]} · ${labels.growth[growth] || '단계 미선택'}${suffix}`;
   }
 
@@ -635,6 +677,7 @@
     }
     if (event.target.name === 'crop') setError('crop-error', false);
     if (event.target.name.startsWith('cultivation-')) setError('cultivation-error', false);
+    if (event.target.name.startsWith('season-')) setError('cultivation-error', false);
     if (event.target.name.startsWith('growth-')) {
       const crop = event.target.name.slice('growth-'.length);
       cropGrowthState[crop] = event.target.value;

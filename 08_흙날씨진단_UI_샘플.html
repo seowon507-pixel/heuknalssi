@@ -458,6 +458,15 @@
     .test-mode::before { width: 6px; height: 6px; border-radius: 50%; background: var(--v5-warning); content: ""; }
     .topbar-actions { display: flex; align-items: center; gap: 8px; }
     .mobile-brand { display: none; }
+    .mobile-farm-trigger { display: none; }
+    .mobile-farm-dialog { width: min(92vw, 420px); padding: 0; overflow: hidden; }
+    .mobile-farm-dialog::backdrop { background: rgb(11 24 16 / 55%); }
+    .mobile-farm-dialog-header { display: flex; padding: 18px 20px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--v5-hairline); }
+    .mobile-farm-dialog-header h2 { margin: 0; }
+    .mobile-farm-dialog .mobile-farm-list { padding: 16px 20px 22px; }
+    .mobile-farm-dialog .farm-switcher { display: grid; gap: 8px; }
+    .mobile-farm-dialog .farm-switch-button,
+    .mobile-farm-dialog .farm-add-button { width: 100%; min-height: 54px; text-align: left; }
 
     .app-main { margin-left: 232px; padding: 96px clamp(24px, 4vw, 56px) 100px; }
     .view { max-width: 1280px; margin: 0 auto; }
@@ -665,6 +674,7 @@
       .sidebar { display: none; }
       .topbar { left: 0; height: 56px; padding: 0 14px; }
       .mobile-brand { display: flex; align-items: center; gap: 8px; }
+      .mobile-farm-trigger { display: inline-flex; }
       .mobile-brand .brand-name { color: var(--v5-text); font-size: 18px; }
       .mobile-brand .brand-mark { width: 28px; height: 28px; border-color: #CDD4CE; color: var(--v5-brand); }
       .topbar-context > strong { display: none; }
@@ -2151,7 +2161,7 @@
     }
     .current-state-ring::before { width: 100%; background: #E4EAE6; }
     .current-state-ring::after {
-      width: var(--condition-percent);
+      width: 100%;
       background: #2B8A57;
     }
     .current-state-ring.is-hold::after,
@@ -2213,6 +2223,13 @@
       font-size: 15px;
       letter-spacing: -.01em;
     }
+    .overview-source-status { display: grid; margin-top: 16px; gap: 8px; }
+    .overview-source-status > strong { color: #506057; font-size: 12px; }
+    .overview-source-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .source-status-chip { display: inline-flex; min-height: 27px; padding: 5px 8px; align-items: center; border: 1px solid #D7E2DA; border-radius: 999px; background: #FFFFFF; color: #425047; font-size: 11px; font-weight: 680; }
+    .source-status-chip.is-good { border-color: #BEE1CB; background: #ECF7F0; color: #17683F; }
+    .source-status-chip.is-warning { border-color: #E7D2A8; background: #FFF7E8; color: #8A5A13; }
+    .source-status-chip.is-danger { border-color: #E5BDB6; background: #FFF1EF; color: #9E3E33; }
 
     /* 최종 대시보드 배치: 상태를 첫 화면 우측 상단에 고정한다. */
     .decision-flow {
@@ -2444,6 +2461,7 @@
       <div class="mobile-brand" aria-label="흙날씨"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5c3-2.2 5.3-2.2 8 0s5 2.2 8 0M4 12c3-2.2 5.3-2.2 8 0s5 2.2 8 0M5 17h14"/></svg></span><span class="brand-name">흙날씨</span></div>
       <div class="topbar-context"><strong id="topbar-context-value">분석 조건을 입력해 주세요</strong><span class="test-mode"><span class="test-mode-label" id="runtime-mode-label">API 연결 확인 중</span></span></div>
       <div class="topbar-actions">
+        <button class="button button-secondary mobile-farm-trigger" id="mobile-farm-trigger" type="button" aria-haspopup="dialog" aria-controls="mobile-farm-dialog">내 농장</button>
         <button class="button command-trigger" id="command-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="command-dialog"><span class="ui-icon icon-search" aria-hidden="true"></span><span>검색 또는 명령…</span><kbd aria-hidden="true">⌘K</kbd></button>
         <button class="button button-secondary" id="open-new-analysis" type="button">조건 바꾸기</button>
       </div>
@@ -2941,6 +2959,14 @@
       <button class="nav-button" type="button" data-view="mypage">마이페이지</button>
     </nav>
   </div>
+
+  <dialog class="mobile-farm-dialog" id="mobile-farm-dialog" aria-labelledby="mobile-farm-title">
+    <header class="mobile-farm-dialog-header">
+      <h2 id="mobile-farm-title">내 농장</h2>
+      <button class="button button-secondary" id="mobile-farm-close" type="button">닫기</button>
+    </header>
+    <section class="mobile-farm-list" aria-label="저장한 농장 목록"></section>
+  </dialog>
 
   <button class="assistant-launcher" id="assistant-launcher" type="button" aria-label="농장 분석 도우미 열기" aria-controls="assistant-panel" aria-expanded="false">
     <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">

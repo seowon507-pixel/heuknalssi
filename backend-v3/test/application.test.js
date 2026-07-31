@@ -1467,6 +1467,11 @@ test('preflight is HOLD until rules, mappings, and every P0 adapter are actually
   const ready = await configured.getPreflight();
   assert.equal(ready.ready, true);
   assert.equal(ready.serviceState, 'READY');
+  assert.equal(ready.deploymentReady, false);
+  assert.equal(ready.deploymentState, 'HOLD');
+  assert.deepEqual(ready.deploymentBlockers, [
+    'SHARED_STATE_NOT_CONFIGURED',
+  ]);
   assert.equal(ready.locationMappings.verifiedCount, 6);
   assert.equal(ready.locationMappings.p0ReadyCount, 6);
   assert.equal(ready.ruleRegistry.completeCropCount, 5);

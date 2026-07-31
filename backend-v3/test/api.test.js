@@ -230,6 +230,9 @@ function makeFlowServices() {
       calls.preflight.push(input);
       return {
         status: "READY",
+        deploymentReady: false,
+        deploymentState: "HOLD",
+        deploymentBlockers: ["SHARED_STATE_NOT_CONFIGURED"],
         capabilities: {
           persistence: "NOT_AVAILABLE",
           satellite: "UNSUPPORTED",
@@ -409,6 +412,10 @@ test("ephemeral HTTP server supports the complete owner-bound API flow", async (
   assert.equal(preflightResponse.status, 200);
   const preflight = await preflightResponse.json();
   assert.equal(preflight.capabilities.persistence, "NOT_AVAILABLE");
+  assert.equal(preflight.deploymentReady, false);
+  assert.deepEqual(preflight.deploymentBlockers, [
+    "SHARED_STATE_NOT_CONFIGURED",
+  ]);
   assert.equal(/secret|token|https?:\/\//i.test(JSON.stringify(preflight)), false);
 
   const ownerIds = [

@@ -6,6 +6,7 @@ export {
   answerGroundedQuestion,
   buildAssistantCatalog,
   classifyAssistantIntent,
+  classifyAssistantPolicy,
   normalizeQuestion,
 } from './assistant.js';
 export {

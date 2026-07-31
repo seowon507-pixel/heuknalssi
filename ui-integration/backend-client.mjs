@@ -5,7 +5,6 @@ import {
   createIdempotencyKey,
   requestFingerprint,
 } from "./api-contract.mjs";
-import { calculateCropConditionScore } from "./crop-condition-score.mjs";
 import { summarizeForecastEvaluation } from "./forecast-presentation.mjs";
 import { hasMissingSoilExamHistory } from "./soil-service-guidance.mjs";
 import { suggestAdministrativeAddresses } from "./address-suggestions.mjs";
@@ -73,8 +72,8 @@ const GROWTH_LABELS = Object.freeze({
 });
 
 const STATE_LABELS = Object.freeze({
-  COMPLETE: "분석 완료",
-  READY: "자료 준비",
+  COMPLETE: "확인 완료",
+  READY: "확인 완료",
   PARTIAL: "일부 확인",
   HOLD: "판단 보류",
   UNAVAILABLE: "자료 없음",
@@ -345,6 +344,7 @@ function wireInteractions() {
   });
   assistantLauncher?.addEventListener("click", openAssistant);
   assistantClose?.addEventListener("click", closeAssistant);
+  assistantPanel?.addEventListener("keydown", trapAssistantFocus);
   assistantForm?.addEventListener("submit", (event) => {
     event.preventDefault();
     void submitAssistantQuestion(assistantInput?.value ?? "");
@@ -511,6 +511,8 @@ async function restoreSavedSession(
   if (!saved) return;
   try {
     setConnectionState("loading", loadingCopy);
+    const saveConsent = document.querySelector("#save-consent");
+    if (saveConsent) saveConsent.checked = true;
 
     const situationInput = form.querySelector(
       `[name="situation"][value="${saved.situation}"]`,
@@ -533,6 +535,7 @@ async function restoreSavedSession(
     for (const [crop, setting] of Object.entries(saved.cropSettings ?? {})) {
       for (const [group, value] of [
         [`cultivation-${crop}`, setting.cultivation],
+        [`season-${crop}`, setting.season],
         [`growth-${crop}`, setting.growth],
       ]) {
         if (!value) continue;
@@ -556,6 +559,7 @@ async function restoreSavedSession(
     // 폼 이벤트를 흉내내지 않고 제출 함수를 직접 불러 완료까지 기다린다.
     const restored = await submitAnalysis();
     if (!restored) throw new Error("saved analysis refresh failed");
+    renderRuntimeState();
     document.body.dataset.sessionRestore = "ok";
   } catch (error) {
     // 저장된 설정은 보존한다. 일시적인 API 장애 때문에 다시 입력시키지 않는다.
@@ -598,8 +602,8 @@ function renderRuntimeState() {
   configurePersistenceControl();
 
   if (ready) {
-    setConnectionState("ready", "실시간 자료 분석 가능");
-    runtimeModeLabel.textContent = "실시간 분석";
+    setConnectionState("ready", "자료 연결 확인 완료");
+    runtimeModeLabel.textContent = "자료별 확인";
     serviceBanner.hidden = true;
     runtimeSafetyNotice.hidden = true;
     return;
@@ -626,11 +630,8 @@ function configurePersistenceControl() {
   const label = document.querySelector('label[for="save-consent"]');
   if (!input || !label) return;
   const container = input.closest(".inline-check");
-  const persistence = preflight?.capabilities?.persistence;
-  const available = ["READY", "AVAILABLE"].includes(persistence);
-  input.disabled = !available;
-  if (!available) input.checked = false;
-  if (container) container.hidden = !available;
+  input.disabled = safeStorage() === null;
+  if (container) container.hidden = false;
   label.textContent = "이 기기에 농장 설정을 저장합니다. (선택)";
 }
 
@@ -871,8 +872,6 @@ function renderLocationCandidates(candidates) {
 
 function selectLocationCandidate(candidate, button) {
   selectedCandidate = candidate;
-  // 처음 위치 설정을 마이페이지의 주 사용 지역으로 삼는다.
-  rememberRegion(candidate.displayName);
   regionInput.value = candidate.displayName;
   regionInput.dataset.candidateVerified = "true";
   locationCandidates.querySelectorAll(".location-candidate").forEach((item) => {
@@ -939,8 +938,7 @@ async function submitAnalysis() {
   );
 
   try {
-    const completed = [];
-    for (const [index, payload] of payloads.entries()) {
+    const results = await Promise.allSettled(payloads.map(async (payload, index) => {
       const created = await api.createAnalysis(
         payload,
         pendingAttempt.idempotencyKeys[index],
@@ -949,8 +947,15 @@ async function submitAnalysis() {
       if (typeof analysisId !== "string" || analysisId === "") {
         throw new ApiRequestError({ code: "INVALID_API_RESPONSE", status: 502 });
       }
-      completed.push(await api.getAnalysis(analysisId));
-    }
+      return api.getAnalysis(analysisId);
+    }));
+    const completed = results
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value);
+    const failed = results
+      .map((result, index) => ({ result, index }))
+      .filter(({ result }) => result.status === "rejected");
+    if (completed.length === 0) throw failed[0]?.result.reason;
 
     currentUiContexts = collectUiAnalysisContexts(formValues, payloads);
     currentAnalyses = new Map(
@@ -961,8 +966,21 @@ async function submitAnalysis() {
     renderCropResultSwitcher();
     pendingAttempt = null;
     // 새로고침해도 같은 조건으로 이어서 볼 수 있게 기억한다.
-    writeStoredSession(formValues, selectedCandidate?.displayName ?? null);
+    if (formValues.saveConsent === true) {
+      writeStoredSession(formValues, selectedCandidate?.displayName ?? null);
+    }
     closeWizardAfterAnalysis();
+    if (failed.length > 0) {
+      const failedCrops = failed.map(({ index }) =>
+        CROP_LABELS[payloads[index]?.crop] ?? payloads[index]?.crop ?? "작물"
+      );
+      setServiceBanner(
+        "hold",
+        `${completed.length}개 작물 분석 완료`,
+        `${failedCrops.join("·")} 분석은 완료하지 못했습니다. 완료된 결과는 그대로 보존했습니다.`,
+      );
+      serviceBanner.hidden = false;
+    }
     if ((currentAnalysis?.report?.state ?? "NOT_REQUESTED") === "NOT_REQUESTED") {
       const automaticReportButton = document.querySelector("#backend-report-button");
       if (automaticReportButton) {
@@ -1115,7 +1133,7 @@ function renderLiveOutlook(analysis) {
     element(
       "span",
       "",
-      `${formatKoreanDate(new Date())} · 날짜 기준 AI 예상`,
+      `${formatKoreanDate(new Date())} · 오늘 예보 기준`,
     ),
     element(
       "span",
@@ -1862,7 +1880,7 @@ function renderSummaryPanel(analysis, regionLabel, cropLabel) {
       `생육 상태 · ${uiContext?.growthLabel ?? "단계 공통 안내"}`,
     ),
     ...(uiContext?.growthRecommended
-      ? [element("span", "summary-context-chip is-ai", "날짜 기준 AI 예상")]
+      ? [element("span", "summary-context-chip is-ai", "날짜 기준 참고")]
       : []),
   );
   meta.append(title, contextList, created);
@@ -1907,8 +1925,6 @@ function renderStateOverview(analysis) {
     title,
   );
   const status = farmStatusSummary(analysis);
-  const condition = calculateCropConditionScore(analysis);
-  const conditionScore = condition.score;
   const stateVisual = element("div", "current-state-visual");
   const stateRing = element(
     "div",
@@ -1917,33 +1933,15 @@ function renderStateOverview(analysis) {
   stateRing.setAttribute("role", "img");
   stateRing.setAttribute(
     "aria-label",
-    conditionScore === null
-      ? `오늘의 작물 상태 ${status.label}, 생육점수 산정 전`
-      : `오늘의 작물 상태 ${condition.label}, 생육점수 ${conditionScore}점`,
+    `오늘의 작물 상태 ${status.label}`,
   );
-  stateRing.style.setProperty(
-    "--condition-percent",
-    `${conditionScore ?? 0}%`,
-  );
-  if (conditionScore === null) {
-    stateRing.append(
-      element("strong", "", "—"),
-      element("span", "", "생육점수"),
-    );
-  } else {
-    const scoreLine = element("strong", "");
-    scoreLine.append(
-      document.createTextNode(String(conditionScore)),
-      element("em", "", "점"),
-    );
-    stateRing.append(scoreLine, element("span", "", "생육점수"));
-  }
+  stateRing.append(element("strong", "", status.label));
   const stateCopy = element("div", "current-state-copy");
   stateCopy.append(
     element(
       "strong",
       "",
-      conditionScore === null ? status.label : condition.label,
+      status.label,
     ),
     element("span", "", status.detail),
   );
@@ -1952,46 +1950,34 @@ function renderStateOverview(analysis) {
   const axes = element("div", "axis-status-list");
   [
     {
-      label: "날씨 영향",
-      score: condition.components.forecast,
-      help: forecastConditionHelp(analysis),
+      label: "기후 조건",
+      state: analysis?.climate?.state,
+      valueLabel: stateLabel(analysis?.climate?.state),
+      help: "선택한 작기와 장기 기후 비교",
     },
     {
-      label: "토양 적합",
-      score: condition.components.soil,
+      label: "토양 조건",
+      state: analysis?.soil?.state,
+      valueLabel: stateLabel(analysis?.soil?.state),
       help: soilConditionHelp(analysis),
     },
     {
-      label: "점수 근거",
-      score: null,
-      valueLabel: condition.basisLabel,
-      help: "날씨 60% · 토양 40%",
+      label: "가까운 예보",
+      state: analysis?.forecast?.result?.riskState ?? analysis?.forecast?.state,
+      valueLabel: stateLabel(analysis?.forecast?.result?.riskState ?? analysis?.forecast?.state),
+      help: forecastConditionHelp(analysis),
     },
-  ].forEach(({ label, score, valueLabel, help }) => {
-    const tone =
-      score === null ? "caution" : score >= 70 ? "good" : "caution";
+  ].forEach(({ label, state, valueLabel, help }) => {
+    const tone = toneForState(state);
     const card = element(
       "article",
       `axis-status ${tone === "good" ? "" : "is-caution"}`.trim(),
     );
     const scoreValue = element(
       "strong",
-      `axis-score-value${score === null ? " is-unavailable" : ""}`,
+      `axis-score-value${tone === "good" ? "" : " is-unavailable"}`,
     );
-    if (score === null) {
-      scoreValue.append(
-        element(
-          "b",
-          "",
-          valueLabel ?? "산정 대기",
-        ),
-      );
-    } else {
-      scoreValue.append(
-        element("b", "", String(score)),
-        element("em", "", "점"),
-      );
-    }
+    scoreValue.append(element("b", "", valueLabel ?? "확인 필요"));
     card.append(
       element("span", "", label),
       scoreValue,
@@ -2002,11 +1988,10 @@ function renderStateOverview(analysis) {
   const overall = element(
     "p",
     "score-state",
-    conditionScore === null
-      ? "날씨·토양 값이 모두 확인되면 생육점수를 표시합니다. 부족한 값은 0점으로 계산하지 않습니다."
-      : `${conditionScore}점은 가까운 예보 60%와 작물별 토양 적합도 40%를 반영했습니다. 더 정확히 확인하려면 사진·센서값을 추가할 수 있습니다.`,
+    "서로 다른 자료를 하나의 점수로 합치지 않습니다. 확인된 축만 행동 판단에 사용합니다.",
   );
-  inner.append(heading, stateVisual, axes, overall);
+  const sourceStatus = renderOverviewSourceStatus(analysis?.dataSources);
+  inner.append(heading, stateVisual, axes, sourceStatus, overall);
 
   const button = element(
     "button",
@@ -2018,9 +2003,32 @@ function renderStateOverview(analysis) {
   overview.replaceChildren(inner, button);
 }
 
+function renderOverviewSourceStatus(sources) {
+  const section = element("section", "overview-source-status");
+  section.setAttribute("aria-label", "사용한 자료 상태");
+  section.append(element("strong", "", "사용한 자료"));
+  const list = element("div", "overview-source-chips");
+  const safeSources = Array.isArray(sources) ? sources : [];
+  if (safeSources.length === 0) {
+    list.append(element("span", "source-status-chip is-warning", "자료 확인 필요"));
+  } else {
+    safeSources.forEach((source) => {
+      const chip = element(
+        "span",
+        `source-status-chip is-${sourceTone(source)}`,
+        `${source.sourceName ?? "공공자료"} · ${sourceStateLabel(source)}`,
+      );
+      chip.title = `기준 시각 ${formatSourceTime(source)}`;
+      list.append(chip);
+    });
+  }
+  section.append(list);
+  return section;
+}
+
 function forecastConditionHelp(analysis) {
-  const score = calculateCropConditionScore(analysis).components.forecast;
-  if (!Number.isFinite(score)) {
+  const forecastState = analysis?.forecast?.result?.riskState ?? analysis?.forecast?.state;
+  if (!["READY", "COMPLETE", "PARTIAL"].includes(forecastState)) {
     return "작물별 예보 판정 완료 후 반영";
   }
   const risks = activeForecastRisks(analysis);
@@ -3308,6 +3316,9 @@ function initializeDashboardSurfaces() {
 
   const recent = document.querySelector(".sidebar-recent");
   if (recent) renderFarmList(recent);
+  const mobileFarmList = document.querySelector(".mobile-farm-list");
+  if (mobileFarmList) renderFarmList(mobileFarmList, { includeHeading: false });
+  setupMobileFarmDialog();
 
   renderRegionLabels();
   setupSoilTestPanel();
@@ -3356,10 +3367,12 @@ function openAssistant() {
   if (!assistantPanel || !assistantLauncher) return;
   assistantPanel.hidden = false;
   assistantLauncher.setAttribute("aria-expanded", "true");
-  assistantPanel.setAttribute(
-    "aria-modal",
-    String(window.matchMedia("(max-width: 620px)").matches),
-  );
+  const mobileModal = window.matchMedia("(max-width: 620px)").matches;
+  assistantPanel.setAttribute("aria-modal", String(mobileModal));
+  if (mobileModal) {
+    document.querySelector(".app-shell").inert = true;
+    document.querySelector(".skip-link").inert = true;
+  }
   document.body.classList.add("assistant-open");
   requestAnimationFrame(() => assistantInput?.focus());
 }
@@ -3369,7 +3382,31 @@ function closeAssistant() {
   assistantPanel.hidden = true;
   assistantLauncher.setAttribute("aria-expanded", "false");
   document.body.classList.remove("assistant-open");
+  if (!document.body.classList.contains("wizard-open")) {
+    document.querySelector(".app-shell").inert = false;
+    document.querySelector(".skip-link").inert = false;
+  }
   assistantLauncher.focus();
+}
+
+function trapAssistantFocus(event) {
+  if (
+    event.key !== "Tab" ||
+    !window.matchMedia("(max-width: 620px)").matches
+  ) return;
+  const focusable = [...assistantPanel.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+  )].filter((node) => !node.hidden);
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function syncAssistantContext(analysis) {
@@ -3391,7 +3428,7 @@ function syncAssistantContext(analysis) {
     assistantMessages?.replaceChildren();
     appendAssistantMessage(
       available
-        ? `${crop} 분석에서 확인된 날씨·토양 근거와 필요한 행동만 설명합니다.`
+        ? `${crop} 분석에서 확인된 날씨·토양 근거와 필요한 행동만 설명합니다. 이전 질문은 기억하지 않으므로 작물·날짜·항목을 함께 적어 주세요.`
         : "농장 분석을 실행하면 확인된 근거를 쉽게 설명합니다.",
     );
   }
@@ -3417,15 +3454,11 @@ async function submitAssistantQuestion(rawQuestion) {
     if (expectedAnalysisId !== currentAnalysis?.analysisId) return;
     pending?.remove();
     appendAssistantMessage(response?.answer ?? "설명할 근거를 찾지 못했습니다.", {
-      note: response?.notice,
+      note: assistantOutcomeNote(response?.outcome, response?.notice),
     });
   } catch (error) {
     pending?.remove();
-    appendAssistantMessage(
-      error?.code === "ANALYSIS_NOT_FOUND"
-        ? "분석 세션이 만료되었습니다. 농장 분석을 다시 실행해 주세요."
-        : "설명을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.",
-    );
+    appendAssistantMessage(assistantErrorMessage(error));
   } finally {
     if (expectedAnalysisId === currentAnalysis?.analysisId) {
       assistantInput.disabled = false;
@@ -3434,6 +3467,31 @@ async function submitAssistantQuestion(rawQuestion) {
       assistantInput.focus();
     }
   }
+}
+
+function assistantErrorMessage(error) {
+  const messages = {
+    ANALYSIS_NOT_FOUND:
+      "분석 세션이 만료되었습니다. 농장 분석을 다시 실행해 주세요.",
+    RATE_LIMITED:
+      "질문을 연속으로 많이 보냈습니다. 잠시 뒤 한 문장으로 다시 물어봐 주세요.",
+    REQUEST_TIMEOUT:
+      "확인 시간을 넘었습니다. 현재 분석은 그대로 유지되므로 질문만 다시 보내 주세요.",
+    INVALID_INPUT:
+      "질문을 확인하지 못했습니다. 작물·날짜·궁금한 항목을 한 문장으로 적어 주세요."
+  };
+  return messages[error?.code] ??
+    "설명을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.";
+}
+
+function assistantOutcomeNote(outcome, fallbackNotice) {
+  const labels = {
+    ANSWERED: "현재 분석에서 확인된 근거로 답했습니다.",
+    NEEDS_CLARIFICATION: "질문에 필요한 작물·날짜·항목을 다시 확인해 주세요.",
+    SAFETY_LIMIT: "안전상 확정 처방을 제공하지 않는 질문입니다.",
+    NOT_SUPPORTED: "현재 버전에서 지원하지 않는 판단입니다.",
+  };
+  return labels[outcome] ?? fallbackNotice;
 }
 
 function appendAssistantMessage(text, { user = false, note = null } = {}) {
@@ -3693,8 +3751,9 @@ function writeStoredSession(values, region) {
     storage.setItem(ACTIVE_FARM_STORAGE_KEY, farm.id);
     // 이전 버전과의 호환을 위해 현재 농장 한 건도 함께 유지한다.
     storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(profile));
+    storage.setItem(REGION_STORAGE_KEY, profile.region);
     creatingNewFarm = false;
-    renderFarmList();
+    renderFarmLists();
   } catch {
     // 저장소가 가득 찼거나 막혀 있으면 복원 없이 계속 쓴다.
   }
@@ -3773,14 +3832,21 @@ function farmDisplayName(profile) {
       .split(/\s+/u)
       .slice(-2)
       .join(" ") || "내 농장";
-  const crops = (profile?.crops ?? [])
+  const cropValues = profile?.crops ?? [];
+  const crops = cropValues
     .slice(0, 2)
     .map((crop) => CROP_LABELS[String(crop).toUpperCase()] ?? crop)
     .join("·");
-  return crops ? `${region} · ${crops}` : region;
+  const remaining = Math.max(0, cropValues.length - 2);
+  return crops
+    ? `${region} · ${crops}${remaining ? ` 외 ${remaining}종` : ""}`
+    : region;
 }
 
-function renderFarmList(target = document.querySelector(".sidebar-recent")) {
+function renderFarmList(
+  target = document.querySelector(".sidebar-recent"),
+  { includeHeading = true } = {},
+) {
   if (!target) return;
   const farms = readStoredFarms();
   const activeId = safeStorage()?.getItem(ACTIVE_FARM_STORAGE_KEY);
@@ -3809,12 +3875,37 @@ function renderFarmList(target = document.querySelector(".sidebar-recent")) {
   add.id = "add-farm";
   add.addEventListener("click", startNewFarm);
   target.replaceChildren(
-    element("h2", "", "내 농장"),
+    ...(includeHeading ? [element("h2", "", "내 농장")] : []),
     ...(farms.length
       ? [list]
       : [element("p", "recent-analysis", "저장된 농장이 없습니다.")]),
     add,
   );
+}
+
+function renderFarmLists() {
+  renderFarmList();
+  const mobileFarmList = document.querySelector(".mobile-farm-list");
+  if (mobileFarmList) renderFarmList(mobileFarmList, { includeHeading: false });
+}
+
+function setupMobileFarmDialog() {
+  const dialog = document.querySelector("#mobile-farm-dialog");
+  const trigger = document.querySelector("#mobile-farm-trigger");
+  const close = document.querySelector("#mobile-farm-close");
+  if (!dialog || !trigger || !close) return;
+  trigger.addEventListener("click", () => {
+    renderFarmList(document.querySelector(".mobile-farm-list"), {
+      includeHeading: false,
+    });
+    dialog.showModal();
+    close.focus();
+  });
+  close.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+  dialog.addEventListener("close", () => trigger.focus());
 }
 
 function selectStoredFarm(farm) {
@@ -3827,6 +3918,8 @@ function selectStoredFarm(farm) {
 }
 
 function startNewFarm() {
+  const mobileFarmDialog = document.querySelector("#mobile-farm-dialog");
+  if (mobileFarmDialog?.open) mobileFarmDialog.close();
   creatingNewFarm = true;
   clearSelectedCandidate("");
   document.dispatchEvent(new CustomEvent("heuknalssi:open-new-farm"));
@@ -3856,7 +3949,8 @@ async function registerServiceWorker() {
  */
 function writeStoredTodo(analysis) {
   const storage = safeStorage();
-  if (!storage) return;
+  const saveConsent = document.querySelector("#save-consent");
+  if (!storage || saveConsent?.checked !== true) return;
   const headline =
     analysis?.primaryAction?.title ??
     analysis?.actions?.[0]?.title ??
@@ -4435,13 +4529,13 @@ function readFormValues() {
   return {
     situation: selectedRadioValue("situation") || "growing",
     crops,
-    analysisMonth: new Date().getMonth() + 1,
     cropSettings: Object.fromEntries(
       crops.map((crop) => [
         crop,
         {
           cultivation: selectedRadioValue(`cultivation-${crop}`),
-          season: "current",
+          season: selectedRadioValue(`season-${crop}`) ||
+            (["apple", "pear"].includes(crop) ? "annual" : "unknown"),
           growth: selectedRadioValue(`growth-${crop}`),
         },
       ]),
@@ -4588,6 +4682,7 @@ function sourceStateLabel(source) {
   if (source?.deliveryState === "SAMPLE") return "샘플";
   if (sourceHasQualityWarning(source)) return "일부 확인";
   if (source?.deliveryState === "CACHE") return "캐시 자료";
+  if (source?.deliveryState === "LIVE") return "연결됨";
   if (source?.adapterState === "SUCCESS") return "연결됨";
   return source?.adapterState ?? "상태 미상";
 }
@@ -4601,6 +4696,7 @@ function sourceTone(source) {
   ) {
     return "warning";
   }
+  if (source?.deliveryState === "LIVE") return "good";
   if (source?.adapterState === "SUCCESS") return "good";
   return "danger";
 }

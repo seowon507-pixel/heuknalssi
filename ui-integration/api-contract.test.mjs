@@ -85,8 +85,7 @@ test("reviewed crop-specific stages map only in their supported context", () => 
       {
         situation: "growing",
         crop: "potato",
-        season: "current",
-        analysisMonth: 7,
+        season: "highland-summer",
         growth: "tuber-bulking",
       },
       TOKEN,
@@ -100,8 +99,7 @@ test("reviewed crop-specific stages map only in their supported context", () => 
           situation: "growing",
           crop: "cucumber",
           cultivation: "facility-soil",
-          season: "current",
-          analysisMonth: 7,
+          season: "summer",
           growth: "flowering",
         },
         TOKEN,
@@ -170,10 +168,9 @@ test("multiple planning crops remain LAND_SEARCH without a growth-stage requirem
     {
       situation: "planning",
       crops: ["apple", "potato"],
-      analysisMonth: 7,
       cropSettings: {
         apple: {},
-        potato: { season: "current" },
+        potato: { season: "unknown" },
       },
     },
     TOKEN,
@@ -242,45 +239,23 @@ test("SmartFarm 참고자료는 사전점검 READY와 지원 조합을 모두 �
   }
 });
 
-test("active crop analysis uses the current calendar month without asking for a season", () => {
+test("active crop analysis keeps an unconfirmed season explicitly unknown", () => {
   const [request] = buildAnalysisRequests(
     {
       crops: ["potato"],
       cropSettings: { potato: {} },
-      analysisMonth: 7,
       growth: "middle",
     },
     TOKEN,
   );
 
   assert.deepEqual(request.season, {
-    kind: "CUSTOM",
-    profileId: "CUSTOM",
-    startMonth: 7,
-    endMonth: 7,
+    kind: "UNKNOWN",
+    profileId: "UNKNOWN",
+    startMonth: null,
+    endMonth: null,
     userConfirmed: true,
   });
-});
-
-test("automatic current-date analysis rejects an invalid device month", () => {
-  assert.throws(
-    () =>
-      buildAnalysisRequests(
-        {
-          crops: ["lettuce"],
-          cropSettings: {
-            lettuce: { cultivation: "facility-soil" },
-          },
-          analysisMonth: 13,
-          growth: "early",
-        },
-        TOKEN,
-      ),
-    (error) =>
-      error instanceof ContractValidationError &&
-      error.code === "ANALYSIS_MONTH_INVALID" &&
-      error.field === "season",
-  );
 });
 
 test("multiple crop request requires at least one selected crop", () => {

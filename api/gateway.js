@@ -29,7 +29,7 @@ export default async function handler(request, response) {
     return;
   }
 
-  backend.handler(request, response);
+  await backend.handler(request, response);
 }
 
 /**

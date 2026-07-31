@@ -5,11 +5,13 @@ import { createGoogleAiSelector } from "../src/adapters/index.js";
 import {
   answerGroundedQuestion,
   buildAssistantCatalog,
+  classifyAssistantPolicy,
   classifyAssistantIntent,
 } from "../src/application/index.js";
 
 function analysisFixture() {
   return {
+    inputSummary: { crop: "APPLE" },
     state: "PARTIAL",
     decision: {
       message: "현재 재배지에서 확인된 주의 항목을 먼저 점검하세요.",
@@ -156,9 +158,147 @@ test("grounded assistant falls back to reason, action, and recheck from the anal
   assert.equal(result.mode, "FALLBACK");
   assert.equal(result.fallbackReason, "GOOGLE_AI_NOT_CONFIGURED");
   assert.equal(result.grounded, true);
+  assert.equal(result.outcome, "ANSWERED");
   assert.match(result.answer, /비가 이어지면/);
   assert.match(result.answer, /배수로가 막히지 않았는지/);
   assert.match(result.answer, /내일 아침/);
+});
+
+test("assistant blocks pesticide dosage and never calls the model selector", async () => {
+  let called = false;
+  const result = await answerGroundedQuestion({
+    analysis: analysisFixture(),
+    question: "사과에 농약을 몇 배로 희석해서 뿌려?",
+    assistant: {
+      state: "READY",
+      async select() {
+        called = true;
+        return { selectedIds: [] };
+      },
+    },
+  });
+  assert.equal(called, false);
+  assert.equal(result.mode, "POLICY");
+  assert.equal(result.outcome, "SAFETY_LIMIT");
+  assert.match(result.answer, /농약안전정보시스템|농업기술센터/);
+});
+
+test("응급 농약 노출은 일반 농약 규칙보다 먼저 119로 안내한다", async () => {
+  const questions = [
+    "사람이 농약을 마셨어",
+    "농약을 마신 것 같아",
+    "아이가 살충제를 먹었어",
+    "반려동물이 제초제에 노출됐어",
+  ];
+  for (const question of questions) {
+    let called = false;
+    const result = await answerGroundedQuestion({
+      analysis: analysisFixture(),
+      question,
+      assistant: {
+        state: "READY",
+        async select() {
+          called = true;
+          return { selectedIds: [] };
+        },
+      },
+    });
+    assert.equal(called, false);
+    assert.equal(result.outcome, "SAFETY_LIMIT");
+    assert.match(result.answer, /119|의료기관/);
+    assert.doesNotMatch(result.answer, /희석배수/);
+  }
+});
+
+test("비료·사진 질문의 자연어 변형도 모델 호출 전에 제한한다", async () => {
+  for (const [question, expectedOutcome] of [
+    ["요소를 몇 kg 줘야 해?", "SAFETY_LIMIT"],
+    ["퇴비를 몇 포대 뿌려?", "SAFETY_LIMIT"],
+    ["이 사진 속 잎이 왜 이래?", "NOT_SUPPORTED"],
+  ]) {
+    let called = false;
+    const result = await answerGroundedQuestion({
+      analysis: analysisFixture(),
+      question,
+      assistant: {
+        state: "READY",
+        async select() {
+          called = true;
+          return { selectedIds: [] };
+        },
+      },
+    });
+    assert.equal(called, false);
+    assert.equal(result.outcome, expectedOutcome);
+  }
+});
+
+test("assistant asks the user to switch crop context instead of answering from apple evidence", () => {
+  const result = classifyAssistantPolicy("오이는 내일 뭘 해야 해?", analysisFixture());
+  assert.equal(result.outcome, "NEEDS_CLARIFICATION");
+  assert.match(result.answer, /현재 대화는 사과 분석/);
+  assert.match(result.answer, /오이 작물 탭/);
+});
+
+test("배수를 배 작물로 오인하지 않고 근거 부재와 현장 행동을 안내한다", () => {
+  const drainage = classifyAssistantPolicy(
+    "배수 상태를 알려줘",
+    analysisFixture(),
+  );
+  assert.equal(drainage.outcome, "NEEDS_CLARIFICATION");
+  assert.match(drainage.answer, /검수된 필지 배수 등급이 없어/);
+  assert.match(drainage.answer, /고인 물·배수로 막힘/);
+  assert.match(drainage.answer, /내일 다시 확인/);
+  const pear = classifyAssistantPolicy("배나무는 무엇을 해야 해?", analysisFixture());
+  assert.equal(pear.outcome, "NEEDS_CLARIFICATION");
+  assert.match(pear.answer, /배 작물 탭/);
+});
+
+test("미지원 비교·쓰기·날짜 수치·종합점수 질문은 성공처럼 답하지 않는다", () => {
+  const cases = [
+    ["다른 농장과 비교해 줘", "NOT_SUPPORTED", /비교는 하지 않습니다/],
+    ["오늘 할 일을 완료 처리해 줘", "NOT_SUPPORTED", /아무것도 변경되지 않았습니다/],
+    ["내일 비가 오나요?", "NOT_SUPPORTED", /7일 예보/],
+    ["생육점수가 90점이니 안전하지?", "NEEDS_CLARIFICATION", /종합점수를 사용하지 않습니다/],
+    ["종합점수가 90점이니 안전한 거죠?", "NEEDS_CLARIFICATION", /종합점수를 사용하지 않습니다/],
+    ["총점이 높으면 위험이 없어?", "NEEDS_CLARIFICATION", /종합점수를 사용하지 않습니다/],
+    ["통합 점수를 알려줘", "NEEDS_CLARIFICATION", /종합점수를 사용하지 않습니다/],
+    ["안전점수 95점이면 괜찮아?", "NEEDS_CLARIFICATION", /종합점수를 사용하지 않습니다/],
+  ];
+  for (const [question, outcome, answerPattern] of cases) {
+    const result = classifyAssistantPolicy(question, analysisFixture());
+    assert.equal(result.outcome, outcome);
+    assert.match(result.answer, answerPattern);
+  }
+});
+
+test("종합점수와 배수 근거 공백을 모델 호출 전에 처리한다", async () => {
+  for (const question of [
+    "종합점수가 90점이니 안전한 거죠?",
+    "배수 상태를 알려줘",
+  ]) {
+    let called = false;
+    const result = await answerGroundedQuestion({
+      analysis: analysisFixture(),
+      question,
+      assistant: {
+        state: "READY",
+        async select() {
+          called = true;
+          return { selectedIds: [] };
+        },
+      },
+    });
+    assert.equal(called, false);
+    assert.equal(result.mode, "POLICY");
+    assert.equal(result.outcome, "NEEDS_CLARIFICATION");
+  }
+});
+
+test("assistant makes its lack of conversational memory explicit", () => {
+  const result = classifyAssistantPolicy("그러면 그건 언제 해?", analysisFixture());
+  assert.equal(result.outcome, "NEEDS_CLARIFICATION");
+  assert.match(result.answer, /이전 질문을 기억해 이어서 판단하지 않습니다/);
 });
 
 test("grounded assistant exposes only a safe provider failure category", async () => {

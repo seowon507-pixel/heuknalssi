@@ -762,9 +762,14 @@ export function createApplicationServices({
       mappingValidation.valid &&
       p0ReadyLocationMappingCount >= minimumVerifiedMappingCount;
     const ready = requiredAdaptersReady && rulesReady && mappingsReady;
+    const sharedStateReady = isReadyCapability(
+      capabilities.persistence ?? 'NOT_AVAILABLE',
+    );
     return {
       ready,
       serviceState: ready ? 'READY' : 'HOLD',
+      deploymentReady: ready && sharedStateReady,
+      deploymentState: ready && sharedStateReady ? 'READY' : 'HOLD',
       serviceVersion: '3.0.0',
       ruleRegistry: {
         activeRuleCount,
@@ -834,6 +839,9 @@ export function createApplicationServices({
         ...Object.entries(adapterStates)
           .filter(([, state]) => !isReadyCapability(state))
           .map(([name, state]) => `ADAPTER_${name}:${state}`),
+      ],
+      deploymentBlockers: [
+        ...(!sharedStateReady ? ['SHARED_STATE_NOT_CONFIGURED'] : []),
       ],
     };
   }

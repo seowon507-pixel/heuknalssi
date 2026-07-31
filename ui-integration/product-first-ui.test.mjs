@@ -91,7 +91,7 @@ test("직접 입력 주소는 행정구역 후보를 표시한 뒤 실제 위치
   assert.match(client, /aria-expanded/);
 });
 
-test("온보딩은 복수 작물과 작물별 생육 상태를 날짜 추천값으로 제공한다", async () => {
+test("온보딩은 복수 작물의 작기와 생육 상태를 사용자 확인값으로 받는다", async () => {
   const html = await readProductUi();
   const shell = await readUiShell();
   const markup = visibleMarkup(html);
@@ -102,14 +102,16 @@ test("온보딩은 복수 작물과 작물별 생육 상태를 날짜 추천값�
   );
   assert.match(markup, /작물별 재배 조건을 확인해 주세요/);
   assert.match(markup, /분석 날짜는 오늘로 자동 적용/);
-  assert.match(shell, /날짜 기준 AI 예상/);
+  assert.match(shell, /장기 기후는 보류하고 가까운 예보만 확인/);
   assert.doesNotMatch(markup, /작물별 결과는 대시보드에서 바꿔 봅니다/);
   assert.doesNotMatch(markup, /검수된 연간 기준/);
   assert.match(markup, /id="growth-photo"[^>]*accept="image\/\*"/);
   assert.match(markup, /id="growth-settings"/);
   assert.match(shell, /function recommendedGrowthStage/);
   assert.match(shell, /`growth-\$\{crop\}`/);
-  assert.match(shell, /날짜 기준 AI 예상/);
+  assert.match(shell, /날짜 기준 참고/);
+  assert.match(shell, /`season-\$\{crop\}`/);
+  assert.match(shell, /cropGrowthState\[crop\] \|\| 'unknown'/);
   assert.match(shell, /function wizardRoute/);
   assert.match(shell, /\? \[1, 2, 3, 5\]/);
   assert.match(html, /id="review-growth-row"/);
@@ -123,16 +125,16 @@ test("온보딩은 복수 작물과 작물별 생육 상태를 날짜 추천값�
   );
 });
 
-test("현재 재배 분석은 계절을 다시 묻지 않고 기기 월을 계약에 전달한다", async () => {
+test("현재 재배 분석은 작기를 명시적으로 선택하고 모르면 unknown으로 전달한다", async () => {
   const html = await readProductUi();
   const client = await readFile(
     path.join(import.meta.dirname, "backend-client.mjs"),
     "utf8",
   );
 
-  assert.doesNotMatch(html, /const seasonDefinitions =/);
-  assert.match(client, /analysisMonth:\s*new Date\(\)\.getMonth\(\) \+ 1/);
-  assert.match(client, /season:\s*"current"/);
+  assert.match(html, /재배 조건/);
+  assert.match(client, /selectedRadioValue\(`season-\$\{crop\}`\)/);
+  assert.match(client, /\["apple", "pear"\].*"annual".*"unknown"/s);
 });
 
 test("완료한 농장 설정은 이 기기에 저장하고 다음 방문에 자동 복원한다", async () => {
@@ -149,6 +151,9 @@ test("완료한 농장 설정은 이 기기에 저장하고 다음 방문에 자
   assert.match(shell, /function openSavedFarmDashboard/);
   assert.match(shell, /if \(hasSavedFarmProfile\(\)\) openSavedFarmDashboard\(\)/);
   assert.match(client, /writeStoredSession\(formValues/);
+  assert.match(client, /if \(formValues\.saveConsent === true\)/);
+  assert.match(client, /if \(!storage \|\| saveConsent\?\.checked !== true\) return/);
+  assert.doesNotMatch(client, /rememberRegion\(candidate\.displayName\)/);
   assert.match(client, /const restored = await submitAnalysis\(\)/);
   assert.match(client, /if \(!restored\) throw new Error/);
   assert.match(client, /저장한 농장 정보를 갱신하지 못했습니다/);
@@ -156,11 +161,14 @@ test("완료한 농장 설정은 이 기기에 저장하고 다음 방문에 자
   assert.match(client, /function renderFarmList/);
   assert.match(client, /function selectStoredFarm/);
   assert.match(client, /function startNewFarm/);
+  assert.match(client, /if \(mobileFarmDialog\?\.open\) mobileFarmDialog\.close\(\)/);
   assert.match(client, /＋ 농장 추가/);
+  assert.match(html, /id="mobile-farm-trigger"/);
+  assert.match(html, /id="mobile-farm-dialog"/);
   assert.match(shell, /heuknalssi:open-new-farm/);
 });
 
-test("생육점수는 자료 충족률이 아니라 작물별 날씨·토양 상태를 표시한다", async () => {
+test("날씨·토양·예보를 합산하지 않고 독립 상태로 표시한다", async () => {
   const client = await readFile(
     path.join(import.meta.dirname, "backend-client.mjs"),
     "utf8",
@@ -176,20 +184,28 @@ test("생육점수는 자료 충족률이 아니라 작물별 날씨·토양 상
   assert.match(client, /renderStateOverview\(analysis\)/);
   assert.match(client, /current-state-ring/);
   assert.match(client, /오늘의 작물 상태/);
-  assert.match(client, /생육점수/);
-  assert.match(client, /날씨 영향/);
-  assert.match(client, /토양 적합/);
-  assert.match(client, /날씨 60% · 토양 40%/);
-  assert.match(client, /부족한 값은 0점으로 계산하지 않습니다/);
-  assert.match(client, /더 정확히 확인하려면 사진·센서값을 추가할 수 있습니다/);
-  assert.match(client, /calculateCropConditionScore/);
-  assert.doesNotMatch(client, /자료 확인 점수/);
-  assert.doesNotMatch(client, /환경 기준 예상 점수/);
-  assert.doesNotMatch(client, /작물별 위험 판정 확인 필요/);
+  assert.match(client, /기후 조건/);
+  assert.match(client, /토양 조건/);
+  assert.match(client, /가까운 예보/);
+  assert.match(client, /READY: "확인 완료"/);
+  assert.match(client, /서로 다른 자료를 하나의 점수로 합치지 않습니다/);
+  assert.match(client, /const safeSources = Array\.isArray\(sources\) \? sources : \[\]/);
+  assert.doesNotMatch(client, /생육점수|날씨 60%|calculateCropConditionScore/);
   assert.doesNotMatch(
     client,
     /\[\s*"\.overview-score",\s*"\.metric-strip"/,
   );
+});
+
+test("복수 작물 중 하나가 실패해도 완료된 분석은 보존한다", async () => {
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(client, /Promise\.allSettled/);
+  assert.match(client, /if \(completed\.length === 0\) throw/);
+  assert.match(client, /완료된 결과는 그대로 보존했습니다/);
 });
 
 test("일반 대시보드는 행동 중심이고 기술 정보는 마이페이지로 분리한다", async () => {

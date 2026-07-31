@@ -71,7 +71,7 @@ export function buildAnalysisRequests(values, candidateToken) {
         situation: values?.situation ?? "planning",
         crop,
         cultivation: cropSettings.cultivation,
-        season: cropSettings.season ?? "current",
+        season: cropSettings.season ?? "unknown",
         analysisMonth: values?.analysisMonth,
         growth: cropSettings.growth ?? values?.growth,
         saveConsent: values?.saveConsent,
@@ -112,7 +112,7 @@ export function buildAnalysisRequest(values, candidateToken) {
   }
 
   const cultivationMode = cultivationModeFor(cropValue, values?.cultivation);
-  const season = seasonFor(cropValue, values?.season, values?.analysisMonth);
+  const season = seasonFor(cropValue, values?.season);
   const request = {
     usageMode,
     location: {
@@ -283,27 +283,11 @@ function cultivationModeFor(crop, cultivationValue) {
   return cultivationMode;
 }
 
-function seasonFor(crop, seasonValue, analysisMonth) {
+function seasonFor(crop, seasonValue) {
   if (crop === "apple" || crop === "pear") {
     return null;
   }
   const value = requiredString(seasonValue, "SEASON_REQUIRED", "season");
-  if (value === "current") {
-    if (!Number.isInteger(analysisMonth) || analysisMonth < 1 || analysisMonth > 12) {
-      throw new ContractValidationError(
-        "ANALYSIS_MONTH_INVALID",
-        "현재 날짜를 확인하지 못했습니다. 기기 날짜 설정을 확인해 주세요.",
-        "season",
-      );
-    }
-    return {
-      kind: "CUSTOM",
-      profileId: "CUSTOM",
-      startMonth: analysisMonth,
-      endMonth: analysisMonth,
-      userConfirmed: true,
-    };
-  }
   if (value === "unknown") {
     return {
       kind: "UNKNOWN",

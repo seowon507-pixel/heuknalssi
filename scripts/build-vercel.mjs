@@ -16,7 +16,6 @@ const BROWSER_ASSETS = Object.freeze([
   "backend-client.mjs",
   "api-contract.mjs",
   "address-suggestions.mjs",
-  "crop-condition-score.mjs",
   "forecast-presentation.mjs",
   "soil-service-guidance.mjs",
   "backend-integration.css",
