@@ -200,6 +200,15 @@ test("생육점수는 자료 충족률이 아니라 작물별 날씨·토양 상
   assert.match(client, /이 답변의 근거 \$\{evidence\.length\}개/);
   assert.match(client, /검증을 통과하지 못해 버렸습니다/);
   assert.doesNotMatch(client, /cdn\.jsdelivr\.net\/npm\/.*speech/i);
+  // 생육 기록: 사진은 기기 안에서만 처리하고, 사진으로 진단하지 않는다.
+  assert.match(client, /function renderGrowthTimeline/);
+  assert.match(client, /readGreenCoverFromFile/);
+  assert.match(client, /summarizeSeason/);
+  assert.match(client, /서버로 보내지 않습니다/);
+  assert.match(client, /생육량이나 수확량이 아니며, 병해 진단도 하지 않습니다/);
+  // 사진을 업로드하거나 비전 모델에 넘기는 경로가 없어야 한다.
+  assert.doesNotMatch(client, /photo[^\n]*FormData/i);
+  assert.doesNotMatch(client, /generativelanguage[^\n]*image/i);
   assert.doesNotMatch(client, /자료 확인 점수/);
   assert.doesNotMatch(client, /환경 기준 예상 점수/);
   assert.doesNotMatch(client, /작물별 위험 판정 확인 필요/);

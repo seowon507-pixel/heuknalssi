@@ -591,3 +591,78 @@ button[aria-busy="true"] {
   margin-top: 8px;
   color: var(--muted);
 }
+
+/* 생육 기록 타임라인. 사진은 기기 안에서만 처리한다. */
+.growth-timeline-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.growth-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.growth-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.growth-stat-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.growth-stat-value {
+  font-size: 0.98rem;
+}
+
+.growth-photo-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.growth-photo-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.growth-photo-date {
+  font-weight: 600;
+  min-width: 96px;
+}
+
+.growth-photo-metrics {
+  color: var(--muted);
+}
+
+/* 파일 입력은 라벨 버튼으로 대신 누른다. 터치 목표를 44px 이상 유지한다. */
+.growth-photo-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.growth-photo-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 14px;
+  cursor: pointer;
+}
+
+.growth-photo-status {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}

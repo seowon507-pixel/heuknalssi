@@ -6,6 +6,11 @@ import {
   requestFingerprint,
 } from "./api-contract.mjs";
 import { calculateCropConditionScore } from "./crop-condition-score.mjs";
+import {
+  buildPhotoSnapshot,
+  readGreenCoverFromFile,
+  summarizeSeason,
+} from "./growth-photo.mjs";
 import { summarizeForecastEvaluation } from "./forecast-presentation.mjs";
 import { hasMissingSoilExamHistory } from "./soil-service-guidance.mjs";
 import { suggestAdministrativeAddresses } from "./address-suggestions.mjs";
@@ -347,6 +352,11 @@ const assistantContext = document.querySelector("#assistant-context");
 let forecastAccuracy = null;
 // 오늘 무엇을 끝냈는지. 서버가 세션 소유로 들고 있고 화면은 그 사본만 쓴다.
 let taskCompletions = [];
+// 사진 기록. 이미지 자체는 기기 밖으로 내보내지 않고, 이 목록에는 그날의
+// 상태 숫자만 남긴다. 사진 저장소를 붙이기 전까지 미리보기는 브라우저
+// 메모리 안에서만 산다.
+const PHOTO_STORAGE_KEY = "heuknalssi.photos.v1";
+let photoSnapshots = readStoredPhotoSnapshots();
 let taskPersistence = "NOT_AVAILABLE";
 
 async function loadForecastAccuracy() {
@@ -1241,6 +1251,7 @@ function renderLiveOutlook(analysis) {
     forecastCard,
     actionCard,
     renderTaskList(analysis),
+    renderGrowthTimeline(analysis),
     renderFarmConditionGuide(analysis),
   );
   outlook.hidden = false;
@@ -1440,6 +1451,170 @@ async function loadTaskCompletions() {
     // 이력을 못 받아도 목록 자체는 보여 준다.
     taskCompletions = [];
   }
+}
+
+function readStoredPhotoSnapshots() {
+  try {
+    const raw = safeStorage()?.getItem(PHOTO_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.takenOn) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredPhotoSnapshots(list) {
+  try {
+    safeStorage()?.setItem(PHOTO_STORAGE_KEY, JSON.stringify(list.slice(-60)));
+  } catch {
+    /* 저장이 막혀도 이번 화면에서는 목록이 그대로 보인다. */
+  }
+}
+
+/**
+ * 사진 한 장을 기록한다. 사진에서 읽는 값은 초록 피복률 하나뿐이며
+ * 픽셀을 세서 구한다. 잎 색으로 병을 판단하지 않는다.
+ */
+async function recordGrowthPhoto(file, analysis) {
+  const greenCover = await readGreenCoverFromFile(file);
+  const snapshot = buildPhotoSnapshot({
+    analysis,
+    greenCover,
+    now: Date.now(),
+    completedToday: completedActionIds().size,
+  });
+  photoSnapshots = [...photoSnapshots, snapshot].slice(-60);
+  writeStoredPhotoSnapshots(photoSnapshots);
+  return snapshot;
+}
+
+function formatRatio(value) {
+  return Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
+}
+
+function signed(value, suffix = "") {
+  if (!Number.isFinite(value)) return "비교 대상 없음";
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded > 0 ? "+" : ""}${rounded}${suffix}`;
+}
+
+function renderGrowthTimeline(analysis) {
+  const card = element("article", "growth-timeline-card");
+  const header = element("div", "task-list-header");
+  header.append(
+    element("h2", "", "생육 기록"),
+    element(
+      "span",
+      "task-list-count",
+      photoSnapshots.length === 0 ? "기록 없음" : `${photoSnapshots.length}장`,
+    ),
+  );
+  card.append(header);
+
+  const season = summarizeSeason(photoSnapshots, {
+    completions: taskCompletions,
+  });
+
+  if (season.state === "EMPTY") {
+    card.append(
+      element(
+        "p",
+        "muted no-margin",
+        "같은 자리에서 같은 각도로 찍은 사진을 남기면 시간에 따른 변화를 함께 볼 수 있습니다.",
+      ),
+    );
+  } else {
+    const stats = element("div", "growth-stat-row");
+    [
+      ["기록 기간", `${season.firstOn} ~ ${season.lastOn}`],
+      ["사진", `${season.photoCount}장 · ${season.dayCount}일`],
+      ["완료한 일", `${season.completedTaskCount}건`],
+      [
+        "적합도 변화",
+        season.suitability
+          ? `${season.suitability.first ?? "—"} → ${season.suitability.last ?? "—"} (${signed(season.suitability.delta, "점")})`
+          : "기록 없음",
+      ],
+      [
+        "초록 피복률 변화",
+        season.greenCover
+          ? `${formatRatio(season.greenCover.first)} → ${formatRatio(season.greenCover.last)}`
+          : "기록 없음",
+      ],
+    ].forEach(([label, value]) => {
+      const cell = element("div", "growth-stat");
+      cell.append(
+        element("span", "growth-stat-label", label),
+        element("strong", "growth-stat-value", value),
+      );
+      stats.append(cell);
+    });
+    card.append(stats);
+
+    const list = element("ol", "growth-photo-list");
+    for (const snapshot of [...photoSnapshots].reverse().slice(0, 12)) {
+      const item = element("li", "growth-photo-item");
+      item.append(
+        element("span", "growth-photo-date", snapshot.takenOn),
+        element(
+          "span",
+          "growth-photo-metrics",
+          [
+            Number.isFinite(snapshot.suitabilityScore)
+              ? `적합도 ${snapshot.suitabilityScore}점`
+              : "적합도 미산정",
+            Number.isFinite(snapshot.greenCover)
+              ? `초록 ${formatRatio(snapshot.greenCover)}`
+              : "초록 미측정",
+            Number.isFinite(snapshot.riskCount)
+              ? `위험 ${snapshot.riskCount}건`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        ),
+      );
+      list.append(item);
+    }
+    card.append(list);
+  }
+
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.id = "growth-timeline-photo";
+  input.className = "growth-photo-input";
+  const label = document.createElement("label");
+  label.htmlFor = input.id;
+  label.className = "button button-secondary growth-photo-label";
+  label.textContent = "오늘 사진 기록하기";
+  const status = element("p", "growth-photo-status");
+  input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    status.textContent = "사진에서 초록 면적을 세는 중입니다.";
+    try {
+      const snapshot = await recordGrowthPhoto(file, analysis);
+      status.textContent = Number.isFinite(snapshot.greenCover)
+        ? `기록했습니다. 초록 피복률 ${formatRatio(snapshot.greenCover)}.`
+        : "기록했습니다. 이 사진에서는 초록 면적을 세지 못했습니다.";
+      renderLiveOutlook(analysis);
+    } catch {
+      status.textContent = "사진을 읽지 못했습니다. 다시 시도해 주세요.";
+    } finally {
+      input.value = "";
+    }
+  });
+  card.append(label, input, status);
+
+  card.append(
+    element(
+      "p",
+      "formula-note",
+      "초록 피복률은 사진 픽셀에서 ExG = (2G − R − B) / (R + G + B) 를 계산해 초록으로 보이는 면적의 비율을 센 값입니다. 생육량이나 수확량이 아니며, 병해 진단도 하지 않습니다. 촬영 거리·각도·햇빛이 바뀌면 값도 바뀌므로 같은 자리에서 찍은 사진끼리만 비교해 주세요. 사진은 이 기기 안에서만 처리하며 서버로 보내지 않습니다.",
+    ),
+  );
+  return card;
 }
 
 function actionConditionSummary(label, condition) {
