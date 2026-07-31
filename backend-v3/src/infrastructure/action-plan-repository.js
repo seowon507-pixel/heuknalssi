@@ -1,5 +1,7 @@
 const DEFAULT_TTL_MS = 365 * 24 * 60 * 60 * 1_000;
 const MAX_CAS_ATTEMPTS = 8;
+const LEGACY_RULE_KEY_PREFIX = "action-rule:v1:";
+const CURRENT_RULE_KEY_PREFIX = "action-rule:v2:";
 const RULE_UPSERT_FIELDS = Object.freeze([
   "farmId",
   "cropId",
@@ -52,10 +54,43 @@ async function loadDocument(store, key) {
   ) {
     throw new Error("action plan store returned an invalid document");
   }
-  return structuredClone({
+  return structuredClone(value);
+}
+
+function normalizeDocument(value) {
+  const document = structuredClone({
     ...value,
     reconciliations: value.reconciliations ?? {},
   });
+  const legacyRuleIds = legacyRuleIdsByAction(document.ruleDedupe);
+  document.actions = document.actions.map((action) => {
+    if (action.origin === "RULE" && !isIdentifier(action.ruleId)) {
+      const ruleId = legacyRuleIds.get(action.actionId);
+      if (!ruleId) {
+        const error = new Error("legacy action plan rule index is inconsistent");
+        error.code = "ACTION_LEGACY_RULE_INDEX_MISSING";
+        throw error;
+      }
+      return { ...action, ruleId };
+    }
+    if (action.origin !== "RULE" && action.ruleId === undefined) {
+      return { ...action, ruleId: null };
+    }
+    return action;
+  });
+  const candidates = new Map();
+  for (const action of document.actions) {
+    if (action.origin !== "RULE" || !isIdentifier(action.ruleId)) continue;
+    const key = currentRuleDedupeKey(action);
+    const current = candidates.get(key);
+    if (!current || preferRuleIndex(action, current)) candidates.set(key, action);
+  }
+  for (const [key, action] of candidates) {
+    if (document.ruleDedupe[key] === undefined) {
+      document.ruleDedupe[key] = action.actionId;
+    }
+  }
+  return document;
 }
 
 export function createActionPlanRepository({
@@ -77,11 +112,12 @@ export function createActionPlanRepository({
         );
         if (!created) continue;
       }
-      const baseline = (await loadDocument(store, key)) ?? emptyDocument();
+      const baselineRaw = (await loadDocument(store, key)) ?? emptyDocument();
+      const baseline = normalizeDocument(baselineRaw);
       const outcome = operation(structuredClone(baseline));
       if (outcome.write === false) return outcome.value;
       const changed = await Promise.resolve(
-        store.compareAndSet(key, baseline, outcome.document, ttlMs),
+        store.compareAndSet(key, baselineRaw, outcome.document, ttlMs),
       );
       if (changed) return outcome.value;
     }
@@ -93,7 +129,9 @@ export function createActionPlanRepository({
   return Object.freeze({
     async listActions({ accountId, farmId, cropId = null, seasonId = null }) {
       const key = documentKey(accountId, farmId);
-      const document = (await loadDocument(store, key)) ?? emptyDocument();
+      const document = normalizeDocument(
+        (await loadDocument(store, key)) ?? emptyDocument(),
+      );
       return structuredClone(
         document.actions.filter(
           (action) =>
@@ -106,7 +144,9 @@ export function createActionPlanRepository({
 
     async getAction({ accountId, farmId, actionId }) {
       const key = documentKey(accountId, farmId);
-      const document = (await loadDocument(store, key)) ?? emptyDocument();
+      const document = normalizeDocument(
+        (await loadDocument(store, key)) ?? emptyDocument(),
+      );
       const action = document.actions.find(
         (item) => item.farmId === farmId && item.actionId === actionId,
       );
@@ -281,6 +321,57 @@ function monotonicTimestamp(previous, candidate) {
   const previousMs = Date.parse(previous);
   const candidateMs = Date.parse(candidate);
   return new Date(Math.max(candidateMs, previousMs + 1)).toISOString();
+}
+
+function legacyRuleIdsByAction(ruleDedupe) {
+  const inferred = new Map();
+  for (const [key, actionId] of Object.entries(ruleDedupe)) {
+    if (!key.startsWith(LEGACY_RULE_KEY_PREFIX) || !isIdentifier(actionId)) {
+      continue;
+    }
+    const parts = parseLengthPrefixed(key.slice(LEGACY_RULE_KEY_PREFIX.length));
+    if (parts?.length !== 4 || !isIdentifier(parts[2])) continue;
+    inferred.set(actionId, parts[2]);
+  }
+  return inferred;
+}
+
+function parseLengthPrefixed(value) {
+  const parts = [];
+  let offset = 0;
+  while (offset < value.length) {
+    const separator = value.indexOf(":", offset);
+    if (separator < 0) return null;
+    const lengthText = value.slice(offset, separator);
+    if (!/^\d+$/u.test(lengthText)) return null;
+    const length = Number(lengthText);
+    const start = separator + 1;
+    const end = start + length;
+    if (!Number.isSafeInteger(length) || end > value.length) return null;
+    parts.push(value.slice(start, end));
+    offset = end;
+  }
+  return parts;
+}
+
+function currentRuleDedupeKey(action) {
+  const parts = [action.farmId, action.cropId, action.ruleId];
+  return `${CURRENT_RULE_KEY_PREFIX}${parts.map(lengthPrefix).join("")}`;
+}
+
+function preferRuleIndex(candidate, current) {
+  const candidateOpen = candidate.status === "OPEN";
+  const currentOpen = current.status === "OPEN";
+  if (candidateOpen !== currentOpen) return candidateOpen;
+  return String(candidate.updatedAt).localeCompare(String(current.updatedAt)) > 0;
+}
+
+function lengthPrefix(value) {
+  return `${value.length}:${value}`;
+}
+
+function isIdentifier(value) {
+  return typeof value === "string" && value.trim() !== "" && value.length <= 160;
 }
 
 function sameSeoulDate(left, right) {

@@ -30,6 +30,22 @@ function repository() {
   });
 }
 
+function documentKey(accountId, farmId) {
+  return JSON.stringify(["action-plan-v1", accountId, farmId]);
+}
+
+function lengthPrefix(value) {
+  return `${value.length}:${value}`;
+}
+
+function legacyRuleKey({ farmId, cropId, ruleId, dueDate }) {
+  return `action-rule:v1:${[farmId, cropId, ruleId, dueDate].map(lengthPrefix).join("")}`;
+}
+
+function currentRuleKey({ farmId, cropId, ruleId }) {
+  return `action-rule:v2:${[farmId, cropId, ruleId].map(lengthPrefix).join("")}`;
+}
+
 test("action repository atomically replays idempotent and rule duplicates", async () => {
   const repo = repository();
   const first = await repo.insertAction({
@@ -189,6 +205,119 @@ test("action repository moves the same OPEN risk rule to its latest forecast dat
     (await repo.listActions({ accountId: "account-1", farmId: "farm-1" })).length,
     1,
   );
+});
+
+test("action repository migrates legacy OPEN rule actions without duplicating them", async () => {
+  const store = new TtlMemoryStore({
+    clock: () => Date.parse("2026-07-31T10:00:00Z"),
+  });
+  const repo = createActionPlanRepository({ store });
+  const legacyAction = structuredClone(action);
+  delete legacyAction.ruleId;
+  const legacyKey = legacyRuleKey({
+    farmId: action.farmId,
+    cropId: action.cropId,
+    ruleId: action.ruleId,
+    dueDate: "2026-08-01",
+  });
+  store.set(
+    documentKey("account-1", "farm-1"),
+    {
+      actions: [legacyAction],
+      idempotency: { "legacy-request": action.actionId },
+      ruleDedupe: { [legacyKey]: action.actionId },
+    },
+    365 * 24 * 60 * 60 * 1_000,
+  );
+
+  const listed = await repo.listActions({
+    accountId: "account-1",
+    farmId: "farm-1",
+  });
+  assert.equal(listed[0].ruleId, action.ruleId);
+
+  const moved = await repo.insertAction({
+    accountId: "account-1",
+    farmId: "farm-1",
+    action: {
+      ...action,
+      actionId: "action-new",
+      dueAt: "2026-08-03T23:00:00.000Z",
+      recheckAt: "2026-08-04T03:00:00.000Z",
+      updatedAt: "2026-07-31T12:00:00.000Z",
+    },
+    idempotencyKey: "current-request",
+    ruleDedupeKey: currentRuleKey(action),
+  });
+
+  assert.equal(moved.created, false);
+  assert.equal(moved.action.actionId, action.actionId);
+  assert.equal(moved.action.ruleId, action.ruleId);
+  assert.equal(moved.action.dueAt, "2026-08-03T23:00:00.000Z");
+  assert.equal(
+    (await repo.listActions({ accountId: "account-1", farmId: "farm-1" })).length,
+    1,
+  );
+  const persisted = store.get(documentKey("account-1", "farm-1"));
+  assert.equal(persisted.actions[0].ruleId, action.ruleId);
+  assert.equal(persisted.ruleDedupe[currentRuleKey(action)], action.actionId);
+});
+
+test("action repository preserves legacy completed records when a later risk recurs", async () => {
+  const store = new TtlMemoryStore({
+    clock: () => Date.parse("2026-07-31T10:00:00Z"),
+  });
+  const repo = createActionPlanRepository({ store });
+  const completed = {
+    ...structuredClone(action),
+    status: "DONE",
+    completedAt: "2026-07-31T10:15:00.000Z",
+    updatedAt: "2026-07-31T10:15:00.000Z",
+  };
+  delete completed.ruleId;
+  const legacyKey = legacyRuleKey({
+    farmId: action.farmId,
+    cropId: action.cropId,
+    ruleId: action.ruleId,
+    dueDate: "2026-08-01",
+  });
+  store.set(
+    documentKey("account-1", "farm-1"),
+    {
+      actions: [completed],
+      idempotency: { "legacy-request": action.actionId },
+      ruleDedupe: { [legacyKey]: action.actionId },
+    },
+    365 * 24 * 60 * 60 * 1_000,
+  );
+
+  const recurring = await repo.insertAction({
+    accountId: "account-1",
+    farmId: "farm-1",
+    action: {
+      ...action,
+      actionId: "action-recurring",
+      dueAt: "2026-08-03T23:00:00.000Z",
+      recheckAt: "2026-08-04T03:00:00.000Z",
+      createdAt: "2026-08-02T10:00:00.000Z",
+      updatedAt: "2026-08-02T10:00:00.000Z",
+    },
+    idempotencyKey: "recurring-request",
+    ruleDedupeKey: currentRuleKey(action),
+  });
+
+  assert.equal(recurring.created, true);
+  const stored = await repo.listActions({
+    accountId: "account-1",
+    farmId: "farm-1",
+  });
+  assert.equal(stored.length, 2);
+  assert.equal(stored.find(({ actionId }) => actionId === action.actionId).status, "DONE");
+  assert.equal(
+    stored.find(({ actionId }) => actionId === action.actionId).completedAt,
+    "2026-07-31T10:15:00.000Z",
+  );
+  assert.equal(recurring.action.actionId, "action-recurring");
 });
 
 test("rule reconciliation cancels only disappeared OPEN system rules and preserves terminal/user actions", async () => {
