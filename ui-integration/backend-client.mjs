@@ -419,6 +419,7 @@ void connectBackend();
 // 정적 산출물이라 백엔드 연결과 병렬로 받아 둔다.
 void loadForecastAccuracy();
 void loadTaskCompletions();
+setupAssistantVoice();
 
 function wireInteractions() {
   retryConnectionButton.addEventListener("click", () => {
@@ -3729,9 +3730,13 @@ async function submitAssistantQuestion(rawQuestion) {
     const response = await api.askAssistant(expectedAnalysisId, question);
     if (expectedAnalysisId !== currentAnalysis?.analysisId) return;
     pending?.remove();
-    appendAssistantMessage(response?.answer ?? "설명할 근거를 찾지 못했습니다.", {
+    const answer = response?.answer ?? "설명할 근거를 찾지 못했습니다.";
+    appendAssistantMessage(answer, {
       note: response?.notice,
+      evidence: response?.evidence,
+      rewrite: response?.rewrite,
     });
+    speakAssistantAnswer(answer);
   } catch (error) {
     pending?.remove();
     appendAssistantMessage(
@@ -3749,17 +3754,139 @@ async function submitAssistantQuestion(rawQuestion) {
   }
 }
 
-function appendAssistantMessage(text, { user = false, note = null } = {}) {
+function appendAssistantMessage(
+  text,
+  { user = false, note = null, evidence = null, rewrite = null } = {},
+) {
   if (!assistantMessages) return null;
   const message = element(
-    "p",
+    "div",
     `assistant-message${user ? " is-user" : ""}`,
-    text,
   );
+  for (const paragraph of String(text).split("\n\n")) {
+    if (paragraph.trim()) message.append(element("p", "", paragraph));
+  }
   if (note && !user) message.append(element("small", "", note));
+
+  // 다시 쓴 답이 검증에서 걸린 경우, 무엇 때문에 버렸는지 숨기지 않는다.
+  if (rewrite?.state === "REJECTED" && !user) {
+    message.append(
+      element(
+        "small",
+        "assistant-rewrite-note",
+        `쉬운 말로 다시 쓴 답은 검증을 통과하지 못해 버렸습니다 (${rewrite.reason}). 확인된 근거를 그대로 보여 드립니다.`,
+      ),
+    );
+  }
+
+  // 답변이 어떤 근거에서 나왔는지 항목으로 펼쳐 볼 수 있게 한다.
+  if (Array.isArray(evidence) && evidence.length > 0 && !user) {
+    const details = document.createElement("details");
+    details.className = "assistant-evidence";
+    const summary = document.createElement("summary");
+    summary.textContent = `이 답변의 근거 ${evidence.length}개`;
+    details.append(summary);
+    const list = document.createElement("ul");
+    for (const item of evidence) {
+      list.append(element("li", "", item.text));
+    }
+    details.append(list);
+    message.append(details);
+  }
+
   assistantMessages.append(message);
   assistantMessages.scrollTop = assistantMessages.scrollHeight;
   return message;
+}
+
+/**
+ * 음성 입출력. 대상이 초보·고령 사용자인데 타이핑을 요구하고 있었다.
+ * 브라우저 내장 기능만 쓰므로 라이브러리도 비용도 없다. 지원하지 않는
+ * 기기에서는 버튼을 숨기고 기존 입력 방식이 그대로 남는다.
+ */
+function speechRecognitionCtor() {
+  return globalThis.SpeechRecognition ?? globalThis.webkitSpeechRecognition ?? null;
+}
+
+let assistantSpeechOn = false;
+let assistantRecognition = null;
+
+function speakAssistantAnswer(text) {
+  if (!assistantSpeechOn) return;
+  const synth = globalThis.speechSynthesis;
+  if (!synth) return;
+  try {
+    synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(String(text).slice(0, 600));
+    utterance.lang = "ko-KR";
+    utterance.rate = 0.95;
+    synth.speak(utterance);
+  } catch {
+    /* 읽어 주기는 보조 기능이다. 실패해도 답변은 화면에 남는다. */
+  }
+}
+
+function setupAssistantVoice() {
+  const controls = document.querySelector("#assistant-form");
+  if (!controls) return;
+
+  const Recognition = speechRecognitionCtor();
+  if (Recognition) {
+    const micButton = element("button", "assistant-voice-button", "🎤 말하기");
+    micButton.type = "button";
+    micButton.setAttribute("aria-label", "음성으로 질문하기");
+    micButton.addEventListener("click", () => {
+      if (assistantRecognition) {
+        assistantRecognition.stop();
+        return;
+      }
+      const recognition = new Recognition();
+      assistantRecognition = recognition;
+      recognition.lang = "ko-KR";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      micButton.classList.add("is-listening");
+      micButton.textContent = "🎤 듣는 중";
+      recognition.addEventListener("result", (event) => {
+        const said = event.results?.[0]?.[0]?.transcript ?? "";
+        if (said && assistantInput) {
+          assistantInput.value = said;
+          void submitAssistantQuestion(said);
+        }
+      });
+      recognition.addEventListener("error", () => {
+        announce("음성을 알아듣지 못했습니다. 다시 말씀해 주세요.");
+      });
+      recognition.addEventListener("end", () => {
+        assistantRecognition = null;
+        micButton.classList.remove("is-listening");
+        micButton.textContent = "🎤 말하기";
+      });
+      try {
+        recognition.start();
+      } catch {
+        assistantRecognition = null;
+        micButton.classList.remove("is-listening");
+        micButton.textContent = "🎤 말하기";
+      }
+    });
+    controls.append(micButton);
+  }
+
+  if (globalThis.speechSynthesis) {
+    const speakButton = element("button", "assistant-voice-button", "🔈 읽어주기 꺼짐");
+    speakButton.type = "button";
+    speakButton.setAttribute("aria-pressed", "false");
+    speakButton.addEventListener("click", () => {
+      assistantSpeechOn = !assistantSpeechOn;
+      speakButton.setAttribute("aria-pressed", String(assistantSpeechOn));
+      speakButton.textContent = assistantSpeechOn
+        ? "🔈 읽어주기 켜짐"
+        : "🔈 읽어주기 꺼짐";
+      if (!assistantSpeechOn) globalThis.speechSynthesis.cancel();
+    });
+    controls.append(speakButton);
+  }
 }
 
 function updateLocationSearchAvailability() {

@@ -158,6 +158,19 @@ function normalizeAllowedOrigins(origins) {
   return normalized;
 }
 
+/**
+ * 경로별 요청 제한 시간.
+ * - push.test: 사용자가 앱을 나갈 틈을 주고 나서 보낸다.
+ * - analyses.assistant: 근거 선택과 쉬운 말 재작성을 연달아 부른다.
+ */
+function routeTimeoutMs(routeName, defaultTimeoutMs) {
+  if (routeName === "push.test") return Math.max(defaultTimeoutMs, 25_000);
+  if (routeName === "analyses.assistant") {
+    return Math.max(defaultTimeoutMs, 18_000);
+  }
+  return defaultTimeoutMs;
+}
+
 function delay(milliseconds, signal) {
   if (milliseconds <= 0) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -674,10 +687,10 @@ export function createHttpHandler({
       abortContext = createAbortContext(
         req,
         res,
-        matchRoute(new URL(req.url, "http://localhost").pathname)?.name ===
-          "push.test"
-          ? Math.max(requestTimeoutMs, 25_000)
-          : requestTimeoutMs,
+        routeTimeoutMs(
+          matchRoute(new URL(req.url, "http://localhost").pathname)?.name,
+          requestTimeoutMs,
+        ),
       );
 
       // 서버리스는 요청마다 다른 인스턴스로 갈 수 있다. 이번 요청이 건드릴

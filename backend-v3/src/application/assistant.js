@@ -1,4 +1,5 @@
 import { buildDeterministicReport } from "./templates.js";
+import { validatePlainReport } from "./plain-report.js";
 
 const STATE_TEXT = Object.freeze({
   COMPLETE: "분석 완료",
@@ -152,12 +153,17 @@ export function classifyAssistantIntent(question) {
   });
 }
 
+// 재작성에 최소로 필요한 시간. 이만큼도 안 남았으면 시도하지 않는다.
+// 선택 한 번으로 이미 예산을 쓴 뒤 또 부르면 둘 다 놓친다.
+const REWRITE_MIN_BUDGET_MS = 2_500;
+
 export async function answerGroundedQuestion({
   analysis,
   question,
   assistant,
   signal,
-  deadlineAt
+  deadlineAt,
+  now = Date.now
 }) {
   const catalog = buildAssistantCatalog(analysis);
   const intent = classifyAssistantIntent(question);
@@ -186,16 +192,69 @@ export async function answerGroundedQuestion({
     selectedIds,
     intent
   });
+
+  // 고른 근거를 그대로 이어 붙이면 기계처럼 읽힌다. 다시 쓰게 하되,
+  // 고른 문장에 없는 숫자가 하나라도 나오면 통째로 버리고 원문을 쓴다.
+  // 검증기는 쉬운 말 리포트가 쓰던 것을 그대로 재사용한다.
+  const grouped = renderAnswer(selected);
+  let rewritten = null;
+  let rewriteState = "SKIPPED";
+  let rewriteReason = mode === "GOOGLE_AI" ? "NOT_ATTEMPTED" : fallbackReason;
+  const rewriteBudgetMs = Number.isFinite(deadlineAt)
+    ? deadlineAt - now()
+    : REWRITE_MIN_BUDGET_MS;
+  if (
+    mode === "GOOGLE_AI" &&
+    selected.length > 0 &&
+    typeof assistant?.rewrite === "function" &&
+    rewriteBudgetMs >= REWRITE_MIN_BUDGET_MS
+  ) {
+    const facts = selected.map(({ text }) => text);
+    try {
+      const { paragraphs } = await assistant.rewrite({
+        facts,
+        signal,
+        deadlineAt
+      });
+      const check = validatePlainReport(paragraphs, facts);
+      if (check.valid) {
+        rewritten = paragraphs.join("\n\n");
+        rewriteState = "READY";
+        rewriteReason = null;
+      } else {
+        rewriteState = "REJECTED";
+        rewriteReason = check.reason;
+      }
+    } catch (error) {
+      rewriteState = "FAILED";
+      rewriteReason = safeAssistantFailure(error);
+    }
+  }
+
+  if (
+    mode === "GOOGLE_AI" &&
+    rewriteState === "SKIPPED" &&
+    rewriteBudgetMs < REWRITE_MIN_BUDGET_MS
+  ) {
+    rewriteReason = "REWRITE_BUDGET_EXHAUSTED";
+  }
+
   return Object.freeze({
     mode,
     fallbackReason: mode === "GOOGLE_AI" ? null : fallbackReason,
     grounded: true,
-    answer: renderAnswer(selected),
+    answer: rewritten ?? grouped,
+    // 다시 쓴 답이 나가도 원문 근거를 함께 실어 대조할 수 있게 한다.
+    groundedAnswer: grouped,
+    rewrite: { state: rewriteState, reason: rewriteReason },
+    evidence: selected.map(({ id, kind, text }) => ({ id, kind, text })),
     itemIds: selected.map(({ id }) => id),
     notice:
-      mode === "GOOGLE_AI"
-        ? "Google AI가 검증된 근거 중 관련 항목만 선택했습니다."
-        : "검증된 근거를 기본 규칙으로 정리했습니다."
+      rewriteState === "READY"
+        ? "검증된 근거만 골라 쉬운 말로 다시 썼습니다. 근거에 없는 수치가 나오면 버립니다."
+        : mode === "GOOGLE_AI"
+          ? "Google AI가 검증된 근거 중 관련 항목만 선택했습니다."
+          : "검증된 근거를 기본 규칙으로 정리했습니다."
   });
 }
 

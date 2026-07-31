@@ -537,3 +537,57 @@ button[aria-busy="true"] {
   margin-top: 8px;
   font-size: 0.88rem;
 }
+
+/* 챗봇 음성 버튼과 근거 펼치기. */
+.assistant-voice-button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+
+.assistant-voice-button.is-listening {
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+.assistant-message p {
+  margin: 0 0 8px;
+  line-height: 1.7;
+}
+
+.assistant-message p:last-of-type {
+  margin-bottom: 0;
+}
+
+.assistant-evidence {
+  margin-top: 10px;
+  font-size: 0.9rem;
+}
+
+.assistant-evidence summary {
+  cursor: pointer;
+  color: var(--muted);
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.assistant-evidence ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.assistant-evidence li {
+  margin-bottom: 6px;
+  line-height: 1.6;
+}
+
+.assistant-rewrite-note {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+}

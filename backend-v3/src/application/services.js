@@ -675,7 +675,10 @@ export function createApplicationServices({
       question: normalizedQuestion,
       assistant,
       signal,
-      deadlineAt: clock() + Math.min(coreDeadlineMs, 8_000),
+      // 선택과 재작성을 연달아 부르므로 예산을 조금 넉넉히 잡는다.
+      // 남은 시간이 부족하면 assistant 가 재작성을 건너뛴다.
+      deadlineAt: clock() + Math.max(coreDeadlineMs, 11_000),
+      now: clock,
     });
   }
 

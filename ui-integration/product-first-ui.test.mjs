@@ -192,6 +192,14 @@ test("생육점수는 자료 충족률이 아니라 작물별 날씨·토양 상
   assert.match(client, /function taskEvidence/);
   assert.match(client, /checkbox\.checked = !checkbox\.checked/);
   assert.match(client, /완료 기록을 저장하지 못했습니다/);
+  // 챗봇: 음성 입출력은 브라우저 내장 기능만 쓰고, 근거를 펼쳐 볼 수 있으며,
+  // 다시 쓴 답이 검증에서 걸리면 그 사실을 숨기지 않는다.
+  assert.match(client, /webkitSpeechRecognition/);
+  assert.match(client, /lang = "ko-KR"/);
+  assert.match(client, /speechSynthesis/);
+  assert.match(client, /이 답변의 근거 \$\{evidence\.length\}개/);
+  assert.match(client, /검증을 통과하지 못해 버렸습니다/);
+  assert.doesNotMatch(client, /cdn\.jsdelivr\.net\/npm\/.*speech/i);
   assert.doesNotMatch(client, /자료 확인 점수/);
   assert.doesNotMatch(client, /환경 기준 예상 점수/);
   assert.doesNotMatch(client, /작물별 위험 판정 확인 필요/);

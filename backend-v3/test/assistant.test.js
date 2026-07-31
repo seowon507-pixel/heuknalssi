@@ -179,3 +179,106 @@ test("grounded assistant exposes only a safe provider failure category", async (
   assert.equal(result.fallbackReason, "GOOGLE_AI_AUTH_ERROR");
   assert.doesNotMatch(JSON.stringify(result), /sensitive|PRIVATE/);
 });
+
+test('다시 쓴 답에 근거에 없는 숫자가 나오면 통째로 버린다', async () => {
+  const analysis = analysisFixture();
+  const result = await answerGroundedQuestion({
+    analysis,
+    question: '왜 주의야?',
+    now: () => 0,
+    deadlineAt: 60_000,
+    assistant: {
+      state: 'READY',
+      async select({ catalog }) {
+        return { selectedIds: catalog.slice(0, 2).map(({ id }) => id) };
+      },
+      async rewrite() {
+        // 입력에 없는 수치를 만들어 낸 경우
+        return { paragraphs: ['기온이 41.7도까지 오릅니다.'] };
+      },
+    },
+  });
+
+  assert.equal(result.rewrite.state, 'REJECTED');
+  assert.match(result.rewrite.reason, /^INVENTED_NUMBER:/u);
+  // 버린 뒤에는 검증된 원문을 그대로 쓴다.
+  assert.equal(result.answer, result.groundedAnswer);
+  assert.equal(result.answer.includes('41.7'), false);
+});
+
+test('금지어가 들어오면 다시 쓴 답을 쓰지 않는다', async () => {
+  const result = await answerGroundedQuestion({
+    analysis: analysisFixture(),
+    question: '뭘 해야 해?',
+    now: () => 0,
+    deadlineAt: 60_000,
+    assistant: {
+      state: 'READY',
+      async select({ catalog }) {
+        return { selectedIds: [catalog[0].id] };
+      },
+      async rewrite() {
+        return { paragraphs: ['방제를 서두르시고 처방대로 하세요.'] };
+      },
+    },
+  });
+
+  assert.equal(result.rewrite.state, 'REJECTED');
+  assert.match(result.rewrite.reason, /^FORBIDDEN_TERM:/u);
+  assert.equal(/방제|처방/u.test(result.answer), false);
+});
+
+test('남은 시간이 부족하면 재작성을 시도하지 않는다', async () => {
+  let rewriteCalls = 0;
+  const result = await answerGroundedQuestion({
+    analysis: analysisFixture(),
+    question: '왜?',
+    // 선택에 이미 예산을 다 쓴 상황
+    now: () => 59_500,
+    deadlineAt: 60_000,
+    assistant: {
+      state: 'READY',
+      async select({ catalog }) {
+        return { selectedIds: [catalog[0].id] };
+      },
+      async rewrite() {
+        rewriteCalls += 1;
+        return { paragraphs: ['쓰이지 않아야 한다'] };
+      },
+    },
+  });
+
+  assert.equal(rewriteCalls, 0);
+  assert.equal(result.rewrite.state, 'SKIPPED');
+  assert.equal(result.rewrite.reason, 'REWRITE_BUDGET_EXHAUSTED');
+  assert.equal(result.answer, result.groundedAnswer);
+});
+
+test('통과한 재작성은 근거 목록을 함께 싣는다', async () => {
+  const result = await answerGroundedQuestion({
+    analysis: analysisFixture(),
+    question: '왜 주의야?',
+    now: () => 0,
+    deadlineAt: 60_000,
+    assistant: {
+      state: 'READY',
+      async select({ catalog }) {
+        return { selectedIds: catalog.slice(0, 2).map(({ id }) => id) };
+      },
+      async rewrite() {
+        return { paragraphs: ['쉬운 말로 설명합니다.'] };
+      },
+    },
+  });
+
+  assert.equal(result.rewrite.state, 'READY');
+  assert.equal(result.answer, '쉬운 말로 설명합니다.');
+  assert.notEqual(result.groundedAnswer, result.answer);
+  assert.ok(result.evidence.length > 0);
+  assert.ok(
+    result.evidence.every(
+      (item) => typeof item.id === 'string' && typeof item.text === 'string',
+    ),
+  );
+  assert.match(result.notice, /근거에 없는 수치가 나오면 버립니다/u);
+});
