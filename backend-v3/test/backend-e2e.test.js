@@ -139,7 +139,9 @@ test('real HTTP composition completes analysis, semantic replay, ownership, and 
     },
   );
   assert.equal(reportResponse.status, 202);
-  assert.equal((await reportResponse.json()).report.state, 'PENDING');
+  // 서버리스에서 응답 뒤 작업이 얼지 않도록 리포트를 응답 전에 확정한다.
+  // Google AI 미설정이면 결정론적 템플릿으로 바로 FALLBACK이 된다.
+  assert.equal((await reportResponse.json()).report.state, 'FALLBACK');
 
   await new Promise((resolve) => setImmediate(resolve));
   const completedResponse = await fetch(

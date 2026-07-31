@@ -1,148 +1,78 @@
-const FORECAST_WEIGHT = 0.6;
-const SOIL_WEIGHT = 0.4;
-const SEVERITY_CAP = Object.freeze({
-  WARNING: 45,
-  CAUTION: 70,
-  INFO: 85,
+/**
+ * 화면이 쓰는 생육 적합도 표시값.
+ *
+ * 점수는 여기서 만들지 않는다. 백엔드 `analysis.suitability`가 검수된 규칙의
+ * 민감도 등급(CRITICAL 3 / IMPORTANT 2 / SUPPORTING 1)과 이미 계산된 정규화
+ * 편차만으로 산출하고 산식까지 함께 내려준다. 이 모듈은 그 값을 화면 구조에
+ * 맞게 옮겨 담기만 한다.
+ *
+ * 예보 위험은 '지금 당장의 주의'라서 적합도 점수에 섞지 않는다. 백엔드가
+ * `nearTermRiskDays`로 따로 주고, 화면도 따로 표시한다.
+ */
+
+const MODULE_LABELS = Object.freeze({
+  CLIMATE: "기후 적합",
+  SOIL: "토양 적합",
 });
 
-/**
- * 현재 도착한 작물별 예보와 토양 적합도를 0~100으로 정리한다.
- *
- * - 자료가 없거나 작물 규칙 평가가 끝나지 않으면 0점으로 채우지 않는다.
- * - 예보는 가까운 위험 신호를 60%, 토양은 작물 적합도를 40% 반영한다.
- * - 사진·시설 센서는 선택 정보이며, 없어도 날씨·토양 점수를 계산한다.
- */
 export function calculateCropConditionScore(analysis = {}) {
-  const forecast = forecastConditionScore(analysis?.forecast);
-  const soil = soilConditionScore(analysis?.soil);
-  const measurementBasis = analysis?.soil?.result?.measurementBasis ?? null;
+  const suitability = analysis?.suitability ?? null;
+  const modules = Array.isArray(suitability?.modules) ? suitability.modules : [];
+  const climate = moduleScore(modules, "CLIMATE");
+  const soil = moduleScore(modules, "SOIL");
+  const nearTermRiskDays = Number.isFinite(suitability?.nearTermRiskDays)
+    ? suitability.nearTermRiskDays
+    : null;
 
-  if (!Number.isFinite(forecast) || !Number.isFinite(soil)) {
+  if (!suitability || suitability.scored !== true) {
     return {
       score: null,
       label: "산정 대기",
       tone: "hold",
-      components: { forecast, soil },
-      weights: { forecast: FORECAST_WEIGHT, soil: SOIL_WEIGHT },
-      basisLabel: soilBasisLabel(measurementBasis),
+      components: { climate, soil },
+      nearTermRiskDays,
+      basisLabel: soilBasisLabel(basisOf(modules)),
+      method: suitability?.method ?? null,
       explanation:
-        "작물별 예보 판정과 토양 적합도가 모두 확인되면 예상 점수를 표시합니다.",
+        suitability?.blockedReason ??
+        "기후·토양 근거가 확인되면 생육 적합도를 표시합니다.",
     };
   }
 
-  const score = clampScore(
-    Math.round(forecast * FORECAST_WEIGHT + soil * SOIL_WEIGHT),
-  );
-  const grade = gradeForScore(score);
   return {
-    score,
-    ...grade,
-    components: { forecast, soil },
-    weights: { forecast: FORECAST_WEIGHT, soil: SOIL_WEIGHT },
-    basisLabel: soilBasisLabel(measurementBasis),
-    explanation:
-      "가까운 예보 60%와 작물별 토양 적합도 40%를 반영합니다.",
+    score: suitability.score,
+    label: suitability.grade,
+    tone: toneForScore(suitability.score),
+    components: { climate, soil },
+    nearTermRiskDays,
+    basisLabel: soilBasisLabel(basisOf(modules)),
+    method: suitability.method ?? null,
+    explanation: explain(suitability),
   };
 }
 
-export function forecastConditionScore(forecast) {
-  const riskState = forecast?.result?.riskState ?? forecast?.state;
-  if (riskState !== "READY") return null;
-  const risks = Array.isArray(forecast?.result?.risks)
-    ? forecast.result.risks.filter(
-        (risk) => risk?.sourceFreshness === "CURRENT",
-      )
-    : [];
-  if (risks.length === 0) {
-    return forecast?.result?.noActiveRisksConfirmed === true ? 100 : null;
-  }
-  const scores = risks.map(scoreForecastRisk).filter(Number.isFinite);
-  return scores.length ? Math.min(...scores) : null;
+/** 화면 축 카드가 쓰는 모듈별 점수. 없으면 null이며 0으로 채우지 않는다. */
+export function moduleScore(modules, moduleId) {
+  const found = (modules ?? []).find((item) => item?.module === moduleId);
+  return Number.isFinite(found?.score) ? found.score : null;
 }
 
-export function soilConditionScore(soil) {
-  const metrics = Array.isArray(soil?.result?.metrics)
-    ? soil.result.metrics
-    : [];
-  const eligible = metrics.filter(
-    (metric) =>
-      Number.isFinite(metric?.fitRatio) &&
-      Number.isFinite(metric?.uncertainRatio) &&
-      Number.isFinite(metric?.outsideRatio),
-  );
-  if (eligible.length === 0) return null;
-
-  let weightedTotal = 0;
-  let totalWeight = 0;
-  for (const metric of eligible) {
-    const weight =
-      Number.isFinite(metric.rawWeight) && metric.rawWeight > 0
-        ? metric.rawWeight
-        : 1;
-    const metricScore =
-      clampRatio(metric.fitRatio) * 100 +
-      clampRatio(metric.uncertainRatio) * 65;
-    weightedTotal += clampScore(metricScore) * weight;
-    totalWeight += weight;
-  }
-  return totalWeight > 0
-    ? clampScore(Math.round(weightedTotal / totalWeight))
-    : null;
+export function moduleLabel(moduleId) {
+  return MODULE_LABELS[moduleId] ?? moduleId;
 }
 
-function scoreForecastRisk(risk) {
-  const cap = SEVERITY_CAP[risk?.severity];
-  if (!Number.isFinite(cap)) return null;
-  const comparison = risk?.trigger?.comparison;
-  const readings = Array.isArray(risk?.trigger?.readings)
-    ? risk.trigger.readings
-    : [];
-  const exceedances = readings
-    .map(({ value }) => exceedance(value, comparison))
-    .filter(Number.isFinite);
-  const worstExceedance = exceedances.length
-    ? Math.max(...exceedances)
-    : 0;
-  const metric = risk?.trigger?.metric;
-  const degreePenalty = temperatureMetric(metric)
-    ? Math.min(30, worstExceedance * 4)
-    : ratioPenalty(worstExceedance, comparison?.threshold);
-  return clampScore(Math.round(cap - degreePenalty));
+function basisOf(modules) {
+  return (modules ?? []).find((item) => item?.module === "SOIL")?.basis ?? null;
 }
 
-function exceedance(value, comparison) {
-  if (!Number.isFinite(value) || !comparison) return null;
-  if (["GT", "GTE"].includes(comparison.operator)) {
-    return Number.isFinite(comparison.threshold)
-      ? Math.max(0, value - comparison.threshold)
-      : null;
-  }
-  if (["LT", "LTE"].includes(comparison.operator)) {
-    return Number.isFinite(comparison.threshold)
-      ? Math.max(0, comparison.threshold - value)
-      : null;
-  }
-  if (
-    comparison.operator === "BETWEEN" &&
-    Number.isFinite(comparison.lower) &&
-    Number.isFinite(comparison.upper)
-  ) {
-    if (value < comparison.lower) return comparison.lower - value;
-    if (value > comparison.upper) return value - comparison.upper;
-    return 0;
-  }
-  return null;
-}
-
-function ratioPenalty(exceedanceValue, threshold) {
-  if (!Number.isFinite(exceedanceValue)) return 0;
-  const denominator = Math.max(Math.abs(threshold ?? 0), 1);
-  return Math.min(30, (exceedanceValue / denominator) * 30);
-}
-
-function temperatureMetric(metric) {
-  return ["minTemperature", "maxTemperature"].includes(metric);
+function explain(suitability) {
+  const weights = suitability?.method?.weights;
+  if (!weights) return "검수된 규칙 가중치로 산출했습니다.";
+  return [
+    `민감도 등급 가중치 CRITICAL ${weights.CRITICAL} ·`,
+    `IMPORTANT ${weights.IMPORTANT} · SUPPORTING ${weights.SUPPORTING}로`,
+    "가중평균했습니다. 새로 만든 가중치는 없습니다.",
+  ].join(" ");
 }
 
 function soilBasisLabel(value) {
@@ -152,17 +82,10 @@ function soilBasisLabel(value) {
   return "토양 근거 확인 필요";
 }
 
-function gradeForScore(score) {
-  if (score >= 85) return { label: "양호", tone: "good" };
-  if (score >= 70) return { label: "관심", tone: "caution" };
-  if (score >= 50) return { label: "점검 필요", tone: "caution" };
-  return { label: "주의", tone: "danger" };
-}
-
-function clampRatio(value) {
-  return Math.max(0, Math.min(1, value));
-}
-
-function clampScore(value) {
-  return Math.max(0, Math.min(100, value));
+function toneForScore(score) {
+  if (!Number.isFinite(score)) return "hold";
+  if (score >= 85) return "good";
+  if (score >= 70) return "caution";
+  if (score >= 50) return "caution";
+  return "danger";
 }

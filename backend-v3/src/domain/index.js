@@ -55,3 +55,4 @@ export {
   ruleMatchesRequestContext,
   validateRuleRegistry,
 } from "../rules/index.js";
+export { calculateSuitability } from "./suitability.js";

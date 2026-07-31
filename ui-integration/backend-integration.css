@@ -389,3 +389,24 @@ button[aria-busy="true"] {
     animation: none;
   }
 }
+
+/* 확정된 분석 문장을 쉬운 말로 다시 쓴 블록. 검증을 통과했을 때만 붙는다. */
+.plain-report {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.plain-report h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.plain-report p {
+  margin: 0 0 10px;
+  line-height: 1.7;
+}
+
+.plain-report .formula-note {
+  margin-bottom: 0;
+}

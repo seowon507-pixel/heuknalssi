@@ -11,6 +11,7 @@ import {
   hashNormalizedPayload,
   isValidIdempotencyKey,
   normalizeAccountKey,
+  WebPushError,
 } from "../infrastructure/index.js";
 import {
   ApiError,
@@ -27,18 +28,22 @@ const DEFAULT_RATE_LIMITS = Object.freeze({
   "analyses.create": { limit: 10, windowMs: 60_000 },
   "analyses.report": { limit: 5, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
+  "push.test": { limit: 6, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
 });
 
+// 작물 5종을 한 번에 분석하면 그만큼 호출된다. 같은 공유망(학교·기관)에서
+// 여러 명이 동시에 써도 막히지 않도록 실사용 기준으로 잡는다.
 const DEFAULT_IP_RATE_LIMITS = Object.freeze({
-  "session.get": { limit: 30, windowMs: 60_000 },
-  "locations.search": { limit: 30, windowMs: 60_000 },
-  "locations.current": { limit: 10, windowMs: 60_000 },
-  "analyses.create": { limit: 10, windowMs: 60_000 },
-  "analyses.get": { limit: 60, windowMs: 60_000 },
-  "analyses.report": { limit: 5, windowMs: 60_000 },
+  "session.get": { limit: 60, windowMs: 60_000 },
+  "locations.search": { limit: 60, windowMs: 60_000 },
+  "locations.current": { limit: 20, windowMs: 60_000 },
+  "analyses.create": { limit: 30, windowMs: 60_000 },
+  "analyses.get": { limit: 120, windowMs: 60_000 },
+  "analyses.report": { limit: 30, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
-  "health.preflight": { limit: 30, windowMs: 60_000 },
+  "push.test": { limit: 12, windowMs: 60_000 },
+  "health.preflight": { limit: 60, windowMs: 60_000 },
 });
 
 const ROUTES = Object.freeze([
@@ -92,6 +97,12 @@ const ROUTES = Object.freeze([
     methods: ["POST"],
   },
   {
+    name: "push.test",
+    // 앱을 나가 있어도 배너가 뜨는지 확인하는 시험 알림.
+    pattern: /^\/api\/push\/test$/,
+    methods: ["POST"],
+  },
+  {
     name: "health.preflight",
     pattern: /^\/api\/health\/preflight$/,
     methods: ["GET"],
@@ -128,6 +139,22 @@ function normalizeAllowedOrigins(origins) {
     normalized.add(origin);
   }
   return normalized;
+}
+
+function delay(milliseconds, signal) {
+  if (milliseconds <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    function onAbort() {
+      clearTimeout(timer);
+      reject(signal.reason ?? new Error("aborted"));
+    }
+    if (signal?.aborted) return onAbort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function matchRoute(pathname) {
@@ -471,6 +498,7 @@ export function createHttpHandler({
   clock = Date.now,
   randomBytes = nodeRandomBytes,
   deviceBackup = null,
+  webPush = null,
 } = {}) {
   validateServices(services);
   if (typeof clock !== "function") {
@@ -622,7 +650,14 @@ export function createHttpHandler({
         throw new ApiError("METHOD_NOT_ALLOWED");
       }
 
-      abortContext = createAbortContext(req, res, requestTimeoutMs);
+      abortContext = createAbortContext(
+        req,
+        res,
+        matchRoute(new URL(req.url, "http://localhost").pathname)?.name ===
+          "push.test"
+          ? Math.max(requestTimeoutMs, 25_000)
+          : requestTimeoutMs,
+      );
 
       const { session, setCookie } = sessionManager.resolve(
         getHeader(req, "cookie"),
@@ -664,7 +699,12 @@ export function createHttpHandler({
       };
 
       if (route.name === "session.get") {
-        sendJson(res, 200, sessionManager.csrfDetails(session));
+        // 브라우저가 푸시를 구독하려면 발신자 공개키가 필요하다. 공개키라서
+        // 그대로 내려도 되고, 없으면 화면이 알림 기능을 접는다.
+        sendJson(res, 200, {
+          ...sessionManager.csrfDetails(session),
+          pushPublicKey: webPush?.configured === true ? webPush.publicKey : null,
+        });
         return;
       }
 
@@ -966,6 +1006,66 @@ export function createHttpHandler({
           }
           throw error;
         }
+      }
+
+      if (route.name === "push.test") {
+        if (!webPush || webPush.configured !== true) {
+          throw new ApiError("PUSH_NOT_CONFIGURED");
+        }
+        const body = await readJsonBody(
+          req,
+          config.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES,
+          abortContext.signal,
+        );
+        const subscription = body?.subscription;
+        const delaySeconds = body?.delaySeconds;
+        if (
+          !body ||
+          Array.isArray(body) ||
+          Object.keys(body).some(
+            (key) => !["subscription", "delaySeconds"].includes(key),
+          ) ||
+          !subscription ||
+          typeof subscription !== "object" ||
+          typeof subscription.endpoint !== "string" ||
+          typeof subscription.keys?.p256dh !== "string" ||
+          typeof subscription.keys?.auth !== "string" ||
+          !Number.isFinite(delaySeconds) ||
+          delaySeconds < 0 ||
+          delaySeconds > 15
+        ) {
+          throw new ApiError("INVALID_INPUT", {
+            fieldErrors: {
+              subscription:
+                "Provide a push subscription and a delay of at most 15 seconds.",
+            },
+          });
+        }
+        // 사용자가 홈 화면으로 나갈 시간을 준 뒤 보낸다. 응답보다 먼저
+        // 보내야 한다 — 서버리스는 응답한 뒤 남은 작업을 얼려 버린다.
+        await delay(delaySeconds * 1000, abortContext.signal);
+        try {
+          await webPush.send(
+            { endpoint: subscription.endpoint, keys: subscription.keys },
+            JSON.stringify({
+              title: "흙날씨 시험 알림",
+              body: "앱을 열지 않아도 이렇게 알려 드립니다.",
+              tag: "heuknalssi-test",
+            }),
+            { ttlSeconds: 60, urgency: "high" },
+          );
+        } catch (error) {
+          if (error instanceof WebPushError) {
+            throw new ApiError(
+              error.code === "SUBSCRIPTION_EXPIRED"
+                ? "PUSH_SUBSCRIPTION_EXPIRED"
+                : "PUSH_SEND_FAILED",
+            );
+          }
+          throw error;
+        }
+        sendJson(res, 202, { sent: true, delaySeconds });
+        return;
       }
 
       if (route.name === "health.preflight") {

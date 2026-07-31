@@ -17,7 +17,10 @@ import {
 import { createHttpHandler } from '../src/api/index.js';
 import { createApplicationServices } from '../src/application/index.js';
 import { createRuleRegistry } from '../src/domain/index.js';
-import { createDeviceBackupStore } from '../src/infrastructure/index.js';
+import {
+  createDeviceBackupStore,
+  createWebPushSender,
+} from '../src/infrastructure/index.js';
 import { loadConfig } from './config.js';
 
 export function createBackend({
@@ -195,6 +198,13 @@ export function createBackend({
     deviceBackup: createDeviceBackupStore({
       url: config.deviceBackupConfig.url,
       serviceKey: config.deviceBackupConfig.secretKey,
+      fetchImpl,
+      now: clock,
+    }),
+    webPush: createWebPushSender({
+      publicKey: config.webPushConfig.publicKey,
+      privateKey: config.webPushConfig.privateKey,
+      subject: config.webPushConfig.subject,
       fetchImpl,
       now: clock,
     }),

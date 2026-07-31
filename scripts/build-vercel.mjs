@@ -1,8 +1,9 @@
 // Vercel 정적 출력 디렉터리(public/)를 구성한다.
 // 저장소 루트의 기획 문서(.md)는 배포에 포함하지 않고, UI 실행에 필요한
 // HTML 한 개와 ui-integration 브라우저 자산만 복사한다.
-import { copyFile, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { decodePng } from "./png.mjs";
 import { fileURLToPath } from "node:url";
 
 const projectDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -39,11 +40,42 @@ for (const asset of BROWSER_ASSETS) {
 await copyFile(join(integrationDirectory, "sw.js"), join(outputDirectory, "sw.js"));
 
 await mkdir(join(outputDirectory, "icons"), { recursive: true });
-for (const icon of ["icon-192.png", "icon-512.png"]) {
-  await copyFile(
-    join(integrationDirectory, "icons", icon),
-    join(outputDirectory, "icons", icon),
-  );
+// 홈 화면에 씌워지는 아이콘은 네 모서리가 불투명해야 한다. 투명하면
+// 런처·iOS가 자기 모양을 씌울 때 초록 사각형의 모서리가 잘려 나간다.
+async function assertOpaqueCorners(path) {
+  const { width, height, rgba } = decodePng(await readFile(path));
+  for (const [x, y] of [
+    [0, 0],
+    [width - 1, 0],
+    [0, height - 1],
+    [width - 1, height - 1],
+  ]) {
+    const alpha = rgba[(y * width + x) * 4 + 3];
+    if (alpha !== 255) {
+      throw new Error(
+        `${path}: (${x},${y}) 모서리가 투명하다(alpha ${alpha}). 홈 화면에서 잘린다.`,
+      );
+    }
+  }
+}
+
+for (const icon of [
+  "icon-192.png",
+  "icon-512.png",
+  "icon-maskable-512.png",
+  "icon-fullbleed-512.png",
+  "icon-fullbleed-192.png",
+  "icon-apple-180.png",
+]) {
+  const target = join(outputDirectory, "icons", icon);
+  await copyFile(join(integrationDirectory, "icons", icon), target);
+  if (
+    icon.includes("maskable") ||
+    icon.includes("apple") ||
+    icon.includes("fullbleed")
+  ) {
+    await assertOpaqueCorners(target);
+  }
 }
 
 await writeFile(
@@ -63,7 +95,9 @@ await writeFile(
       icons: [
         { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
         { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-        { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        // maskable에는 모서리까지 꽉 찬 아이콘을 따로 쓴다. 모서리가 투명한
+        // 둥근 사각형을 maskable로 주면 런처가 바깥을 잘라내 아이콘이 깨진다.
+        { src: "/icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
       ],
     },
     null,

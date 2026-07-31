@@ -177,11 +177,12 @@ test("생육점수는 자료 충족률이 아니라 작물별 날씨·토양 상
   assert.match(client, /current-state-ring/);
   assert.match(client, /오늘의 작물 상태/);
   assert.match(client, /생육점수/);
-  assert.match(client, /날씨 영향/);
+  assert.match(client, /기후 적합/);
   assert.match(client, /토양 적합/);
-  assert.match(client, /날씨 60% · 토양 40%/);
-  assert.match(client, /부족한 값은 0점으로 계산하지 않습니다/);
-  assert.match(client, /더 정확히 확인하려면 사진·센서값을 추가할 수 있습니다/);
+  // 예보 위험은 적합도 점수에 섞지 않고 별도 축으로만 보여 준다.
+  assert.match(client, /가까운 위험/);
+  assert.match(client, /예보 위험은 점수에 섞지 않고 따로 표시합니다/);
+  assert.doesNotMatch(client, /날씨 60% · 토양 40%/);
   assert.match(client, /calculateCropConditionScore/);
   assert.doesNotMatch(client, /자료 확인 점수/);
   assert.doesNotMatch(client, /환경 기준 예상 점수/);

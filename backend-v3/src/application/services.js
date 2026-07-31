@@ -2,6 +2,7 @@ import { randomBytes as nodeRandomBytes } from 'node:crypto';
 
 import {
   ALLOWED_CULTIVATION_MODES,
+  calculateSuitability,
   createRuleRegistry,
   Crop,
   decideGuidance,
@@ -32,6 +33,7 @@ import {
   resolveLocationKeys,
   validateVerifiedLocationMappings,
 } from './location-keys.js';
+import { buildPlainReport } from './plain-report.js';
 import {
   buildDeterministicReport,
   renderActionTitle,
@@ -44,6 +46,9 @@ import {
 } from './assistant.js';
 
 const CANDIDATE_TTL_MS = 10 * 60 * 1000;
+// 서버리스는 응답한 뒤 남은 작업을 얼린다. 리포트는 응답 전에 끝내고
+// 이 예산을 넘기면 결정론적 템플릿으로 되돌린다.
+const PLAIN_REPORT_BUDGET_MS = 6_000;
 const ANALYSIS_TTL_MS = 60 * 60 * 1000;
 const REPORT_LOCK_TTL_MS = 15 * 1000;
 const STORE_CAPACITY_POLICY = 'reject';
@@ -578,6 +583,13 @@ export function createApplicationServices({
       soil,
       observations,
       forecast,
+      // 검수된 규칙 가중치와 이미 계산된 편차만으로 산출한다. 산식도 함께 싣는다.
+      suitability: calculateSuitability({
+        climate,
+        soil,
+        forecast,
+        rules: moduleRules.soil,
+      }),
       smartfarm: null,
       satellite: request.options.includeSatelliteObservation
         ? unavailableModule('SATELLITE_P2_NOT_ENABLED', 'UNSUPPORTED')
@@ -676,18 +688,32 @@ export function createApplicationServices({
       clock() + reportLockTtlMs,
     );
     persistAnalysisRecord(analysisId, record);
-    queueMicrotask(() => {
-      const current = analysisStore.get(analysisId);
-      if (!current || current.ownerSessionId !== ownerSessionId) return;
-      current.result.report = {
-        state: 'FALLBACK',
-        value: buildDeterministicReport(current.result),
-      };
-      appendLifecycleTransition(current.result, 'COMPLETE', clock);
-      current.reportPending = false;
-      persistAnalysisRecord(analysisId, current);
+    // 서버리스에서는 응답을 보낸 뒤 백그라운드 작업이 얼어붙는다.
+    // 리포트는 응답 전에 끝내고, 지연이 길어지면 템플릿으로 되돌린다.
+    const template = buildDeterministicReport(record.result);
+    const plain = await buildPlainReport({
+      analysis: record.result,
+      assistant,
+      deadlineAt: clock() + PLAIN_REPORT_BUDGET_MS,
     });
-    return { analysis: structuredClone(record.result), started: true };
+    const current = analysisStore.get(analysisId) ?? record;
+    if (current.ownerSessionId !== ownerSessionId) {
+      return { analysis: structuredClone(record.result), started: true };
+    }
+    current.result.report = {
+      state: plain.state === 'READY' ? 'READY' : 'FALLBACK',
+      value: template,
+      plainLanguage: {
+        state: plain.state,
+        reason: plain.reason,
+        paragraphs: plain.paragraphs,
+        basis: 'REWRITTEN_FROM_CONFIRMED_ANALYSIS',
+      },
+    };
+    appendLifecycleTransition(current.result, 'COMPLETE', clock);
+    current.reportPending = false;
+    persistAnalysisRecord(analysisId, current);
+    return { analysis: structuredClone(current.result), started: true };
   }
 
   function persistAnalysisRecord(analysisId, record) {
@@ -808,11 +834,12 @@ export function createApplicationServices({
         satellite: capabilities.satellite ?? 'DISABLED',
         persistence: capabilities.persistence ?? 'NOT_AVAILABLE',
         deviceBackup: capabilities.deviceBackup ?? 'NOT_AVAILABLE',
-        report: 'DETERMINISTIC_TEMPLATE',
+        report: 'TEMPLATE_PLUS_PLAIN_REWRITE',
         assistant: capabilities.assistant ?? assistant?.state ?? 'FALLBACK',
       },
       guarantees: {
-        singleCompositeScore: false,
+        // 종합 점수를 제공하되 가중치와 산식을 응답에 공개한다.
+        compositeScoreWeightsPublished: true,
         missingValueReweighting: false,
         unverifiedSoilRepresentativeValue: false,
         freeFormLlm: false,

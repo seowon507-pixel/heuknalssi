@@ -736,7 +736,7 @@ test('regional pH is not held back by field-only supporting chemistry rules', as
   assert.equal(result.soil.result.regionalStatistics.usedForDecision, true);
 });
 
-test('application integrates verified modules without a composite score or hidden reweighting', async () => {
+test('application integrates verified modules and exposes a transparent suitability score', async () => {
   const calls = {
     climate: [],
     observations: [],
@@ -770,7 +770,24 @@ test('application integrates verified modules without a composite score or hidde
   assert.equal(result.forecast.state, 'READY');
   assert.equal(result.forecast.result.noActiveRisksConfirmed, true);
   assert.equal(result.inputSummary.regionLabel, '경기도 수원시');
-  assert.equal(JSON.stringify(result).match(/"(?:score|penalty)"/giu), null);
+  // 점수는 제공하되 숨은 재가중치가 없어야 한다. 산식과 가중치를 응답에 싣고,
+  // 검수된 민감도 등급(3/2/1) 외의 값을 쓰지 않는지 확인한다.
+  assert.equal(JSON.stringify(result).match(/"penalty"/giu), null);
+  assert.equal(typeof result.suitability.score, 'number');
+  assert.ok(result.suitability.score >= 0 && result.suitability.score <= 100);
+  assert.equal(result.suitability.scored, true);
+  assert.deepEqual(result.suitability.method.weights, {
+    CRITICAL: 3,
+    IMPORTANT: 2,
+    SUPPORTING: 1,
+  });
+  assert.match(result.suitability.method.itemDeviation, /적정범위 폭/);
+  assert.ok(result.suitability.modules.length > 0);
+  assert.ok(
+    result.suitability.modules.every(
+      (item) => typeof item.score === 'number' && item.label.length > 0,
+    ),
+  );
   assert.deepEqual(calls.soil[0], {
     verifiedSoilAreaCode: '4111710500',
     landUse: 'PFLD',
@@ -931,7 +948,16 @@ test('unconfigured scientific sources fail closed and deterministic reports do n
     ownerSessionId: 'owner-a',
     analysisId: result.analysisId,
   });
-  assert.equal(pending.analysis.report.state, 'PENDING');
+  // Google AI 미설정이라 쉬운 말 재작성은 건너뛰고 템플릿으로 확정된다.
+  assert.equal(pending.analysis.report.state, 'FALLBACK');
+  assert.equal(
+    pending.analysis.report.plainLanguage.state,
+    'SKIPPED',
+  );
+  assert.equal(
+    pending.analysis.report.plainLanguage.reason,
+    'GOOGLE_AI_NOT_CONFIGURED',
+  );
   await new Promise((resolve) => queueMicrotask(resolve));
   const completed = await services.getAnalysis({
     ownerSessionId: 'owner-a',
@@ -1343,7 +1369,8 @@ test('successful analysis and report record the specified lifecycle transitions'
     ownerSessionId: 'owner-a',
     analysisId: created.analysisId,
   });
-  assert.equal(pending.analysis.lifecycle.currentState, 'REPORT_PENDING');
+  // 서버리스에서 응답 뒤 작업이 얼지 않도록 리포트를 응답 전에 끝낸다.
+  assert.equal(pending.analysis.lifecycle.currentState, 'COMPLETE');
   await new Promise((resolve) => queueMicrotask(resolve));
   const completed = await services.getAnalysis({
     ownerSessionId: 'owner-a',

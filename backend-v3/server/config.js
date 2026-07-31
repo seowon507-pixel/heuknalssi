@@ -168,6 +168,12 @@ export function loadConfig(env = process.env) {
         contractVersion: null,
       },
     },
+    // Web Push 발신자 신원. 미설정이면 알림 기능만 꺼지고 분석에는 영향이 없다.
+    webPushConfig: {
+      publicKey: env.VAPID_PUBLIC_KEY || null,
+      privateKey: env.VAPID_PRIVATE_KEY || null,
+      subject: env.VAPID_SUBJECT || null,
+    },
     // 기기 이관 백업 저장소. 미설정이면 기능만 꺼지고 분석에는 영향이 없다.
     deviceBackupConfig: {
       url: env.SUPABASE_URL || null,

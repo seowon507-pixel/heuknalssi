@@ -147,6 +147,21 @@ const ERROR_DEFINITIONS = Object.freeze({
     message: "The backup store rejected the request.",
     retryable: true,
   },
+  PUSH_NOT_CONFIGURED: {
+    status: 503,
+    message: "Push notifications are not configured on this deployment.",
+    retryable: false,
+  },
+  PUSH_SUBSCRIPTION_EXPIRED: {
+    status: 410,
+    message: "The push subscription is no longer valid. Allow notifications again.",
+    retryable: false,
+  },
+  PUSH_SEND_FAILED: {
+    status: 502,
+    message: "The push service refused the notification.",
+    retryable: true,
+  },
   METHOD_NOT_ALLOWED: {
     status: 405,
     message: "The HTTP method is not allowed for this route.",

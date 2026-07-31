@@ -160,6 +160,8 @@ class BackendApi {
   constructor(baseUrl = "") {
     this.baseUrl = baseUrl;
     this.csrfToken = null;
+    // 서버가 푸시 발신자 공개키를 주면 앱이 꺼져 있어도 알림을 보낼 수 있다.
+    this.pushPublicKey = null;
   }
 
   async startSession(force = false) {
@@ -169,6 +171,18 @@ class BackendApi {
       throw new ApiRequestError({ code: "SESSION_INVALID", status: 502 });
     }
     this.csrfToken = session.csrfToken;
+    this.pushPublicKey =
+      typeof session.pushPublicKey === "string" && session.pushPublicKey !== ""
+        ? session.pushPublicKey
+        : null;
+  }
+
+  async sendTestPush(subscription, delaySeconds) {
+    return this.request("/api/push/test", {
+      method: "POST",
+      body: { subscription, delaySeconds },
+      csrf: true,
+    });
   }
 
   async preflight() {
@@ -1952,9 +1966,9 @@ function renderStateOverview(analysis) {
   const axes = element("div", "axis-status-list");
   [
     {
-      label: "날씨 영향",
-      score: condition.components.forecast,
-      help: forecastConditionHelp(analysis),
+      label: "기후 적합",
+      score: condition.components.climate,
+      help: climateConditionHelp(analysis),
     },
     {
       label: "토양 적합",
@@ -1962,10 +1976,11 @@ function renderStateOverview(analysis) {
       help: soilConditionHelp(analysis),
     },
     {
-      label: "점수 근거",
+      // 예보 위험은 적합도 점수에 섞지 않고 따로 보여 준다.
+      label: "가까운 위험",
       score: null,
-      valueLabel: condition.basisLabel,
-      help: "날씨 60% · 토양 40%",
+      valueLabel: nearTermRiskLabel(condition.nearTermRiskDays),
+      help: forecastConditionHelp(analysis),
     },
   ].forEach(({ label, score, valueLabel, help }) => {
     const tone =
@@ -2003,8 +2018,8 @@ function renderStateOverview(analysis) {
     "p",
     "score-state",
     conditionScore === null
-      ? "날씨·토양 값이 모두 확인되면 생육점수를 표시합니다. 부족한 값은 0점으로 계산하지 않습니다."
-      : `${conditionScore}점은 가까운 예보 60%와 작물별 토양 적합도 40%를 반영했습니다. 더 정확히 확인하려면 사진·센서값을 추가할 수 있습니다.`,
+      ? condition.explanation
+      : `${conditionScore}점은 기후·토양 적합도를 ${condition.explanation} 가까운 예보 위험은 점수에 섞지 않고 따로 표시합니다.`,
   );
   inner.append(heading, stateVisual, axes, overall);
 
@@ -2018,9 +2033,22 @@ function renderStateOverview(analysis) {
   overview.replaceChildren(inner, button);
 }
 
+function nearTermRiskLabel(days) {
+  if (!Number.isFinite(days)) return "확인 전";
+  return days === 0 ? "확인된 위험 없음" : `주의 ${days}건`;
+}
+
+function climateConditionHelp(analysis) {
+  const state = analysis?.climate?.state;
+  if (state !== "READY") return "기후평년 자료 확인 후 반영";
+  const coverage = analysis?.climate?.coverage;
+  return Number.isFinite(coverage)
+    ? `기후평년 대비 편차 · 자료 범위 ${Math.round(coverage * 100)}%`
+    : "기후평년 대비 편차 반영";
+}
+
 function forecastConditionHelp(analysis) {
-  const score = calculateCropConditionScore(analysis).components.forecast;
-  if (!Number.isFinite(score)) {
+  if (analysis?.forecast?.state !== "READY") {
     return "작물별 예보 판정 완료 후 반영";
   }
   const risks = activeForecastRisks(analysis);
@@ -2301,6 +2329,23 @@ function renderExplanation(analysis) {
     element("p", "", summary.title),
     element("p", "muted", summary.detail),
   );
+
+  // 확정된 분석 문장을 쉬운 말로 다시 쓴 결과. 검증을 통과한 경우에만 붙인다.
+  const plain = analysis?.report?.plainLanguage;
+  if (plain?.state === "READY" && plain.paragraphs?.length) {
+    const easy = element("div", "plain-report");
+    easy.append(
+      element("h3", "", "쉬운 말로 다시 읽기"),
+      ...plain.paragraphs.map((text) => element("p", "", text)),
+      element(
+        "p",
+        "formula-note",
+        "위 분석 결과를 초보 농업인이 읽기 쉬운 말로 다시 쓴 것입니다. 새로운 진단이나 처방은 만들지 않으며, 분석에 없는 숫자가 나오면 자동으로 버려집니다.",
+      ),
+    );
+    explanation.append(easy);
+  }
+
   grid.classList.add("is-user-summary");
   grid.replaceChildren(explanation);
 }
@@ -3900,6 +3945,54 @@ function todoNotificationCopy() {
   };
 }
 
+/** VAPID 공개키는 base64url 문자열로 오지만 구독에는 바이트 배열이 필요하다. */
+function decodeVapidKey(value) {
+  const padded = String(value).replace(/-/gu, "+").replace(/_/gu, "/");
+  const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "="));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function base64UrlFromBuffer(buffer) {
+  let binary = "";
+  for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replace(/\+/gu, "-")
+    .replace(/\//gu, "_")
+    .replace(/=+$/u, "");
+}
+
+/**
+ * 푸시 구독을 확보한다. 앱을 나가 있어도 알림이 뜨려면 페이지 타이머가
+ * 아니라 이 구독으로 서버가 밀어 넣어야 한다.
+ *
+ * 아이폰은 홈 화면에 추가한 앱에서만 푸시를 허용한다. 사파리 탭에서 열면
+ * pushManager가 아예 없거나 구독이 거부되므로 그대로 null을 돌려준다.
+ */
+async function ensurePushSubscription() {
+  if (!api.pushPublicKey) return null;
+  const registration = await registerServiceWorker();
+  if (!registration?.pushManager) return null;
+  try {
+    const existing = await registration.pushManager.getSubscription();
+    // 서버 키가 바뀌었으면 옛 구독으로는 보낼 수 없다. 지우고 다시 받는다.
+    if (existing) {
+      const applied = existing.options?.applicationServerKey;
+      const sameKey =
+        !applied || base64UrlFromBuffer(applied) === api.pushPublicKey;
+      if (sameKey) return existing.toJSON();
+      await existing.unsubscribe();
+    }
+    const created = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: decodeVapidKey(api.pushPublicKey),
+    });
+    return created.toJSON();
+  } catch {
+    // 권한 거부·미지원. 화면 타이머로 물러선다.
+    return null;
+  }
+}
+
 async function showNotificationNow(copy) {
   const registration = await registerServiceWorker();
   if (registration?.active) {
@@ -4081,7 +4174,35 @@ function setupNotificationPanel() {
       }
     }
     await registerServiceWorker();
-    if (status) status.textContent = "10초 뒤에 시험 알림이 갑니다. 앱을 닫지 마세요.";
+
+    // 서버 푸시로 보내야 홈 화면으로 나가 있어도 배너가 뜬다. 페이지
+    // 타이머는 앱을 나가는 순간 멈춰서 아무것도 오지 않는다.
+    const subscription = await ensurePushSubscription();
+    if (subscription) {
+      if (status) {
+        status.textContent =
+          "10초 뒤에 알림이 갑니다. 지금 홈 화면으로 나가 보세요.";
+      }
+      try {
+        await api.sendTestPush(subscription, 10);
+        if (status) status.textContent = "시험 알림을 보냈습니다.";
+      } catch (error) {
+        if (status) {
+          status.textContent =
+            error?.code === "PUSH_SUBSCRIPTION_EXPIRED"
+              ? "알림 권한이 끊겼습니다. 알림을 다시 허용해 주세요."
+              : "시험 알림을 보내지 못했습니다. 잠시 뒤 다시 눌러 주세요.";
+        }
+      }
+      return;
+    }
+
+    // 푸시를 쓸 수 없는 환경(홈 화면에 추가하지 않은 아이폰, 발신자 키
+    // 미설정 등)에서는 앱을 열어 둔 동안에만 뜬다는 것을 분명히 알린다.
+    if (status) {
+      status.textContent =
+        "10초 뒤에 시험 알림이 갑니다. 이 기기에서는 앱을 열어 두어야 뜹니다.";
+    }
     setTimeout(() => {
       const copy = todoNotificationCopy();
       void showNotificationNow({

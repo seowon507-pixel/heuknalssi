@@ -32,3 +32,9 @@ export {
   TtlMemoryStore,
   ttlStoreDefaults,
 } from "./ttl-memory-store.js";
+export {
+  WebPushError,
+  createVapidHeader,
+  createWebPushSender,
+  encryptPayload,
+} from "./web-push.js";
