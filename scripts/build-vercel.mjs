@@ -20,6 +20,7 @@ const BROWSER_ASSETS = Object.freeze([
   "crop-condition-score.mjs",
   "forecast-presentation.mjs",
   "soil-service-guidance.mjs",
+  "forecast-accuracy.json",
   "backend-integration.css",
 ]);
 

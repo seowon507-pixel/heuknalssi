@@ -410,3 +410,30 @@ button[aria-busy="true"] {
 .plain-report .formula-note {
   margin-bottom: 0;
 }
+
+/* 예보 정확도 배지. 표본이 기준 미만이면 '검증 중'으로만 나온다. */
+.forecast-badge-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.forecast-accuracy-badge {
+  font-size: 0.82rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .forecast-badge-group {
+    align-items: flex-start;
+  }
+
+  .forecast-accuracy-badge {
+    white-space: normal;
+  }
+}

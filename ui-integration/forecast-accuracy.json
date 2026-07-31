@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "state": "PARTIAL",
+  "minimumReportableSamples": 10,
+  "generatedAt": "2026-07-31T11:51:31.085Z",
+  "source": {
+    "forecast": "기상청 단기예보 조회서비스 (발행분 원장 누적)",
+    "observation": "기상청 지상(종관, ASOS) 일자료 조회서비스",
+    "note": "단기예보 API가 최근 3일분만 제공하므로 매일 수집해 쌓은 발행분과 이후 확정된 ASOS 실측을 짝지어 계산한다. 결측은 보간하지 않는다."
+  },
+  "coverage": {
+    "pairCount": 8,
+    "stationCount": 8,
+    "firstValidDate": "2026-07-30",
+    "lastValidDate": "2026-07-30"
+  },
+  "overall": {
+    "temperature": {
+      "minTemperature": {
+        "sampleCount": 0,
+        "meanAbsoluteError": null,
+        "rootMeanSquaredError": null,
+        "bias": null
+      },
+      "maxTemperature": {
+        "sampleCount": 8,
+        "meanAbsoluteError": 1.41,
+        "rootMeanSquaredError": 1.55,
+        "bias": 1.21
+      }
+    },
+    "precipitation": {
+      "sampleCount": 8,
+      "brierScore": 0.03,
+      "eventDefinition": "ASOS 일강수량 > 0 mm"
+    }
+  },
+  "leadTimes": [
+    {
+      "leadDays": 0,
+      "pairCount": 8,
+      "temperature": {
+        "minTemperature": {
+          "sampleCount": 0,
+          "meanAbsoluteError": null,
+          "rootMeanSquaredError": null,
+          "bias": null
+        },
+        "maxTemperature": {
+          "sampleCount": 8,
+          "meanAbsoluteError": 1.41,
+          "rootMeanSquaredError": 1.55,
+          "bias": 1.21
+        }
+      },
+      "precipitation": {
+        "sampleCount": 8,
+        "brierScore": 0.03,
+        "eventDefinition": "ASOS 일강수량 > 0 mm"
+      }
+    }
+  ]
+}

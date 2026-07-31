@@ -1,0 +1,69 @@
+# ── 설치 방법 ────────────────────────────────────────────────
+# 이 파일은 .github/workflows/forecast-ledger.yml 로 옮겨야 동작한다.
+# 푸시에 쓰는 토큰에 workflow 스코프가 없으면 GitHub이 워크플로 파일의
+# 생성·수정을 거부하므로, 우선 이 경로에 담아 둔다.
+#
+#   git mv scripts/forecast-ledger.workflow.yml .github/workflows/forecast-ledger.yml
+#   git commit -m "chore: 예보 원장 수집 워크플로 활성화" && git push
+#
+# 저장소 Settings → Secrets → Actions 에 DATA_GO_KR_SERVICE_KEY 를 등록해야
+# 수집이 실제로 돈다. 등록 전에는 스크립트가 키 없음으로 종료한다.
+# ─────────────────────────────────────────────────────────────
+
+name: Forecast accuracy ledger
+
+# 기상청 단기예보 API는 최근 3일분만 응답한다(resultCode 10). 과거 발행분을
+# 한 번에 받으려면 기상청 API허브의 단기예보 과거자료 활용신청이 필요하고,
+# 승인 전까지는 매일 받아 쌓는 수밖에 없다. 하루 거르면 그날 발행분은
+# 영영 되찾을 수 없으므로 사람 손에 맡기지 않고 예약 실행한다.
+#
+# ASOS 일자료는 전날까지만 제공되므로, 오늘 실행은 어제까지의 실측을 채운다.
+
+on:
+  schedule:
+    # 매일 09:10 KST (00:10 UTC). 05시 발행분과 전날 ASOS가 모두 올라온 뒤다.
+    - cron: "10 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: forecast-ledger
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: v01
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Collect issued forecasts and fill observations
+        env:
+          DATA_GO_KR_SERVICE_KEY: ${{ secrets.DATA_GO_KR_SERVICE_KEY }}
+        run: node scripts/collect-forecast-ledger.mjs
+
+      - name: Recompute accuracy metrics
+        run: node scripts/build-forecast-accuracy.mjs
+
+      - name: Commit ledger if it changed
+        run: |
+          if git diff --quiet -- backend-v3/runtime/forecast-ledger.json ui-integration/forecast-accuracy.json; then
+            echo "변경 없음. 커밋하지 않는다."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend-v3/runtime/forecast-ledger.json ui-integration/forecast-accuracy.json
+          PAIRS=$(node -pe "JSON.parse(require('fs').readFileSync('ui-integration/forecast-accuracy.json','utf8')).coverage.pairCount")
+          git commit -m "chore: 예보 정확도 원장 갱신 (예보-실측 ${PAIRS}쌍)"
+          git push

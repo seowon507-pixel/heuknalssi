@@ -330,6 +330,58 @@ const assistantSend = document.querySelector("#assistant-send");
 const assistantMessages = document.querySelector("#assistant-messages");
 const assistantContext = document.querySelector("#assistant-context");
 
+// 예보 정확도는 빌드 시 만들어 둔 정적 산출물이다. 매 요청마다 계산하지 않고
+// 한 번만 받아 둔다. 없거나 못 받아도 화면의 나머지는 그대로 동작해야 한다.
+let forecastAccuracy = null;
+
+async function loadForecastAccuracy() {
+  try {
+    const response = await fetch("/ui-integration/forecast-accuracy.json", {
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    const parsed = await response.json();
+    if (parsed && typeof parsed === "object") {
+      forecastAccuracy = parsed;
+      // 이미 그려진 화면이 있으면 배지를 채워 넣는다.
+      if (currentAnalysis) renderForecastAccuracyBadge();
+    }
+  } catch {
+    /* 정확도 배지는 보조 정보다. 실패해도 조용히 넘어간다. */
+  }
+}
+
+/**
+ * 배지 문구. 표본이 최소 기준에 못 미치면 숫자를 대표값처럼 내세우지 않고
+ * 몇 건을 모았는지 그대로 밝힌다.
+ */
+function forecastAccuracyBadgeText() {
+  const data = forecastAccuracy;
+  if (!data || data.state === "COLLECTING") return null;
+  const pairs = data.coverage?.pairCount ?? 0;
+  const mae = data.overall?.temperature?.maxTemperature?.meanAbsoluteError;
+  if (!Number.isFinite(mae)) return null;
+  return data.state === "READY"
+    ? `실측 대비 최고기온 오차 ±${mae}℃ · ${pairs}쌍`
+    : `정확도 검증 중 · 현재 ${pairs}쌍에서 최고기온 오차 ±${mae}℃`;
+}
+
+function renderForecastAccuracyBadge() {
+  const slot = document.querySelector("#forecast-accuracy-badge");
+  if (!slot) return;
+  const text = forecastAccuracyBadgeText();
+  slot.hidden = text === null;
+  if (text === null) return;
+  slot.textContent = text;
+  slot.title = [
+    forecastAccuracy?.source?.forecast,
+    forecastAccuracy?.source?.observation,
+    forecastAccuracy?.source?.note,
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
 let connected = false;
 let preflight = null;
 let selectedCandidate = null;
@@ -349,6 +401,8 @@ if (savedSessionAtBoot) renderStoredSessionLoading(savedSessionAtBoot);
 syncAssistantContext(null);
 wireInteractions();
 void connectBackend();
+// 정적 산출물이라 백엔드 연결과 병렬로 받아 둔다.
+void loadForecastAccuracy();
 
 function wireInteractions() {
   retryConnectionButton.addEventListener("click", () => {
@@ -1047,14 +1101,15 @@ function renderLiveOutlook(analysis) {
         : "이번 주 예보",
     ),
   );
-  header.append(
-    headerCopy,
-    element(
-      "span",
-      "forecast-source-badge",
-      "기상청 단기·중기 예보",
-    ),
+  const badges = element("div", "forecast-badge-group");
+  const accuracyBadge = element("span", "forecast-accuracy-badge");
+  accuracyBadge.id = "forecast-accuracy-badge";
+  accuracyBadge.hidden = true;
+  badges.append(
+    element("span", "forecast-source-badge", "기상청 단기·중기 예보"),
+    accuracyBadge,
   );
+  header.append(headerCopy, badges);
   forecastCard.append(header);
 
   if (days.length > 0) {
@@ -1171,6 +1226,7 @@ function renderLiveOutlook(analysis) {
     renderFarmConditionGuide(analysis),
   );
   outlook.hidden = false;
+  renderForecastAccuracyBadge();
 }
 
 function actionConditionSummary(label, condition) {
