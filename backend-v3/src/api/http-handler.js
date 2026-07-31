@@ -499,6 +499,9 @@ export function createHttpHandler({
   randomBytes = nodeRandomBytes,
   deviceBackup = null,
   webPush = null,
+  // 요청 앞뒤로 공유 저장소와 값을 주고받는 다리들.
+  // 설정이 없으면 빈 배열이고 전부 메모리로만 동작한다.
+  persistence = null,
 } = {}) {
   validateServices(services);
   if (typeof clock !== "function") {
@@ -534,6 +537,7 @@ export function createHttpHandler({
       secure: production || config.secureCookies === true,
       sessionTtlMs: config.sessionTtlMs,
       maxEntries: config.sessionMaxEntries,
+      ...(persistence?.session ? { store: persistence.session.store } : {}),
     });
   const rateLimiter =
     config.rateLimiter ??
@@ -658,6 +662,24 @@ export function createHttpHandler({
           ? Math.max(requestTimeoutMs, 25_000)
           : requestTimeoutMs,
       );
+
+      // 서버리스는 요청마다 다른 인스턴스로 갈 수 있다. 이번 요청이 건드릴
+      // 세션·후보·분석만 공유 저장소에서 먼저 되살린다. 실패해도 요청은
+      // 그대로 진행하며, 그때는 결과가 이 인스턴스에만 남는다.
+      if (persistence) {
+        const cookieHeader = getHeader(req, "cookie");
+        await Promise.all([
+          persistence.session?.hydrate(
+            [sessionManager.peekSessionId(cookieHeader)],
+            { ttlMs: persistence.sessionTtlMs },
+          ),
+          route.parameters?.analysisId
+            ? persistence.analysis?.hydrate([route.parameters.analysisId], {
+                ttlMs: persistence.analysisTtlMs,
+              })
+            : null,
+        ]);
+      }
 
       const { session, setCookie } = sessionManager.resolve(
         getHeader(req, "cookie"),
@@ -1104,6 +1126,15 @@ export function createHttpHandler({
       errorCode = error.code;
       sendJson(res, error.status, serializeApiError(error, requestId));
     } finally {
+      // 응답을 보낸 뒤에는 서버리스가 남은 작업을 얼린다. 정리보다 먼저
+      // 이번 요청에서 바뀐 값을 공유 저장소에 반영한다.
+      if (persistence) {
+        await Promise.all([
+          persistence.session?.flush(),
+          persistence.candidate?.flush(),
+          persistence.analysis?.flush(),
+        ]);
+      }
       abortContext?.cleanup();
     }
   };

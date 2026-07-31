@@ -19,6 +19,11 @@ export {
   isValidIdempotencyKey,
 } from "./idempotency-store.js";
 export { createOpaqueId } from "./opaque-id.js";
+export { createPersistentStore } from "./persistent-store.js";
+export {
+  SupabaseKvError,
+  createSupabaseKvStore,
+} from "./supabase-kv.js";
 export {
   FixedWindowRateLimiter,
   rateLimitDefaults,

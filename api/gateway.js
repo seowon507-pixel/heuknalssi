@@ -29,7 +29,10 @@ export default async function handler(request, response) {
     return;
   }
 
-  backend.handler(request, response);
+  // 반드시 기다린다. 핸들러는 응답을 보낸 뒤에도 공유 저장소에 이번 요청의
+  // 변경을 반영한다. 여기서 기다리지 않으면 서버리스가 그 작업을 얼려서
+  // 세션·분석이 다음 인스턴스로 넘어가지 않는다.
+  await backend.handler(request, response);
 }
 
 /**

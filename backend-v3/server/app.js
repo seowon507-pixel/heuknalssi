@@ -19,6 +19,8 @@ import { createApplicationServices } from '../src/application/index.js';
 import { createRuleRegistry } from '../src/domain/index.js';
 import {
   createDeviceBackupStore,
+  createPersistentStore,
+  createSupabaseKvStore,
   createWebPushSender,
 } from '../src/infrastructure/index.js';
 import { loadConfig } from './config.js';
@@ -152,6 +154,45 @@ export function createBackend({
     timeoutMs: Math.min(config.sourceTimeoutMs, 8_000),
     now: clock,
   });
+  // 서버리스 인스턴스 사이에서 세션·후보·분석을 공유한다. Supabase 설정이
+  // 없으면 configured=false 이고 전부 메모리로만 동작한다.
+  const sharedKv = createSupabaseKvStore({
+    url: config.deviceBackupConfig.url,
+    secretKey: config.deviceBackupConfig.secretKey,
+    fetchImpl,
+    now: clock,
+  });
+  const persistenceErrors = [];
+  const onPersistenceError = (error) => {
+    // 키가 로그에 남지 않도록 코드만 남긴다.
+    persistenceErrors.push(error?.code ?? 'STORE_ERROR');
+  };
+  const persistence = sharedKv.configured
+    ? {
+        session: createPersistentStore({
+          kv: sharedKv,
+          namespace: 'session',
+          clock,
+          capacityPolicy: 'reject',
+          onError: onPersistenceError,
+        }),
+        candidate: createPersistentStore({
+          kv: sharedKv,
+          namespace: 'candidate',
+          clock,
+          onError: onPersistenceError,
+        }),
+        analysis: createPersistentStore({
+          kv: sharedKv,
+          namespace: 'analysis',
+          clock,
+          onError: onPersistenceError,
+        }),
+        sessionTtlMs: config.sessionTtlMs,
+        analysisTtlMs: config.analysisTtlMs,
+      }
+    : null;
+
   const services = createApplicationServices({
     adapters: activeAdapters,
     assistant,
@@ -164,8 +205,15 @@ export function createBackend({
     analysisTtlMs: config.analysisTtlMs,
     reportLockTtlMs: config.reportLockTtlMs,
     runtimeStatus: activeRuntimeStatus,
+    ...(persistence
+      ? {
+          candidateStore: persistence.candidate.store,
+          analysisStore: persistence.analysis.store,
+        }
+      : {}),
     capabilities: {
       ...config.capabilities,
+      persistence: persistence ? 'SHARED_KV' : 'NOT_AVAILABLE',
       smartfarm:
         activeRuntimeStatus?.adapters?.smartfarm ??
         config.capabilities.smartfarm,
@@ -174,6 +222,7 @@ export function createBackend({
   });
   const handler = createHttpHandler({
     services,
+    ...(persistence ? { persistence } : {}),
     config: {
       nodeEnv: config.nodeEnv,
       production: config.nodeEnv === 'production',

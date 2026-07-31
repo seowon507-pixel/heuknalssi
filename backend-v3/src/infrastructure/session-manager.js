@@ -113,6 +113,15 @@ export class SessionManager {
       });
   }
 
+  /**
+   * 쿠키에서 세션 id만 꺼낸다. 세션을 만들지도 갱신하지도 않는다.
+   * 요청을 처리하기 전에 공유 저장소에서 이 세션을 되살리려면 id가 먼저
+   * 필요하다.
+   */
+  peekSessionId(cookieHeader) {
+    return this.#verifyCookie(parseCookies(cookieHeader).get(this.#cookieName));
+  }
+
   resolve(cookieHeader) {
     const signedCookie = parseCookies(cookieHeader).get(this.#cookieName);
     const sessionId = this.#verifyCookie(signedCookie);
