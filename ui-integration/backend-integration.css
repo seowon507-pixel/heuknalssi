@@ -437,3 +437,103 @@ button[aria-busy="true"] {
     white-space: normal;
   }
 }
+
+/* 할 일 목록. 기한별로 묶고 항목마다 근거를 붙인다. */
+.task-list-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.task-list-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.task-list-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.task-list-count {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.task-group {
+  margin-top: 14px;
+}
+
+.task-group-title {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.task-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+/* 터치 목표를 44px 이상으로 유지한다. 고령 사용자가 주 대상이다. */
+.task-row input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  margin: 10px 0;
+  flex: 0 0 auto;
+}
+
+.task-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.task-title {
+  display: block;
+  font-weight: 600;
+  line-height: 1.5;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.task-row.is-done .task-title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.task-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.task-chip {
+  font-size: 0.78rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--muted);
+}
+
+.task-reason,
+.task-recheck {
+  margin: 8px 0 0;
+  line-height: 1.6;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.task-source {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.88rem;
+}

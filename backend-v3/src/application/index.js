@@ -14,6 +14,13 @@ export {
 } from './backtest.js';
 export { latestKmaMidIssue, latestKmaShortIssue } from './forecast-issue.js';
 export {
+  applyCompletion,
+  normalizeCompletionInput,
+  sanitizeStoredCompletions,
+  summarizeCompletions,
+  taskLogDefaults,
+} from './task-log.js';
+export {
   resolveLocationKeys,
   resolveOfficialCatalogMapping,
   toKmaGrid,

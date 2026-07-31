@@ -14,12 +14,21 @@ import {
   WebPushError,
 } from "../infrastructure/index.js";
 import {
+  applyCompletion,
+  normalizeCompletionInput,
+  sanitizeStoredCompletions,
+  summarizeCompletions,
+} from "../application/task-log.js";
+import {
   ApiError,
   normalizeApiError,
   serializeApiError,
 } from "./errors.js";
 
 const DEFAULT_BODY_LIMIT_BYTES = 64 * 1_024;
+// 공유 저장소가 없을 때만 쓰는 대체 보관소. 인스턴스가 바뀌면 사라지며
+// 응답의 persistence 필드가 그 사실을 그대로 알린다.
+const taskLogFallback = new Map();
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 
 const DEFAULT_RATE_LIMITS = Object.freeze({
@@ -28,6 +37,7 @@ const DEFAULT_RATE_LIMITS = Object.freeze({
   "analyses.create": { limit: 10, windowMs: 60_000 },
   "analyses.report": { limit: 5, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
+  "tasks.log": { limit: 60, windowMs: 60_000 },
   "push.test": { limit: 6, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
 });
@@ -42,6 +52,7 @@ const DEFAULT_IP_RATE_LIMITS = Object.freeze({
   "analyses.get": { limit: 120, windowMs: 60_000 },
   "analyses.report": { limit: 30, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
+  "tasks.log": { limit: 120, windowMs: 60_000 },
   "push.test": { limit: 12, windowMs: 60_000 },
   "health.preflight": { limit: 60, windowMs: 60_000 },
 });
@@ -95,6 +106,12 @@ const ROUTES = Object.freeze([
     // 계정키를 URL·로그에 남기지 않으려고 본문으로 받는다.
     pattern: /^\/api\/device-backup\/restore$/,
     methods: ["POST"],
+  },
+  {
+    name: "tasks.log",
+    // 세션 소유의 할 일 완료 이력. 읽기는 GET, 체크·해제는 POST.
+    pattern: /^\/api\/tasks\/completions$/,
+    methods: ["GET", "POST"],
   },
   {
     name: "push.test",
@@ -1028,6 +1045,88 @@ export function createHttpHandler({
           }
           throw error;
         }
+      }
+
+      if (route.name === "tasks.log") {
+        // 완료 이력은 세션 소유다. 세션 저장소에 함께 두면 공유 저장소
+        // 설정 여부에 따라 자동으로 기기 간 유지 여부가 갈린다.
+        const logKey = `tasks:${session.id}`;
+        await persistence?.session?.hydrate([logKey], {
+          ttlMs: persistence.sessionTtlMs,
+        });
+        const stored = sanitizeStoredCompletions(
+          persistence?.session?.store.get(logKey) ??
+            taskLogFallback.get(logKey),
+        );
+
+        if (req.method === "GET") {
+          sendJson(res, 200, {
+            completions: stored,
+            summary: summarizeCompletions(stored, { now: clock() }),
+            persistence: persistence ? "SHARED_KV" : "NOT_AVAILABLE",
+          });
+          return;
+        }
+
+        const body = await readJsonBody(
+          req,
+          config.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES,
+          abortContext.signal,
+        );
+        let input;
+        try {
+          input = normalizeCompletionInput(body);
+        } catch (error) {
+          throw new ApiError("INVALID_INPUT", {
+            fieldErrors: { actionId: error?.message ?? "invalid completion" },
+          });
+        }
+
+        // 근거는 사용자가 보내는 값을 믿지 않고 서버가 가진 분석에서 꺼낸다.
+        let context = {};
+        if (input.analysisId) {
+          await persistence?.analysis?.hydrate([input.analysisId], {
+            ttlMs: persistence.analysisTtlMs,
+          });
+          const analysis = await invokeService(
+            services.getAnalysis,
+            services,
+            { ownerSessionId: session.id, analysisId: input.analysisId },
+            abortContext.signal,
+          );
+          const task = (analysis?.taskList ?? []).find(
+            (item) => item.actionId === input.actionId,
+          );
+          if (task) {
+            context = {
+              crop: analysis?.inputSummary?.crop ?? null,
+              regionLabel: analysis?.inputSummary?.regionLabel ?? null,
+              title: task.title,
+              severity: task.severity,
+              dueWindow: task.dueWindow,
+            };
+          }
+        }
+
+        const next = applyCompletion(stored, input, {
+          now: clock(),
+          context,
+        });
+        if (persistence?.session) {
+          persistence.session.store.set(
+            logKey,
+            next,
+            persistence.sessionTtlMs,
+          );
+        } else {
+          taskLogFallback.set(logKey, next);
+        }
+        sendJson(res, 200, {
+          completions: next,
+          summary: summarizeCompletions(next, { now: clock() }),
+          persistence: persistence ? "SHARED_KV" : "NOT_AVAILABLE",
+        });
+        return;
       }
 
       if (route.name === "push.test") {

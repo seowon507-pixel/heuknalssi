@@ -184,6 +184,14 @@ test("생육점수는 자료 충족률이 아니라 작물별 날씨·토양 상
   assert.match(client, /예보 위험은 점수에 섞지 않고 따로 표시합니다/);
   assert.doesNotMatch(client, /날씨 60% · 토양 40%/);
   assert.match(client, /calculateCropConditionScore/);
+  // 할 일 목록은 상위 3건이 아니라 기한별 전체를 보여 주고, 항목마다
+  // 근거를 붙이며, 저장 실패 시 체크를 되돌린다.
+  assert.match(client, /function renderTaskList/);
+  assert.match(client, /analysis\.taskList/);
+  assert.match(client, /DUE_WINDOW_ORDER/);
+  assert.match(client, /function taskEvidence/);
+  assert.match(client, /checkbox\.checked = !checkbox\.checked/);
+  assert.match(client, /완료 기록을 저장하지 못했습니다/);
   assert.doesNotMatch(client, /자료 확인 점수/);
   assert.doesNotMatch(client, /환경 기준 예상 점수/);
   assert.doesNotMatch(client, /작물별 위험 판정 확인 필요/);

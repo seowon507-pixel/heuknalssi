@@ -177,6 +177,18 @@ class BackendApi {
         : null;
   }
 
+  async listTaskCompletions() {
+    return this.request("/api/tasks/completions");
+  }
+
+  async setTaskCompletion({ actionId, analysisId, done }) {
+    return this.request("/api/tasks/completions", {
+      method: "POST",
+      body: { actionId, ...(analysisId ? { analysisId } : {}), done },
+      csrf: true,
+    });
+  }
+
   async sendTestPush(subscription, delaySeconds) {
     return this.request("/api/push/test", {
       method: "POST",
@@ -333,6 +345,9 @@ const assistantContext = document.querySelector("#assistant-context");
 // 예보 정확도는 빌드 시 만들어 둔 정적 산출물이다. 매 요청마다 계산하지 않고
 // 한 번만 받아 둔다. 없거나 못 받아도 화면의 나머지는 그대로 동작해야 한다.
 let forecastAccuracy = null;
+// 오늘 무엇을 끝냈는지. 서버가 세션 소유로 들고 있고 화면은 그 사본만 쓴다.
+let taskCompletions = [];
+let taskPersistence = "NOT_AVAILABLE";
 
 async function loadForecastAccuracy() {
   try {
@@ -403,6 +418,7 @@ wireInteractions();
 void connectBackend();
 // 정적 산출물이라 백엔드 연결과 병렬로 받아 둔다.
 void loadForecastAccuracy();
+void loadTaskCompletions();
 
 function wireInteractions() {
   retryConnectionButton.addEventListener("click", () => {
@@ -1223,10 +1239,206 @@ function renderLiveOutlook(analysis) {
   outlook.replaceChildren(
     forecastCard,
     actionCard,
+    renderTaskList(analysis),
     renderFarmConditionGuide(analysis),
   );
   outlook.hidden = false;
   renderForecastAccuracyBadge();
+}
+
+const DUE_WINDOW_LABELS = Object.freeze({
+  NOW: "지금",
+  "1_TO_3_DAYS": "1~3일 안",
+  BEFORE_DECISION: "판단하기 전에",
+  "4_TO_10_DAYS": "4~10일 안",
+});
+const DUE_WINDOW_ORDER = Object.freeze([
+  "NOW",
+  "1_TO_3_DAYS",
+  "BEFORE_DECISION",
+  "4_TO_10_DAYS",
+]);
+const SEVERITY_LABELS = Object.freeze({
+  WARNING: "주의",
+  CAUTION: "확인",
+  INFO: "참고",
+});
+
+function completedActionIds() {
+  const today = new Date();
+  const key = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(
+    today.getDate(),
+  ).padStart(2, "0")}`;
+  return new Set(
+    taskCompletions
+      .filter((entry) => entry.completedOn === key)
+      .map((entry) => entry.actionId),
+  );
+}
+
+/**
+ * 할 일마다 "왜 해야 하는지"를 붙인다. 근거는 만들지 않고 이미 판정된
+ * 위험에서 가져온다. 연결되는 위험이 없으면 칩을 달지 않는다.
+ */
+function taskEvidence(analysis, task) {
+  const risks = analysis?.forecast?.result?.risks ?? [];
+  const ruleIds = new Set(
+    (task.triggerIds ?? []).map((id) => String(id).split(":")[0]),
+  );
+  const matched = risks.find((risk) => ruleIds.has(risk.ruleId));
+  if (!matched?.guidance) return null;
+  return {
+    reason: matched.guidance.reason ?? null,
+    recheck: matched.guidance.recheck ?? null,
+    sourceTitle: matched.guidance.sourceTitle ?? null,
+    sourceUrl: matched.guidance.sourceUrl ?? null,
+  };
+}
+
+function renderTaskList(analysis) {
+  const tasks = Array.isArray(analysis?.taskList) ? analysis.taskList : [];
+  const card = element("article", "task-list-card");
+  const header = element("div", "task-list-header");
+  header.append(
+    element("h2", "", "할 일 목록"),
+    element(
+      "span",
+      "task-list-count",
+      tasks.length === 0 ? "확인된 할 일 없음" : `${tasks.length}건`,
+    ),
+  );
+  card.append(header);
+
+  if (tasks.length === 0) {
+    card.append(
+      element(
+        "p",
+        "muted no-margin",
+        "지금 자료로 확인된 할 일이 없습니다. 확인되지 않은 위험이 없다는 뜻은 아닙니다.",
+      ),
+    );
+    return card;
+  }
+
+  const done = completedActionIds();
+  const grouped = new Map();
+  for (const task of tasks) {
+    const bucket = grouped.get(task.dueWindow) ?? [];
+    bucket.push(task);
+    grouped.set(task.dueWindow, bucket);
+  }
+
+  for (const dueWindow of DUE_WINDOW_ORDER) {
+    const bucket = grouped.get(dueWindow);
+    if (!bucket?.length) continue;
+    const group = element("section", "task-group");
+    group.append(
+      element(
+        "h3",
+        "task-group-title",
+        DUE_WINDOW_LABELS[dueWindow] ?? dueWindow,
+      ),
+    );
+    for (const task of bucket) {
+      group.append(taskRow(analysis, task, done.has(task.actionId)));
+    }
+    card.append(group);
+  }
+
+  const note = element(
+    "p",
+    "formula-note",
+    taskPersistence === "SHARED_KV"
+      ? "체크한 기록은 계정에 남아 다른 기기에서도 보입니다."
+      : "체크한 기록은 지금 이 서버에만 남습니다. 공유 저장소를 연결하면 기기 간에 유지됩니다.",
+  );
+  card.append(note);
+  return card;
+}
+
+function taskRow(analysis, task, isDone) {
+  const row = element("div", `task-row${isDone ? " is-done" : ""}`);
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = isDone;
+  checkbox.id = `task-${task.actionId}`;
+  checkbox.addEventListener("change", async () => {
+    checkbox.disabled = true;
+    try {
+      const result = await api.setTaskCompletion({
+        actionId: task.actionId,
+        analysisId: analysis?.analysisId,
+        done: checkbox.checked,
+      });
+      taskCompletions = result.completions ?? [];
+      taskPersistence = result.persistence ?? taskPersistence;
+      row.classList.toggle("is-done", checkbox.checked);
+      announce(
+        checkbox.checked
+          ? `${task.title} 완료로 표시했습니다.`
+          : `${task.title} 완료를 해제했습니다.`,
+      );
+    } catch {
+      // 저장에 실패하면 체크 상태를 되돌린다. 안 된 일을 됐다고 두지 않는다.
+      checkbox.checked = !checkbox.checked;
+      announce("완료 기록을 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.");
+    } finally {
+      checkbox.disabled = false;
+    }
+  });
+
+  const label = document.createElement("label");
+  label.htmlFor = checkbox.id;
+  label.className = "task-title";
+  label.textContent = task.title;
+
+  const chips = element("div", "task-chips");
+  if (SEVERITY_LABELS[task.severity]) {
+    chips.append(
+      element(
+        "span",
+        `task-chip is-${String(task.severity).toLowerCase()}`,
+        SEVERITY_LABELS[task.severity],
+      ),
+    );
+  }
+  if (task.blocking) {
+    chips.append(element("span", "task-chip", "먼저 확인"));
+  }
+
+  const body = element("div", "task-body");
+  body.append(label, chips);
+
+  const evidence = taskEvidence(analysis, task);
+  if (evidence?.reason) {
+    body.append(element("p", "task-reason", evidence.reason));
+  }
+  if (evidence?.recheck) {
+    body.append(element("p", "task-recheck", `다시 확인: ${evidence.recheck}`));
+  }
+  if (evidence?.sourceUrl && evidence?.sourceTitle) {
+    const link = document.createElement("a");
+    link.className = "task-source";
+    link.href = evidence.sourceUrl;
+    link.target = "_blank";
+    link.rel = "noreferrer noopener";
+    link.textContent = `근거: ${evidence.sourceTitle}`;
+    body.append(link);
+  }
+
+  row.append(checkbox, body);
+  return row;
+}
+
+async function loadTaskCompletions() {
+  try {
+    const result = await api.listTaskCompletions();
+    taskCompletions = result.completions ?? [];
+    taskPersistence = result.persistence ?? "NOT_AVAILABLE";
+  } catch {
+    // 이력을 못 받아도 목록 자체는 보여 준다.
+    taskCompletions = [];
+  }
 }
 
 function actionConditionSummary(label, condition) {

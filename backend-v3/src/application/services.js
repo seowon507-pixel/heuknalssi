@@ -553,6 +553,18 @@ export function createApplicationServices({
       ...action,
       title: renderActionTitle(action.actionId),
     }));
+    // 화면 상단은 상위 세 가지만 보여 주지만, 할 일 목록은 기한별로 전부
+    // 나눠 보여 준다. 순위 계산은 한 번만 하고 결과를 같이 싣는다.
+    const taskList = actionProjection.ranked.map((action) => ({
+      actionId: action.actionId,
+      title: renderActionTitle(action.actionId),
+      severity: action.severity,
+      dueWindow: action.dueWindow,
+      blocking: action.blocking,
+      evidenceStrength: action.evidenceStrength,
+      sourceFreshness: action.sourceFreshness,
+      triggerIds: action.triggerIds,
+    }));
 
     const nowIso = new Date(clock()).toISOString();
     lifecycle.transition('CORE_READY');
@@ -579,6 +591,7 @@ export function createApplicationServices({
       decision,
       primaryAction: actionProjection.primaryAction,
       actions,
+      taskList,
       climate,
       soil,
       observations,
