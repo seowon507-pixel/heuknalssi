@@ -14,6 +14,7 @@ import { createSoilFieldAdapter } from "./soil-field.js";
 import { createSoilExamAdapter } from "./soil-exam.js";
 import { createSmartfarmAdapter } from "./smartfarm.js";
 import { createGoogleAiSelector } from "./google-ai.js";
+import { createCopernicusSatelliteAdapter } from "./copernicus.js";
 
 export {
   ADAPTER_STATES,
@@ -125,6 +126,12 @@ export {
   resolveSmartfarmReferenceProfile
 } from "./smartfarm.js";
 export { createGoogleAiSelector } from "./google-ai.js";
+export {
+  copernicusSatelliteDefaults,
+  createCopernicusSatelliteAdapter,
+  parseCopernicusNdviStatistics,
+  parseCopernicusStacItems
+} from "./copernicus.js";
 
 export const adapterFactories = Object.freeze({
   kakao: createKakaoAdapter,
@@ -136,7 +143,8 @@ export const adapterFactories = Object.freeze({
   soilV2: createSoilV2Adapter,
   soilField: createSoilFieldAdapter,
   soilExam: createSoilExamAdapter,
-  smartfarm: createSmartfarmAdapter
+  smartfarm: createSmartfarmAdapter,
+  satellite: createCopernicusSatelliteAdapter
 });
 
 /**
@@ -154,7 +162,8 @@ export function createAdapterRegistry({
   soilV2 = {},
   soilField = {},
   soilExam = {},
-  smartfarm = {}
+  smartfarm = {},
+  satellite = {}
 } = {}) {
   const kmaProviderControl = {
     ...(common.providerControl ?? {}),
@@ -226,6 +235,7 @@ export function createAdapterRegistry({
     soilV2: createSoilV2Adapter({ ...common, ...soilV2 }),
     soilField: createSoilFieldAdapter({ ...common, ...soilField }),
     soilExam: createSoilExamAdapter({ ...common, ...soilExam }),
-    smartfarm: createSmartfarmAdapter({ ...common, ...smartfarm })
+    smartfarm: createSmartfarmAdapter({ ...common, ...smartfarm }),
+    satellite: createCopernicusSatelliteAdapter({ ...common, ...satellite })
   });
 }

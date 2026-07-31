@@ -15,7 +15,12 @@ export const PROVIDER_HOST_ALLOWLIST = Object.freeze({
     "smartfarmkorea.net",
     "www.smartfarmkorea.net"
   ]),
-  GOOGLE_AI: Object.freeze(["generativelanguage.googleapis.com"])
+  GOOGLE_AI: Object.freeze(["generativelanguage.googleapis.com"]),
+  COPERNICUS: Object.freeze([
+    "stac.dataspace.copernicus.eu",
+    "identity.dataspace.copernicus.eu",
+    "sh.dataspace.copernicus.eu"
+  ])
 });
 export const DEFAULT_PROVIDER_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 
