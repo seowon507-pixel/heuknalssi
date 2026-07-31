@@ -2099,6 +2099,9 @@
     .photo-journal-layout { display: grid; grid-template-columns: minmax(280px, .72fr) minmax(0, 1.28fr); gap: 20px; margin-top: 18px; }
     .photo-journal-form { display: grid; align-content: start; gap: 13px; padding: 18px; border: 1px solid #DDE6DF; border-radius: 14px; background: #F8FBF9; }
     .photo-journal-form .inline-check { align-items: flex-start; }
+    .photo-capture-guide { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 13px; align-items: center; padding: 12px; border: 1px solid #C9D9CE; border-radius: 12px; background: #FFFFFF; }
+    .photo-capture-guide-frame { display: grid; min-height: 82px; place-items: center; border: 2px dashed #39845A; border-radius: 12px; background: linear-gradient(135deg, #EEF7F1, #F8FBF9); color: #285D3E; font-size: 12px; font-weight: 800; text-align: center; }
+    .photo-capture-guide p { margin: 0; color: #4F5F55; font-size: 13px; line-height: 1.5; }
     .photo-journal-gallery { min-width: 0; }
     .photo-journal-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding: 0; gap: 12px; list-style: none; }
     .photo-journal-item { overflow: hidden; border: 1px solid #D9E4DC; border-radius: 13px; background: #FFFFFF; }
@@ -2802,7 +2805,16 @@
             <form class="photo-journal-form" id="photo-journal-form">
               <div class="field">
                 <label for="journal-photo">작물 사진</label>
-                <input id="journal-photo" name="photo" type="file" accept="image/*" capture="environment" required>
+                <input id="journal-photo" name="photo" type="file" accept="image/*" capture="environment" aria-describedby="journal-photo-help" required>
+                <small class="muted" id="journal-photo-help">10MB 이하 이미지 · 색과 관계없이 밝기와 선명도만 자동 확인합니다.</small>
+              </div>
+              <div class="photo-capture-guide" aria-label="작물 사진 촬영 구도 안내">
+                <div class="photo-capture-guide-frame" aria-hidden="true">화면 중앙<br>안내선</div>
+                <p><strong>작물의 색은 판단 기준이 아닙니다.</strong><br>잎·줄기·과실 등 기록할 대상이 중앙 안내선을 충분히 채우고 전체 모양이 보이게 촬영해 주세요.</p>
+              </div>
+              <div class="inline-check">
+                <input id="journal-subject-confirmed" name="subjectConfirmed" type="checkbox" required>
+                <label for="journal-subject-confirmed">작물이 안내선 안을 충분히 채웠고 기록할 부분이 화면 중앙에 있음을 확인했습니다.</label>
               </div>
               <div class="field">
                 <label for="journal-observed-at">촬영일</label>

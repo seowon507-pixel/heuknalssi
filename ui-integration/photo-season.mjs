@@ -176,7 +176,7 @@ function presentAction(action = {}) {
   return {
     actionId: text(action.actionId),
     title: text(action.title),
-    status: ["OPEN", "DONE", "SKIPPED"].includes(action.status)
+    status: ["OPEN", "DONE", "SKIPPED", "CANCELLED"].includes(action.status)
       ? action.status
       : "OPEN",
     occurredAt: action.occurredAt ?? action.completedAt ?? action.createdAt ?? null,

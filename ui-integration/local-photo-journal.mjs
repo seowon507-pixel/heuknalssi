@@ -2,6 +2,7 @@ const DATABASE_NAME = "heuknalssi-photo-journal-v1";
 const DATABASE_VERSION = 1;
 const PHOTO_STORE = "photos";
 const SEASON_STORE = "seasons";
+export const LOCAL_PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 const MIN_BRIGHTNESS = 0.16;
 const MAX_BRIGHTNESS = 0.88;
 const MAX_CLIPPED_RATIO = 0.65;
@@ -55,9 +56,7 @@ export function createLocalPhotoJournal({ indexedDBImpl = globalThis.indexedDB }
   return Object.freeze({
     async addPhoto({ scope, file, observedAt, growthStage = null, note = null, visualSignals = null }) {
       const normalized = normalizeScope(scope);
-      if (!(file instanceof Blob) || !file.type.startsWith("image/")) {
-        throw new TypeError("an image file is required");
-      }
+      assertLocalPhotoFile(file);
       const photo = {
         photoId: globalThis.crypto?.randomUUID?.() ?? `photo-${Date.now()}`,
         ...normalized,
@@ -142,6 +141,15 @@ export function compareVisualSignals(previous, current) {
   ].filter(Boolean);
 }
 
+export function assertLocalPhotoFile(file) {
+  if (!(file instanceof Blob) || !file.type.startsWith("image/")) {
+    throw new TypeError("이미지 파일이 필요합니다.");
+  }
+  if (file.size > LOCAL_PHOTO_MAX_BYTES) {
+    throw new RangeError("사진은 10MB 이하 이미지만 저장할 수 있습니다.");
+  }
+}
+
 export function analyzePhotoPixels(imageData, { subjectBounds = null } = {}) {
   const width = Number(imageData?.width);
   const height = Number(imageData?.height);
@@ -202,6 +210,7 @@ export function analyzePhotoPixels(imageData, { subjectBounds = null } = {}) {
     }
   }
 
+  const subjectRatio = subjectBoundsRatio(subjectBounds, width, height);
   return {
     brightness: roundSignal(brightness / count),
     greenRatio: roundSignal(green / count),
@@ -209,9 +218,8 @@ export function analyzePhotoPixels(imageData, { subjectBounds = null } = {}) {
     shadowClipRatio: roundSignal(shadowClipped / count),
     highlightClipRatio: roundSignal(highlightClipped / count),
     sharpness: roundSignal(Math.min(1, laplacianEnergy / interiorCount)),
-    subjectRatio:
-      subjectBoundsRatio(subjectBounds, width, height) ??
-      roundSignal((green + yellow) / count),
+    subjectRatio,
+    subjectRatioSource: subjectRatio === null ? null : "USER_BOUNDS",
   };
 }
 
@@ -237,9 +245,11 @@ export function assessPhotoQuality(value) {
   if (signals.sharpness < MIN_SHARPNESS) {
     issues.push(qualityIssue("POSSIBLE_SHAKE"));
   }
-  if (signals.subjectRatio < MIN_SUBJECT_RATIO) {
+  if (signals.subjectRatio === null && !signals.subjectConfirmed) {
+    issues.push(qualityIssue("SUBJECT_CONFIRMATION_REQUIRED"));
+  } else if (signals.subjectRatio !== null && signals.subjectRatio < MIN_SUBJECT_RATIO) {
     issues.push(qualityIssue("SUBJECT_TOO_SMALL"));
-  } else if (signals.subjectRatio > MAX_SUBJECT_RATIO) {
+  } else if (signals.subjectRatio !== null && signals.subjectRatio > MAX_SUBJECT_RATIO) {
     issues.push(qualityIssue("SUBJECT_TOO_LARGE"));
   }
   return qualityResult(issues);
@@ -293,6 +303,9 @@ function normalizeVisualSignals(value) {
     if (!Number.isFinite(number) || number < 0 || number > 1) return null;
     result[key] = roundSignal(number);
   }
+  result.subjectConfirmed = value.subjectConfirmed === true;
+  result.subjectRatioSource =
+    value.subjectRatioSource === "USER_BOUNDS" ? "USER_BOUNDS" : null;
   return result;
 }
 
@@ -304,13 +317,28 @@ function normalizeQualitySignals(value) {
     "shadowClipRatio",
     "highlightClipRatio",
     "sharpness",
-    "subjectRatio",
   ]) {
     if (value[key] === undefined || value[key] === null) return null;
     const number = Number(value[key]);
     if (!Number.isFinite(number) || number < 0 || number > 1) return null;
     result[key] = number;
   }
+  if (
+    value.subjectRatioSource !== "USER_BOUNDS" ||
+    value.subjectRatio === undefined ||
+    value.subjectRatio === null
+  ) {
+    result.subjectRatio = null;
+    result.subjectRatioSource = null;
+  } else {
+    const subjectRatio = Number(value.subjectRatio);
+    if (!Number.isFinite(subjectRatio) || subjectRatio < 0 || subjectRatio > 1) {
+      return null;
+    }
+    result.subjectRatio = subjectRatio;
+    result.subjectRatioSource = "USER_BOUNDS";
+  }
+  result.subjectConfirmed = value.subjectConfirmed === true;
   return result;
 }
 
@@ -331,6 +359,10 @@ function qualityIssue(code) {
     POSSIBLE_SHAKE: {
       message: "사진이 흔들렸거나 초점이 흐린 것처럼 보입니다.",
       guidance: "휴대전화를 고정하고 화면을 눌러 초점을 맞춘 뒤 다시 촬영해 주세요.",
+    },
+    SUBJECT_CONFIRMATION_REQUIRED: {
+      message: "작물이 화면 중앙을 충분히 채웠는지 확인이 필요합니다.",
+      guidance: "작물을 화면 중앙 안내선 안에 놓고 확인 항목을 선택해 주세요.",
     },
     SUBJECT_TOO_SMALL: {
       message: "비교할 대상이 화면에서 너무 작습니다.",

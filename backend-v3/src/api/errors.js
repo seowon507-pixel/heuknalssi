@@ -172,6 +172,21 @@ const ERROR_DEFINITIONS = Object.freeze({
     message: "Explicit confirmation is required before changing a farm action.",
     retryable: false,
   },
+  ACTION_PROJECTION_REQUIRED: {
+    status: 400,
+    message: "The system rule projection contract is required.",
+    retryable: false,
+  },
+  ACTION_RULE_SET_INVALID: {
+    status: 400,
+    message: "The active rule set is invalid.",
+    retryable: false,
+  },
+  ACTION_STATUS_TRANSITION_INVALID: {
+    status: 409,
+    message: "The requested farm action status transition is not allowed.",
+    retryable: false,
+  },
   METHOD_NOT_ALLOWED: {
     status: 405,
     message: "The HTTP method is not allowed for this route.",

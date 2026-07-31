@@ -10,13 +10,17 @@ import { hasMissingSoilExamHistory } from "./soil-service-guidance.mjs";
 import { suggestAdministrativeAddresses } from "./address-suggestions.mjs";
 import { mountActionPlan } from "./action-plan.mjs";
 import {
+  LOCAL_PHOTO_MAX_BYTES,
   analyzePhotoPixels,
   assessPhotoQuality,
   createLocalPhotoJournal,
   reviewPhotoComparison,
 } from "./local-photo-journal.mjs";
 import { parseAssistantActionRequest } from "./assistant-action-request.mjs";
-import { projectAnalysisAction } from "./action-projection.mjs";
+import {
+  canReconcileProjectedActions,
+  projectAnalysisAction,
+} from "./action-projection.mjs";
 
 window.__BACKEND_INTEGRATION_ENABLED__ = true;
 
@@ -265,6 +269,27 @@ class BackendApi {
       csrf: true,
       headers: { "Idempotency-Key": idempotencyKey },
     });
+  }
+
+  async reconcileRuleActions(
+    farmId,
+    { cropId, seasonId, activeRuleIds },
+    idempotencyKey,
+  ) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/actions/rules/reconcile`,
+      {
+        method: "POST",
+        body: {
+          cropId,
+          seasonId,
+          activeRuleIds,
+          projection: "SYSTEM_RULE",
+        },
+        csrf: true,
+        headers: { "Idempotency-Key": idempotencyKey },
+      },
+    );
   }
 
   async updateAction(farmId, actionId, status, idempotencyKey) {
@@ -1131,12 +1156,23 @@ async function refreshActionPlan(analysis, { ensureRules = true } = {}) {
         drafts.map(({ draft, ruleId }) =>
           api.createAction(
             scope.farmId,
-            { draft, ruleId, confirmed: true },
+            { draft, ruleId, projection: "SYSTEM_RULE" },
             createIdempotencyKey(),
           ),
         ),
       );
-      if (drafts.length > 0) plan = await api.listActions(scope.farmId, scope);
+      if (canReconcileProjectedActions(analysis)) {
+        await api.reconcileRuleActions(
+          scope.farmId,
+          {
+            cropId: scope.cropId,
+            seasonId: scope.seasonId,
+            activeRuleIds: [...new Set(drafts.map(({ ruleId }) => ruleId))],
+          },
+          createIdempotencyKey(),
+        );
+      }
+      plan = await api.listActions(scope.farmId, scope);
     }
     disposeActionPlan?.();
     disposeActionPlan = mountActionPlan(root, plan, {
@@ -3688,6 +3724,17 @@ async function savePhotoJournalEntry(event) {
     setPhotoJournalStatus("저장할 작물 사진을 선택해 주세요.", "error");
     return;
   }
+  if (file.size > LOCAL_PHOTO_MAX_BYTES) {
+    setPhotoJournalStatus("10MB 이하 이미지 파일만 저장할 수 있습니다.", "error");
+    return;
+  }
+  if (form.elements.subjectConfirmed?.checked !== true) {
+    setPhotoJournalStatus(
+      "작물이 화면 중앙 안내선 안을 충분히 채웠는지 확인해 주세요.",
+      "error",
+    );
+    return;
+  }
   if (form.elements.consent?.checked !== true) {
     setPhotoJournalStatus("기기 내 비공개 저장 동의를 확인해 주세요.", "error");
     return;
@@ -3702,7 +3749,10 @@ async function savePhotoJournalEntry(event) {
       );
       return;
     }
-    const visualSignals = await analyzePhotoSignals(file);
+    const visualSignals = {
+      ...(await analyzePhotoSignals(file)),
+      subjectConfirmed: true,
+    };
     const photoQuality = assessPhotoQuality(visualSignals);
     if (!photoQuality.ready) {
       setPhotoJournalStatus(photoQuality.message, "error");

@@ -66,6 +66,10 @@ test("행동·필지·위성 쓰기는 CSRF와 명시적 확인을 거쳐 계정
         calls.push(["create", input]);
         return { created: true, action: { actionId: "action-1" } };
       },
+      async reconcileRuleActions(input) {
+        calls.push(["reconcile", input]);
+        return { cancelled: [] };
+      },
       async updateActionStatus(input) {
         calls.push(["update", input]);
         return { actionId: input.actionId, status: input.status };
@@ -101,6 +105,21 @@ test("행동·필지·위성 쓰기는 CSRF와 명시적 확인을 거쳐 계정
   });
   assert.equal(createResponse.status, 201);
 
+  const reconcileResponse = await fetch(
+    `${baseUrl}/api/farms/farm-1/actions/rules/reconcile`,
+    {
+      method: "POST",
+      headers: headers(currentSession, { "Idempotency-Key": "feature-reconcile-1" }),
+      body: JSON.stringify({
+        cropId: "crop-apple",
+        seasonId: "season-1",
+        activeRuleIds: ["apple.heat.v1"],
+        projection: "SYSTEM_RULE",
+      }),
+    },
+  );
+  assert.equal(reconcileResponse.status, 200);
+
   const refreshResponse = await fetch(`${baseUrl}/api/farms/farm-1/satellite/observations`, {
     method: "POST",
     headers: headers(currentSession),
@@ -113,6 +132,9 @@ test("행동·필지·위성 쓰기는 CSRF와 명시적 확인을 거쳐 계정
   assert.equal(calls[0][1].cropId, "crop-apple");
   assert.equal(calls[1][0], "create");
   assert.equal(calls[1][1].confirmed, true);
-  assert.equal(calls[2][0], "satellite.refresh");
-  assert.match(calls[2][1].ownerSessionId, /^[A-Za-z0-9_-]+$/);
+  assert.equal(calls[2][0], "reconcile");
+  assert.deepEqual(calls[2][1].activeRuleIds, ["apple.heat.v1"]);
+  assert.equal(calls[2][1].projection, "SYSTEM_RULE");
+  assert.equal(calls[3][0], "satellite.refresh");
+  assert.match(calls[3][1].ownerSessionId, /^[A-Za-z0-9_-]+$/);
 });

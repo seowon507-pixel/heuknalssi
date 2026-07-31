@@ -33,7 +33,7 @@ const CHANGE_LABELS = Object.freeze({
   NO_VISIBLE_CHANGE: "눈에 보이는 변화 없음",
 });
 
-const ACTION_STATUSES = new Set(["OPEN", "DONE", "SKIPPED"]);
+const ACTION_STATUSES = new Set(["OPEN", "DONE", "SKIPPED", "CANCELLED"]);
 const EVIDENCE_STATES = new Set([
   "READY",
   "PARTIAL",

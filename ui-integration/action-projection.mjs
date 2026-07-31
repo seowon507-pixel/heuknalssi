@@ -1,6 +1,10 @@
 const DAY_MS = 86_400_000;
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1_000;
 
+export function canReconcileProjectedActions(analysis) {
+  return analysis?.forecast?.result?.riskState === "READY";
+}
+
 export function projectAnalysisAction(action, analysis) {
   if (!action || typeof action !== "object") {
     throw new TypeError("analysis action is required");
@@ -17,7 +21,7 @@ export function projectAnalysisAction(action, analysis) {
   const evidence = analysisEvidence(analysis)
     .filter((item) => triggerIds.includes(item.evidenceId));
   const schedule = risks.length > 0
-    ? riskSchedule(risks, createdAt)
+    ? riskSchedule(risks, evidence, createdAt)
     : dueWindowSchedule(action.dueWindow, createdAt);
 
   return Object.freeze({
@@ -25,6 +29,7 @@ export function projectAnalysisAction(action, analysis) {
     horizon: sameSeoulDate(schedule.dueAt, createdAt) ? "TODAY" : "UPCOMING",
     dueAt: schedule.dueAt.toISOString(),
     recheckAt: schedule.recheckAt.toISOString(),
+    timingBasis: schedule.timingBasis,
     evidenceRefs: evidence.length > 0
       ? evidence.slice(0, 4).map((item) => evidenceRef(item, analysis))
       : triggerIds.slice(0, 4).map((sourceId) => unresolvedEvidenceRef(
@@ -75,22 +80,68 @@ function compareRisks(left, right) {
   );
 }
 
-function riskSchedule(risks, createdAt) {
+function riskSchedule(risks, evidence, createdAt) {
+  const evidenceByRisk = new Map(evidence.map((item) => [item.evidenceId, item]));
   const starts = risks
-    .map((risk) => seoulMorning(risk.dateRange.from))
-    .filter(Boolean);
+    .map((risk) => preventiveStart(risk, evidenceByRisk.get(risk.riskId)))
+    .filter(({ dueAt }) => dueAt !== null);
   const ends = risks
     .map((risk) => seoulMorning(risk.dateRange.to))
     .filter(Boolean);
   if (starts.length === 0 || ends.length === 0) {
     return dueWindowSchedule("NOW", createdAt);
   }
-  const firstStart = new Date(Math.min(...starts.map(Number)));
+  const firstStart = new Date(Math.min(...starts.map(({ dueAt }) => Number(dueAt))));
   const lastEnd = new Date(Math.max(...ends.map(Number)));
   const dueAt = firstStart < createdAt ? new Date(createdAt) : firstStart;
   const nextMorning = new Date(lastEnd.getTime() + DAY_MS);
   const recheckAt = nextMorning < dueAt ? new Date(dueAt) : nextMorning;
-  return { dueAt, recheckAt };
+  return {
+    dueAt,
+    recheckAt,
+    timingBasis: starts
+      .sort((left, right) => Number(left.dueAt) - Number(right.dueAt))[0].basis,
+  };
+}
+
+function preventiveStart(risk, evidence) {
+  const metric = String(evidence?.metric ?? "");
+  const ruleId = String(risk?.ruleId ?? "");
+  const durationKind = evidence?.calculation?.duration?.kind ?? "ANY_DAY";
+  const isLowTemperature =
+    ["minTemperature", "meanMinimumTemperature"].includes(metric) ||
+    /(?:min(?:imum)?[-_.]?temperature|low[-_.]?temperature|frost)/iu.test(ruleId);
+  const isHighTemperature =
+    metric === "maxTemperature" ||
+    /(?:max(?:imum)?[-_.]?temperature|high[-_.]?temperature|heat)/iu.test(ruleId);
+  const isPrecipitation =
+    ["precipitationProbability", "precipitationAmount"].includes(metric) ||
+    /(?:precipitation|rain)/iu.test(ruleId);
+  const hasDurationSignal = durationKind !== "ANY_DAY";
+  if (isLowTemperature) {
+    return {
+      dueAt: seoulTime(risk.dateRange.from, 18, -1),
+      basis: "LOW_TEMPERATURE_PREVIOUS_DAY_18_KST",
+    };
+  }
+  if (isHighTemperature) {
+    return {
+      dueAt: seoulTime(risk.dateRange.from, 6),
+      basis: "HIGH_TEMPERATURE_RISK_DAY_06_KST",
+    };
+  }
+  if (isPrecipitation || hasDurationSignal) {
+    return {
+      dueAt: seoulTime(risk.dateRange.from, 18, -1),
+      basis: hasDurationSignal
+        ? "DURATION_RISK_PREVIOUS_DAY_18_KST"
+        : "PRECIPITATION_PREVIOUS_DAY_18_KST",
+    };
+  }
+  return {
+    dueAt: seoulTime(risk.dateRange.from, 8),
+    basis: "GENERAL_RISK_DAY_08_KST",
+  };
 }
 
 function dueWindowSchedule(dueWindow, createdAt) {
@@ -104,6 +155,7 @@ function dueWindowSchedule(dueWindow, createdAt) {
   return {
     dueAt,
     recheckAt: new Date(dueAt.getTime() + recheckDelay),
+    timingBasis: "DUE_WINDOW_FALLBACK",
   };
 }
 
@@ -197,8 +249,13 @@ function unresolvedState(action) {
 }
 
 function seoulMorning(date) {
-  const parsed = validDate(`${date}T08:00:00+09:00`);
-  return parsed;
+  return seoulTime(date, 8);
+}
+
+function seoulTime(date, hour, dayOffset = 0) {
+  const midnight = validDate(`${date}T00:00:00+09:00`);
+  if (!midnight) return null;
+  return new Date(midnight.getTime() + dayOffset * DAY_MS + hour * 60 * 60 * 1_000);
 }
 
 function validDate(value) {

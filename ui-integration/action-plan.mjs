@@ -16,6 +16,7 @@ const STATUS_LABELS = Object.freeze({
   OPEN: "진행 전",
   DONE: "완료",
   SKIPPED: "건너뜀",
+  CANCELLED: "자동 해제",
 });
 
 export const ACTION_PLAN_STYLES = `

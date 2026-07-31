@@ -6,6 +6,7 @@ import { TtlMemoryStore } from "../src/infrastructure/ttl-memory-store.js";
 
 const action = Object.freeze({
   actionId: "action-1",
+  ruleId: "apple.rain.v1",
   farmId: "farm-1",
   cropId: "crop-1",
   seasonId: "season-1",
@@ -154,4 +155,91 @@ test("action repository never overwrites a completed rule action", async () => {
   assert.equal(duplicate.action.status, "DONE");
   assert.equal(duplicate.action.instruction, done.instruction);
   assert.equal(duplicate.action.updatedAt, done.updatedAt);
+});
+
+test("action repository moves the same OPEN risk rule to its latest forecast date", async () => {
+  const repo = repository();
+  await repo.insertAction({
+    accountId: "account-1",
+    farmId: "farm-1",
+    action,
+    idempotencyKey: "request-1",
+    ruleDedupeKey: "stable-risk-rule",
+  });
+  const moved = await repo.insertAction({
+    accountId: "account-1",
+    farmId: "farm-1",
+    action: {
+      ...action,
+      actionId: "action-2",
+      dueAt: "2026-08-02T21:00:00.000Z",
+      recheckAt: "2026-08-04T23:00:00.000Z",
+      evidenceRefs: [{ sourceKind: "PUBLIC_API", sourceId: "forecast-moved" }],
+      updatedAt: "2026-07-31T12:00:00.000Z",
+    },
+    idempotencyKey: "request-2",
+    ruleDedupeKey: "stable-risk-rule",
+  });
+
+  assert.equal(moved.created, false);
+  assert.equal(moved.action.actionId, "action-1");
+  assert.equal(moved.action.dueAt, "2026-08-02T21:00:00.000Z");
+  assert.equal(moved.action.evidenceRefs[0].sourceId, "forecast-moved");
+  assert.equal(
+    (await repo.listActions({ accountId: "account-1", farmId: "farm-1" })).length,
+    1,
+  );
+});
+
+test("rule reconciliation cancels only disappeared OPEN system rules and preserves terminal/user actions", async () => {
+  const repo = repository();
+  const actions = [
+    action,
+    { ...action, actionId: "active", ruleId: "apple.heat.v1" },
+    {
+      ...action,
+      actionId: "done",
+      ruleId: "apple.frost.v1",
+      status: "DONE",
+      completedAt: "2026-07-31T10:15:00.000Z",
+      updatedAt: "2026-07-31T10:15:00.000Z",
+    },
+    { ...action, actionId: "user", ruleId: null, origin: "USER" },
+  ];
+  for (const [index, item] of actions.entries()) {
+    await repo.insertAction({
+      accountId: "account-1",
+      farmId: "farm-1",
+      action: item,
+      idempotencyKey: `seed-${index}`,
+      ruleDedupeKey: item.origin === "RULE" ? `rule-${index}` : null,
+    });
+  }
+
+  const result = await repo.reconcileRuleActions({
+    accountId: "account-1",
+    farmId: "farm-1",
+    cropId: "crop-1",
+    seasonId: "season-1",
+    activeRuleIds: ["apple.heat.v1"],
+    updatedAt: "2026-07-31T12:00:00.000Z",
+    idempotencyKey: "reconcile-1",
+  });
+  const replay = await repo.reconcileRuleActions({
+    accountId: "account-1",
+    farmId: "farm-1",
+    cropId: "crop-1",
+    seasonId: "season-1",
+    activeRuleIds: [],
+    updatedAt: "2026-07-31T13:00:00.000Z",
+    idempotencyKey: "reconcile-1",
+  });
+
+  assert.deepEqual(result, replay);
+  assert.deepEqual(result.cancelled.map(({ actionId }) => actionId), ["action-1"]);
+  const stored = await repo.listActions({ accountId: "account-1", farmId: "farm-1" });
+  assert.equal(stored.find(({ actionId }) => actionId === "action-1").status, "CANCELLED");
+  assert.equal(stored.find(({ actionId }) => actionId === "active").status, "OPEN");
+  assert.equal(stored.find(({ actionId }) => actionId === "done").status, "DONE");
+  assert.equal(stored.find(({ actionId }) => actionId === "user").status, "OPEN");
 });

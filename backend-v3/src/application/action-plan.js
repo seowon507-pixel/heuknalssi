@@ -14,6 +14,7 @@ export const ACTION_PLAN_REPOSITORY_METHODS = Object.freeze([
   "getAction",
   "insertAction",
   "updateAction",
+  "reconcileRuleActions",
 ]);
 
 export const ACTION_PLAN_REPOSITORY_CONTRACT = Object.freeze({
@@ -25,6 +26,8 @@ export const ACTION_PLAN_REPOSITORY_CONTRACT = Object.freeze({
     "async ({ accountId, farmId, action, idempotencyKey, ruleDedupeKey }) => { action, created }; atomically enforce idempotencyKey and non-null ruleDedupeKey",
   updateAction:
     "async ({ accountId, farmId, action, expectedUpdatedAt, idempotencyKey }) => ActionItem; atomically verify scope and expectedUpdatedAt",
+  reconcileRuleActions:
+    "async ({ accountId, farmId, cropId, seasonId, activeRuleIds, updatedAt, idempotencyKey }) => { cancelled }; atomically cancel disappeared OPEN RULE actions",
 });
 
 export function createActionPlanService({
@@ -69,15 +72,25 @@ export function createActionPlanService({
       farmId,
       draft,
       ruleId = null,
+      projection = null,
       confirmed,
       idempotencyKey,
     } = {}) {
-      const scope = writeScope({
-        accountId,
-        farmId,
-        confirmed,
-        idempotencyKey,
-      });
+      const isRuleProjection = draft?.origin === "RULE";
+      const scope = mutationScope({ accountId, farmId, idempotencyKey });
+      if (isRuleProjection && projection !== "SYSTEM_RULE") {
+        throw new DomainError(
+          "ACTION_PROJECTION_REQUIRED",
+          "RULE actions require the SYSTEM_RULE projection contract",
+        );
+      }
+      if (!isRuleProjection && confirmed !== true) {
+        throw new DomainError(
+          "ACTION_CONFIRMATION_REQUIRED",
+          "explicit user confirmation is required",
+          { status: 409 },
+        );
+      }
       if (draft?.farmId !== scope.farmId) {
         throw new DomainError(
           "ACTION_FARM_SCOPE_MISMATCH",
@@ -99,6 +112,7 @@ export function createActionPlanService({
       }
       const action = createActionItem(draft, {
         actionId: idFactory(),
+        ruleId: isRuleProjection ? ruleId : null,
         now: clock(),
       });
       const dedupeKey =
@@ -107,7 +121,6 @@ export function createActionPlanService({
               farmId: action.farmId,
               cropId: action.cropId,
               ruleId,
-              dueAt: action.dueAt,
             })
           : null;
       const result = await repository.insertAction({
@@ -131,6 +144,65 @@ export function createActionPlanService({
       return { action: saved, created: result.created };
     },
 
+    async reconcileRuleActions({
+      accountId,
+      farmId,
+      cropId,
+      seasonId,
+      activeRuleIds,
+      projection,
+      idempotencyKey,
+    } = {}) {
+      const scope = mutationScope({ accountId, farmId, idempotencyKey });
+      if (projection !== "SYSTEM_RULE") {
+        throw new DomainError(
+          "ACTION_PROJECTION_REQUIRED",
+          "rule reconciliation requires the SYSTEM_RULE projection contract",
+        );
+      }
+      const normalizedCropId = identifier(cropId, "cropId");
+      const normalizedSeasonId = identifier(seasonId, "seasonId");
+      if (!Array.isArray(activeRuleIds) || activeRuleIds.length > 50) {
+        throw new DomainError(
+          "ACTION_RULE_SET_INVALID",
+          "activeRuleIds must be an array with at most 50 rules",
+        );
+      }
+      const normalizedRuleIds = [...new Set(
+        activeRuleIds.map((ruleId) => identifier(ruleId, "activeRuleIds")),
+      )];
+      const result = await repository.reconcileRuleActions({
+        accountId: scope.accountId,
+        farmId: scope.farmId,
+        cropId: normalizedCropId,
+        seasonId: normalizedSeasonId,
+        activeRuleIds: normalizedRuleIds,
+        updatedAt: new Date(clock()).toISOString(),
+        idempotencyKey: scope.idempotencyKey,
+      });
+      if (!result || !Array.isArray(result.cancelled)) {
+        throw repositoryContractError(
+          "reconcileRuleActions must return { cancelled }",
+        );
+      }
+      const cancelled = result.cancelled.map(assertActionItem);
+      if (
+        cancelled.some(
+          (action) =>
+            action.farmId !== scope.farmId ||
+            action.cropId !== normalizedCropId ||
+            action.seasonId !== normalizedSeasonId ||
+            action.origin !== "RULE" ||
+            action.status !== "CANCELLED",
+        )
+      ) {
+        throw repositoryContractError(
+          "reconcileRuleActions returned an action outside projected rule scope",
+        );
+      }
+      return { cancelled };
+    },
+
     async updateActionStatus({
       accountId,
       farmId,
@@ -139,12 +211,14 @@ export function createActionPlanService({
       confirmed,
       idempotencyKey,
     } = {}) {
-      const scope = writeScope({
-        accountId,
-        farmId,
-        confirmed,
-        idempotencyKey,
-      });
+      const scope = mutationScope({ accountId, farmId, idempotencyKey });
+      if (confirmed !== true) {
+        throw new DomainError(
+          "ACTION_CONFIRMATION_REQUIRED",
+          "explicit user confirmation is required",
+          { status: 409 },
+        );
+      }
       const normalizedActionId = identifier(actionId, "actionId");
       const existingValue = await repository.getAction({
         accountId: scope.accountId,
@@ -200,14 +274,7 @@ function readScope({ accountId, farmId, cropId, seasonId }) {
   };
 }
 
-function writeScope({ accountId, farmId, confirmed, idempotencyKey }) {
-  if (confirmed !== true) {
-    throw new DomainError(
-      "ACTION_CONFIRMATION_REQUIRED",
-      "explicit user confirmation is required",
-      { status: 409 },
-    );
-  }
+function mutationScope({ accountId, farmId, idempotencyKey }) {
   return {
     accountId: identifier(accountId, "accountId"),
     farmId: identifier(farmId, "farmId"),

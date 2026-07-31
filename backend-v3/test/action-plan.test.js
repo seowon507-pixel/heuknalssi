@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildActionPlan,
+  cancelRuleAction,
   createActionItem,
   ruleActionDedupeKey,
   transitionActionStatus,
@@ -45,9 +46,12 @@ function draft(overrides = {}) {
 }
 
 function item(overrides = {}) {
-  const { actionId = "action-a", ...draftOverrides } = overrides;
+  const { actionId = "action-a", ruleId = "apple.rain.check.v1", ...draftOverrides } = overrides;
   return createActionItem(draft(draftOverrides), {
     actionId,
+    ruleId: draftOverrides.origin === "RULE" || draftOverrides.origin === undefined
+      ? ruleId
+      : null,
     now: NOW,
   });
 }
@@ -57,6 +61,7 @@ test("ActionItem은 오늘/당분간, 상태, 기한, 재확인, 출처를 그�
 
   assert.deepEqual(action, {
     actionId: "action-a",
+    ruleId: "apple.rain.check.v1",
     farmId: "farm-a",
     cropId: "crop-apple-a",
     seasonId: "season-a",
@@ -137,7 +142,7 @@ test("목록은 열린 오늘 행동을 첫 행동으로 두고 농장/작물을
   ]);
 });
 
-test("규칙 행동 중복키는 농장+작물+규칙+서울 기준 기한 날짜에 묶인다", () => {
+test("규칙 행동 중복키는 예보 날짜가 이동해도 농장+작물+위험 규칙에 묶인다", () => {
   const input = {
     farmId: "farm-a",
     cropId: "crop-apple-a",
@@ -154,13 +159,46 @@ test("규칙 행동 중복키는 농장+작물+규칙+서울 기준 기한 날�
     ruleActionDedupeKey(input),
     ruleActionDedupeKey({ ...input, dueAt: "2026-07-31T14:59:59.000Z" }),
   );
-  assert.notEqual(
+  assert.equal(
     ruleActionDedupeKey(input),
     ruleActionDedupeKey({
       ...input,
       dueAt: "2026-08-01T09:00:00.000Z",
     }),
   );
+});
+
+test("시스템 규칙 투영은 OPEN 행동만 자동 해제하고 완료 기록은 보존한다", () => {
+  const cancelled = cancelRuleAction(item(), {
+    now: "2026-07-31T05:00:00.000Z",
+  });
+  const done = transitionActionStatus(
+    item({ actionId: "done", title: "완료한 별도 행동" }),
+    "DONE",
+    { now: "2026-07-31T04:00:00.000Z" },
+  );
+
+  assert.equal(cancelled.status, "CANCELLED");
+  assert.equal(cancelled.updatedAt, "2026-07-31T05:00:00.000Z");
+  assert.equal(cancelRuleAction(done, { now: "2026-07-31T06:00:00.000Z" }).status, "DONE");
+  assert.throws(
+    () => transitionActionStatus(cancelled, "OPEN", { now: "2026-07-31T07:00:00.000Z" }),
+    (error) => error.code === "ACTION_STATUS_TRANSITION_INVALID",
+  );
+  assert.throws(
+    () => transitionActionStatus(item({ actionId: "manual-cancel" }), "CANCELLED", {
+      now: "2026-07-31T07:00:00.000Z",
+    }),
+    (error) => error.code === "ACTION_STATUS_TRANSITION_INVALID",
+  );
+
+  const plan = buildActionPlan([cancelled, done], {
+    farmId: "farm-a",
+    cropId: "crop-apple-a",
+  });
+  assert.equal(plan.today.length, 1);
+  assert.equal(plan.archived.length, 1);
+  assert.equal(plan.archived[0].status, "CANCELLED");
 });
 
 test("같은 날 생성된 규칙 행동은 한 건으로 정리하고 완료 상태를 보존한다", () => {
@@ -180,7 +218,7 @@ test("같은 날 생성된 규칙 행동은 한 건으로 정리하고 완료 �
   assert.equal(plan.today[0].status, "DONE");
 });
 
-test("응용 서비스는 규칙 중복을 원자 저장 계약에 위임하고 새 기한은 새 행동으로 만든다", async () => {
+test("응용 서비스는 같은 규칙의 예보 날짜가 이동하면 OPEN 행동을 최신 근거로 갱신한다", async () => {
   const repository = createMemoryRepository();
   let id = 0;
   const service = createActionPlanService({
@@ -191,7 +229,7 @@ test("응용 서비스는 규칙 중복을 원자 저장 계약에 위임하고 
   const command = {
     accountId: "account-a",
     farmId: "farm-a",
-    confirmed: true,
+    projection: "SYSTEM_RULE",
     idempotencyKey: "request-1",
     ruleId: "apple.rain.check.v1",
     draft: draft(),
@@ -214,12 +252,13 @@ test("응용 서비스는 규칙 중복을 원자 저장 계약에 위임하고 
   assert.equal(first.created, true);
   assert.equal(duplicate.created, false);
   assert.equal(duplicate.action.actionId, first.action.actionId);
-  assert.equal(later.created, true);
-  assert.notEqual(later.action.actionId, first.action.actionId);
-  assert.equal(repository.actions.size, 2);
+  assert.equal(later.created, false);
+  assert.equal(later.action.actionId, first.action.actionId);
+  assert.equal(later.action.dueAt, "2026-08-01T09:00:00.000Z");
+  assert.equal(repository.actions.size, 1);
 });
 
-test("응용 서비스는 확인 없는 쓰기를 막고 조회 범위를 계정/농장/작물로 전달한다", async () => {
+test("응용 서비스는 자동 규칙 계약과 사용자 확인을 분리하고 조회 범위를 전달한다", async () => {
   const repository = createMemoryRepository();
   const service = createActionPlanService({ repository });
 
@@ -227,10 +266,19 @@ test("응용 서비스는 확인 없는 쓰기를 막고 조회 범위를 계정
     service.createAction({
       accountId: "account-a",
       farmId: "farm-a",
-      confirmed: false,
       idempotencyKey: "request-1",
       ruleId: "apple.rain.check.v1",
       draft: draft(),
+    }),
+    (error) => error.code === "ACTION_PROJECTION_REQUIRED",
+  );
+  await assert.rejects(
+    service.createAction({
+      accountId: "account-a",
+      farmId: "farm-a",
+      confirmed: false,
+      idempotencyKey: "request-2",
+      draft: draft({ origin: "USER" }),
     }),
     (error) => error.code === "ACTION_CONFIRMATION_REQUIRED",
   );
@@ -271,12 +319,43 @@ test("상태 변경은 저장된 소유 범위와 낙관적 갱신 기준을 유
   assert.equal(repository.lastExpectedUpdatedAt, NOW);
 });
 
+test("위험 규칙 재조정은 사라진 OPEN 자동 행동만 해제한다", async () => {
+  const repository = createMemoryRepository();
+  const open = item();
+  const done = transitionActionStatus(
+    item({ actionId: "done", ruleId: "apple.done.v1" }),
+    "DONE",
+    { now: "2026-07-31T01:00:00.000Z" },
+  );
+  repository.actions.set(open.actionId, open);
+  repository.actions.set(done.actionId, done);
+  const service = createActionPlanService({
+    repository,
+    clock: () => new Date("2026-07-31T02:00:00.000Z"),
+  });
+
+  const result = await service.reconcileRuleActions({
+    accountId: "account-a",
+    farmId: "farm-a",
+    cropId: "crop-apple-a",
+    seasonId: "season-a",
+    activeRuleIds: [],
+    projection: "SYSTEM_RULE",
+    idempotencyKey: "reconcile-1",
+  });
+
+  assert.deepEqual(result.cancelled.map(({ actionId }) => actionId), ["action-a"]);
+  assert.equal(repository.actions.get("action-a").status, "CANCELLED");
+  assert.equal(repository.actions.get("done").status, "DONE");
+});
+
 test("저장 어댑터 인터페이스는 통합자가 구현할 메서드를 고정한다", () => {
   assert.deepEqual(ACTION_PLAN_REPOSITORY_METHODS, [
     "listActions",
     "getAction",
     "insertAction",
     "updateAction",
+    "reconcileRuleActions",
   ]);
 });
 
@@ -302,7 +381,20 @@ function createMemoryRepository() {
     },
     async insertAction({ action, ruleDedupeKey: key }) {
       if (key && dedupe.has(key)) {
-        return { action: actions.get(dedupe.get(key)), created: false };
+        const actionId = dedupe.get(key);
+        const existing = actions.get(actionId);
+        if (existing.status === "OPEN") {
+          const updated = {
+            ...action,
+            actionId: existing.actionId,
+            status: existing.status,
+            completedAt: existing.completedAt,
+            createdAt: existing.createdAt,
+          };
+          actions.set(actionId, updated);
+          return { action: updated, created: false };
+        }
+        return { action: existing, created: false };
       }
       actions.set(action.actionId, action);
       if (key) dedupe.set(key, action.actionId);
@@ -314,6 +406,25 @@ function createMemoryRepository() {
       assert.equal(existing.updatedAt, expectedUpdatedAt);
       actions.set(action.actionId, action);
       return action;
+    },
+    async reconcileRuleActions({ farmId, cropId, seasonId, activeRuleIds, updatedAt }) {
+      const active = new Set(activeRuleIds);
+      const cancelled = [];
+      for (const [actionId, action] of actions) {
+        if (
+          action.farmId === farmId &&
+          action.cropId === cropId &&
+          action.seasonId === seasonId &&
+          action.origin === "RULE" &&
+          action.status === "OPEN" &&
+          !active.has(action.ruleId)
+        ) {
+          const next = { ...action, status: "CANCELLED", updatedAt };
+          actions.set(actionId, next);
+          cancelled.push(next);
+        }
+      }
+      return { cancelled };
     },
   };
 }

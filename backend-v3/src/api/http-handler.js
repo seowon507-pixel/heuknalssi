@@ -30,6 +30,7 @@ const DEFAULT_RATE_LIMITS = Object.freeze({
   "health.preflight": { limit: 30, windowMs: 60_000 },
   "actions.list": { limit: 60, windowMs: 60_000 },
   "actions.create": { limit: 20, windowMs: 60_000 },
+  "actions.reconcile": { limit: 20, windowMs: 60_000 },
   "actions.update": { limit: 30, windowMs: 60_000 },
   "parcel.get": { limit: 60, windowMs: 60_000 },
   "parcel.put": { limit: 10, windowMs: 60_000 },
@@ -48,6 +49,7 @@ const DEFAULT_IP_RATE_LIMITS = Object.freeze({
   "health.preflight": { limit: 30, windowMs: 60_000 },
   "actions.list": { limit: 60, windowMs: 60_000 },
   "actions.create": { limit: 20, windowMs: 60_000 },
+  "actions.reconcile": { limit: 20, windowMs: 60_000 },
   "actions.update": { limit: 30, windowMs: 60_000 },
   "parcel.get": { limit: 60, windowMs: 60_000 },
   "parcel.put": { limit: 10, windowMs: 60_000 },
@@ -114,6 +116,12 @@ const ROUTES = Object.freeze([
     name: "actions.list",
     pattern: /^\/api\/farms\/([^/]+)\/actions$/,
     methods: ["GET", "POST"],
+    parameter: "farmId",
+  },
+  {
+    name: "actions.reconcile",
+    pattern: /^\/api\/farms\/([^/]+)\/actions\/rules\/reconcile$/,
+    methods: ["POST"],
     parameter: "farmId",
   },
   {
@@ -1073,10 +1081,28 @@ export function createHttpHandler({
           farmId: route.parameters.farmId,
           draft: body.draft,
           ruleId: body.ruleId ?? null,
+          projection: body.projection ?? null,
           confirmed: body.confirmed,
           idempotencyKey,
         });
         sendJson(res, result.created ? 201 : 200, result);
+        return;
+      }
+
+      if (route.name === "actions.reconcile") {
+        const actionService = featureServices.actionPlan;
+        if (!actionService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        const result = await actionService.reconcileRuleActions({
+          accountId: session.id,
+          farmId: route.parameters.farmId,
+          cropId: body.cropId,
+          seasonId: body.seasonId,
+          activeRuleIds: body.activeRuleIds,
+          projection: body.projection,
+          idempotencyKey: requireIdempotencyHeader(req),
+        });
+        sendJson(res, 200, result);
         return;
       }
 
@@ -1184,7 +1210,12 @@ function validateFeatureServices(featureServices) {
     throw new TypeError("featureServices must be an object");
   }
   if (featureServices.actionPlan !== undefined) {
-    for (const method of ["listActions", "createAction", "updateActionStatus"]) {
+    for (const method of [
+      "listActions",
+      "createAction",
+      "reconcileRuleActions",
+      "updateActionStatus",
+    ]) {
       if (typeof featureServices.actionPlan?.[method] !== "function") {
         throw new TypeError(`featureServices.actionPlan.${method} must be a function`);
       }

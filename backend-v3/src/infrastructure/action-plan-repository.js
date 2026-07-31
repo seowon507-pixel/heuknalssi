@@ -30,7 +30,7 @@ function documentKey(accountId, farmId) {
 }
 
 function emptyDocument() {
-  return { actions: [], idempotency: {}, ruleDedupe: {} };
+  return { actions: [], idempotency: {}, ruleDedupe: {}, reconciliations: {} };
 }
 
 function assertStore(store) {
@@ -52,7 +52,10 @@ async function loadDocument(store, key) {
   ) {
     throw new Error("action plan store returned an invalid document");
   }
-  return structuredClone(value);
+  return structuredClone({
+    ...value,
+    reconciliations: value.reconciliations ?? {},
+  });
 }
 
 export function createActionPlanRepository({
@@ -140,16 +143,27 @@ export function createActionPlanRepository({
           );
           if (index < 0) throw new Error("action plan index is inconsistent");
           const existing = document.actions[index];
-          const projected = existing.status === "OPEN"
-            ? upsertOpenRuleAction(existing, action)
-            : existing;
-          document.actions[index] = projected;
-          document.idempotency[idempotencyKey] = existing.actionId;
-          return {
-            write: true,
-            document,
-            value: { action: structuredClone(projected), created: false },
-          };
+          if (existing.status === "OPEN") {
+            const projected = upsertOpenRuleAction(existing, action);
+            document.actions[index] = projected;
+            document.idempotency[idempotencyKey] = existing.actionId;
+            return {
+              write: true,
+              document,
+              value: { action: structuredClone(projected), created: false },
+            };
+          }
+          if (
+            existing.status !== "CANCELLED" &&
+            sameSeoulDate(existing.dueAt, action.dueAt)
+          ) {
+            document.idempotency[idempotencyKey] = existing.actionId;
+            return {
+              write: true,
+              document,
+              value: { action: structuredClone(existing), created: false },
+            };
+          }
         }
         document.actions.push(structuredClone(action));
         document.idempotency[idempotencyKey] = action.actionId;
@@ -199,6 +213,48 @@ export function createActionPlanRepository({
         return { write: true, document, value: structuredClone(action) };
       });
     },
+
+    async reconcileRuleActions({
+      accountId,
+      farmId,
+      cropId,
+      seasonId,
+      activeRuleIds,
+      updatedAt,
+      idempotencyKey,
+    }) {
+      const key = documentKey(accountId, farmId);
+      return mutate(key, (document) => {
+        const replay = document.reconciliations[idempotencyKey];
+        if (replay) return { write: false, value: structuredClone(replay) };
+        const active = new Set(activeRuleIds);
+        const cancelled = [];
+        document.actions = document.actions.map((action) => {
+          if (
+            action.farmId !== farmId ||
+            action.cropId !== cropId ||
+            action.seasonId !== seasonId ||
+            action.origin !== "RULE" ||
+            action.status !== "OPEN" ||
+            typeof action.ruleId !== "string" ||
+            active.has(action.ruleId)
+          ) {
+            return action;
+          }
+          const projected = {
+            ...action,
+            status: "CANCELLED",
+            completedAt: null,
+            updatedAt: monotonicTimestamp(action.updatedAt, updatedAt),
+          };
+          cancelled.push(structuredClone(projected));
+          return projected;
+        });
+        const result = { cancelled };
+        document.reconciliations[idempotencyKey] = structuredClone(result);
+        return { write: true, document, value: result };
+      });
+    },
   });
 }
 
@@ -225,6 +281,16 @@ function monotonicTimestamp(previous, candidate) {
   const previousMs = Date.parse(previous);
   const candidateMs = Date.parse(candidate);
   return new Date(Math.max(candidateMs, previousMs + 1)).toISOString();
+}
+
+function sameSeoulDate(left, right) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(new Date(left)) === formatter.format(new Date(right));
 }
 
 export const actionPlanRepositoryDefaults = Object.freeze({

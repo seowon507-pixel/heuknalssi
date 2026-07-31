@@ -1,7 +1,7 @@
 import { DomainError } from "./errors.js";
 
 const ACTION_HORIZONS = new Set(["TODAY", "UPCOMING"]);
-const ACTION_STATUSES = new Set(["OPEN", "DONE", "SKIPPED"]);
+const ACTION_STATUSES = new Set(["OPEN", "DONE", "SKIPPED", "CANCELLED"]);
 const ACTION_ORIGINS = new Set(["RULE", "USER", "ASSISTANT_PROPOSAL"]);
 const EVIDENCE_STATES = new Set([
   "READY",
@@ -32,21 +32,23 @@ const DRAFT_FIELDS = new Set([
 ]);
 const ITEM_FIELDS = new Set([
   "actionId",
+  "ruleId",
   ...DRAFT_FIELDS,
   "status",
   "completedAt",
   "createdAt",
   "updatedAt",
 ]);
-const STATUS_PRIORITY = Object.freeze({ OPEN: 0, DONE: 1, SKIPPED: 2 });
-const DUPLICATE_STATUS_PRIORITY = Object.freeze({ DONE: 0, SKIPPED: 1, OPEN: 2 });
+const STATUS_PRIORITY = Object.freeze({ OPEN: 0, DONE: 1, SKIPPED: 2, CANCELLED: 3 });
+const DUPLICATE_STATUS_PRIORITY = Object.freeze({ DONE: 0, SKIPPED: 1, OPEN: 2, CANCELLED: 3 });
 
-export function createActionItem(draft, { actionId, now } = {}) {
+export function createActionItem(draft, { actionId, ruleId = null, now } = {}) {
   assertRecord(draft, "INVALID_ACTION_DRAFT", "action draft must be an object");
   rejectUnknownFields(draft, DRAFT_FIELDS);
   const timestamp = utcTimestamp(now, "now");
   const item = {
     actionId: requiredIdentifier(actionId, "actionId"),
+    ruleId: nullableIdentifier(ruleId, "ruleId"),
     farmId: requiredIdentifier(draft.farmId, "farmId"),
     cropId: requiredIdentifier(draft.cropId, "cropId"),
     seasonId: requiredIdentifier(draft.seasonId, "seasonId"),
@@ -63,6 +65,7 @@ export function createActionItem(draft, { actionId, now } = {}) {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+  assertRuleOrigin(item);
   if (Date.parse(item.recheckAt) < Date.parse(item.dueAt)) {
     throw new DomainError(
       "ACTION_RECHECK_BEFORE_DUE",
@@ -77,6 +80,7 @@ export function assertActionItem(value) {
   rejectUnknownFields(value, ITEM_FIELDS);
   const normalized = {
     actionId: requiredIdentifier(value.actionId, "actionId"),
+    ruleId: nullableIdentifier(value.ruleId, "ruleId"),
     farmId: requiredIdentifier(value.farmId, "farmId"),
     cropId: requiredIdentifier(value.cropId, "cropId"),
     seasonId: requiredIdentifier(value.seasonId, "seasonId"),
@@ -96,6 +100,7 @@ export function assertActionItem(value) {
     createdAt: utcTimestamp(value.createdAt, "createdAt"),
     updatedAt: utcTimestamp(value.updatedAt, "updatedAt"),
   };
+  assertRuleOrigin(normalized);
   if (Date.parse(normalized.recheckAt) < Date.parse(normalized.dueAt)) {
     throw new DomainError(
       "ACTION_RECHECK_BEFORE_DUE",
@@ -121,6 +126,18 @@ export function transitionActionStatus(action, status, { now } = {}) {
   const current = assertActionItem(action);
   const nextStatus = enumValue(status, ACTION_STATUSES, "status");
   if (current.status === nextStatus) return structuredClone(current);
+  if (nextStatus === "CANCELLED") {
+    throw new DomainError(
+      "ACTION_STATUS_TRANSITION_INVALID",
+      "CANCELLED is reserved for system rule reconciliation",
+    );
+  }
+  if (current.status === "CANCELLED") {
+    throw new DomainError(
+      "ACTION_STATUS_TRANSITION_INVALID",
+      "a cancelled rule action cannot be reopened or completed",
+    );
+  }
   const timestamp = utcTimestamp(now, "now");
   return {
     ...current,
@@ -130,15 +147,30 @@ export function transitionActionStatus(action, status, { now } = {}) {
   };
 }
 
-export function ruleActionDedupeKey({ farmId, cropId, ruleId, dueAt } = {}) {
-  const dueTimestamp = utcTimestamp(dueAt, "dueAt");
+export function cancelRuleAction(action, { now } = {}) {
+  const current = assertActionItem(action);
+  if (current.origin !== "RULE" || current.ruleId === null) {
+    throw new DomainError(
+      "ACTION_RULE_CANCELLATION_UNSUPPORTED",
+      "only a projected RULE action may be cancelled automatically",
+    );
+  }
+  if (current.status !== "OPEN") return structuredClone(current);
+  return {
+    ...current,
+    status: "CANCELLED",
+    completedAt: null,
+    updatedAt: utcTimestamp(now, "now"),
+  };
+}
+
+export function ruleActionDedupeKey({ farmId, cropId, ruleId } = {}) {
   const parts = [
     requiredIdentifier(farmId, "farmId"),
     requiredIdentifier(cropId, "cropId"),
     requiredIdentifier(ruleId, "ruleId"),
-    seoulDateKey(dueTimestamp),
   ];
-  return `action-rule:v1:${parts.map(lengthPrefix).join("")}`;
+  return `action-rule:v2:${parts.map(lengthPrefix).join("")}`;
 }
 
 export function buildActionPlan(items, { farmId, cropId = null } = {}) {
@@ -157,8 +189,10 @@ export function buildActionPlan(items, { farmId, cropId = null } = {}) {
         item.farmId === farmScope &&
         (cropScope === null || item.cropId === cropScope),
     ));
-  const today = scoped.filter(({ horizon }) => horizon === "TODAY").sort(compare);
-  const upcoming = scoped
+  const active = scoped.filter(({ status }) => status !== "CANCELLED");
+  const archived = scoped.filter(({ status }) => status === "CANCELLED");
+  const today = active.filter(({ horizon }) => horizon === "TODAY").sort(compare);
+  const upcoming = active
     .filter(({ horizon }) => horizon === "UPCOMING")
     .sort(compare);
   const firstAction =
@@ -171,6 +205,7 @@ export function buildActionPlan(items, { farmId, cropId = null } = {}) {
     firstAction: firstAction ? structuredClone(firstAction) : null,
     today: structuredClone(today),
     upcoming: structuredClone(upcoming),
+    archived: structuredClone(archived.sort(compare)),
   };
 }
 
@@ -304,6 +339,27 @@ function requiredIdentifier(value, field) {
     );
   }
   return value.trim();
+}
+
+function nullableIdentifier(value, field) {
+  return value === null || value === undefined
+    ? null
+    : requiredIdentifier(value, field);
+}
+
+function assertRuleOrigin(action) {
+  if (action.origin === "RULE" && action.ruleId === null) {
+    throw new DomainError(
+      "ACTION_RULE_ID_REQUIRED",
+      "RULE action requires ruleId",
+    );
+  }
+  if (action.origin !== "RULE" && action.ruleId !== null) {
+    throw new DomainError(
+      "ACTION_RULE_ID_UNSUPPORTED",
+      "only RULE action may include ruleId",
+    );
+  }
 }
 
 function requiredText(value, field, maxLength) {
