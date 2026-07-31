@@ -1,7 +1,6 @@
 import { randomBytes as nodeRandomBytes } from 'node:crypto';
 
 import {
-  calculateSuitability,
   ALLOWED_CULTIVATION_MODES,
   createRuleRegistry,
   Crop,
@@ -29,10 +28,6 @@ import {
   unavailableModule,
 } from './disclosure.js';
 import { latestKmaMidIssue, latestKmaShortIssue } from './forecast-issue.js';
-import { buildPlainReport } from './plain-report.js';
-
-// 쉬운 말 리포트에 쓸 최대 시간. 넘으면 템플릿만 쓴다.
-const PLAIN_REPORT_BUDGET_MS = 6_000;
 import {
   resolveLocationKeys,
   validateVerifiedLocationMappings,
@@ -64,6 +59,21 @@ const ANALYSIS_LIFECYCLE_ORDER = Object.freeze([
 ]);
 
 const SOURCE_BASES = Object.freeze({
+  locationCatalog: Object.freeze({
+    sourceId: 'kma-location-catalog',
+    sourceName: '기상청 지상관측 지점·예보구역 정보',
+    sourceUrl:
+      'https://apihub.kma.go.kr/apiList.do?seqApi=10&seqApiSub=321',
+    spatialLevel: 'FORECAST_REGION',
+    spatialLabel: '전국 공식 지점·예보구역 목록',
+    provenance: {
+      adapterId: 'kma-location-catalog',
+      adapterVersion: 'unconfigured',
+      operationId: 'get-current-stations-and-forecast-zones',
+      contractVersion: null,
+      providerIssueTime: null,
+    },
+  }),
   climate: Object.freeze({
     sourceId: 'kma-climate-normal',
     sourceName: '기상청 기후평년',
@@ -117,6 +127,20 @@ const SOURCE_BASES = Object.freeze({
       adapterVersion: '1',
       operationId: 'user-submitted-soil-exam',
       contractVersion: 'user-soil-test-v1',
+      providerIssueTime: null,
+    },
+  }),
+  soilExam: Object.freeze({
+    sourceId: 'soil-exam-v2',
+    sourceName: '토양검정 화학성 상세정보 V2',
+    sourceUrl: 'https://www.data.go.kr/data/15144647/openapi.do',
+    spatialLevel: 'FIELD',
+    spatialLabel: '선택 필지 최근 토양검정',
+    provenance: {
+      adapterId: 'soil-exam-v2',
+      adapterVersion: 'unconfigured',
+      operationId: 'getSoilExam',
+      contractVersion: null,
       providerIssueTime: null,
     },
   }),
@@ -207,6 +231,7 @@ export function createApplicationServices({
     satellite: 'DISABLED',
     persistence: 'NOT_AVAILABLE',
     assistant: 'FALLBACK',
+    deviceBackup: 'NOT_AVAILABLE',
   },
 } = {}) {
   validateDependencies({
@@ -344,10 +369,26 @@ export function createApplicationServices({
     }
 
     const resolvedLocation = candidate.resolvedLocation;
+    const catalogDeadlineAt = clock() + Math.min(coreDeadlineMs, 3_000);
+    const catalogEnvelope = await callSource(
+      adapters.locationCatalog?.getCatalog,
+      adapters.locationCatalog,
+      {},
+      SOURCE_BASES.locationCatalog,
+      signal,
+      catalogDeadlineAt,
+      clock,
+      'LOCATION_CATALOG_UNAVAILABLE',
+    );
     const locationKeys = resolveLocationKeys(
       resolvedLocation,
       verifiedLocationMappings,
-      { now: () => new Date(clock()) },
+      {
+        now: () => new Date(clock()),
+        officialCatalog: envelopeHasUsableData(catalogEnvelope)
+          ? catalogEnvelope.data
+          : null,
+      },
     );
     const moduleRules = {
       climate: ruleRegistry.resolve(request, 'CLIMATE'),
@@ -385,21 +426,39 @@ export function createApplicationServices({
       moduleRules.climate,
       envelopes.climate,
     );
-    // 사용자가 등록한 토양검정 결과가 있으면 지역 면적통계 대신 그 실측값으로
-    // 토양을 판단한다. 두 자료는 같은 필드에 섞지 않고 출처도 따로 남긴다.
+    // 필지 실측값은 지역 면적통계보다 우선한다. 사용자 등록값이 있으면 가장
+    // 먼저 사용하고, 없으면 공공 API의 최신 검정값을 사용한다. 자료끼리
+    // 평균하거나 빈 값을 지역값으로 채우지 않는다.
     const soilMeasurement = buildSoilTestEnvelope(request.soilTest, clock);
-    const soilBasisEnvelope = soilMeasurement ?? envelopes.soil;
+    const providerSoilMeasurement = envelopeHasUsableData(envelopes.soilExam)
+      ? envelopes.soilExam
+      : null;
+    const soilBasisEnvelope =
+      soilMeasurement ?? providerSoilMeasurement ?? envelopes.soil;
+    const soilMeasurementBasis = soilMeasurement
+      ? 'USER_SOIL_TEST'
+      : providerSoilMeasurement
+        ? 'PROVIDER_SOIL_TEST'
+        : 'REGIONAL_STATISTICS';
+    const soilRulesForAvailableBasis = selectSoilRulesForBasis(
+      moduleRules.soil,
+      soilMeasurementBasis,
+    );
     let soil = withEvidence(
       evaluateSoil({
         request,
-        rules: moduleRules.soil,
+        rules: soilRulesForAvailableBasis,
         metrics: soilBasisEnvelope.data?.metrics ?? [],
       }),
       buildSoilEvidence,
-      moduleRules.soil,
+      soilRulesForAvailableBasis,
       soilBasisEnvelope,
     );
-    soil = attachSoilMeasurement(soil, request.soilTest, envelopes.soil);
+    soil = attachSoilMeasurement(soil, {
+      userSoilTest: request.soilTest,
+      providerEnvelope: envelopes.soilExam,
+      regionalEnvelope: envelopes.soil,
+    });
     soil = attachFieldSoilProfile(soil, envelopes.fieldSoil);
     if (soilMeasurement !== null) envelopes.soilTest = soilMeasurement;
     const shortDays = decorateForecastDays(
@@ -440,7 +499,7 @@ export function createApplicationServices({
         );
 
     applyEnvelopeQuality(climate, envelopes.climate);
-    applyEnvelopeQuality(soil, envelopes.soil);
+    applyEnvelopeQuality(soil, soilBasisEnvelope);
     applyObservationEnvelopeQuality(observations, envelopes.observations);
     applyEnvelopeQuality(forecast, [
       envelopes.shortForecast,
@@ -519,14 +578,7 @@ export function createApplicationServices({
       soil,
       observations,
       forecast,
-      // 검수된 규칙 가중치와 이미 계산된 편차만으로 산출한다. 산식도 함께 싣는다.
-      suitability: calculateSuitability({
-        climate,
-        soil,
-        forecast,
-        rules: moduleRules.soil,
-      }),
-      smartfarm: smartfarmModule(request, envelopes.smartfarm),
+      smartfarm: null,
       satellite: request.options.includeSatelliteObservation
         ? unavailableModule('SATELLITE_P2_NOT_ENABLED', 'UNSUPPORTED')
         : null,
@@ -535,6 +587,7 @@ export function createApplicationServices({
         smartfarm: capabilities.smartfarm ?? 'DISABLED',
         satellite: capabilities.satellite ?? 'DISABLED',
         persistence: capabilities.persistence ?? 'NOT_AVAILABLE',
+        deviceBackup: capabilities.deviceBackup ?? 'NOT_AVAILABLE',
       },
       persistenceState: request.options.saveConsent
         ? 'NOT_AVAILABLE'
@@ -623,29 +676,18 @@ export function createApplicationServices({
       clock() + reportLockTtlMs,
     );
     persistAnalysisRecord(analysisId, record);
-    // 서버리스에서는 응답을 보낸 뒤 백그라운드 작업이 얼어붙는다.
-    // 리포트는 응답 전에 끝내고, 지연이 길어지면 템플릿으로 되돌린다.
-    const template = buildDeterministicReport(record.result);
-    const plain = await buildPlainReport({
-      analysis: record.result,
-      assistant,
-      deadlineAt: clock() + PLAIN_REPORT_BUDGET_MS,
+    queueMicrotask(() => {
+      const current = analysisStore.get(analysisId);
+      if (!current || current.ownerSessionId !== ownerSessionId) return;
+      current.result.report = {
+        state: 'FALLBACK',
+        value: buildDeterministicReport(current.result),
+      };
+      appendLifecycleTransition(current.result, 'COMPLETE', clock);
+      current.reportPending = false;
+      persistAnalysisRecord(analysisId, current);
     });
-    const current = analysisStore.get(analysisId) ?? record;
-    current.result.report = {
-      state: plain.state === 'READY' ? 'READY' : 'FALLBACK',
-      value: template,
-      plainLanguage: {
-        state: plain.state,
-        reason: plain.reason,
-        paragraphs: plain.paragraphs,
-        basis: 'REWRITTEN_FROM_CONFIRMED_ANALYSIS',
-      },
-    };
-    appendLifecycleTransition(current.result, 'COMPLETE', clock);
-    current.reportPending = false;
-    persistAnalysisRecord(analysisId, current);
-    return { analysis: structuredClone(current.result), started: true };
+    return { analysis: structuredClone(record.result), started: true };
   }
 
   function persistAnalysisRecord(analysisId, record) {
@@ -695,11 +737,6 @@ export function createApplicationServices({
         'getForecast',
       ),
     };
-    const smartfarmState = adapterCapability(
-      adapters.smartfarm,
-      runtimeStatus?.adapters?.smartfarm,
-      'getReference',
-    );
     const activeRuleCount = ruleRegistry.rules.length;
     const decisionRules = ruleRegistry.rules.filter(isDecisionCapableRule);
     const decisionRuleCount = decisionRules.length;
@@ -754,24 +791,28 @@ export function createApplicationServices({
       },
       adapters: adapterStates,
       optionalAdapters: {
+        soilExam: adapterCapability(
+          adapters.soilExam,
+          runtimeStatus?.adapters?.soilExam,
+          'getLatestExam',
+        ),
         soilField: adapterCapability(
           adapters.soilField,
           runtimeStatus?.adapters?.soilField,
           'getFieldProfile',
         ),
-        smartfarm: smartfarmState,
       },
       contracts: sanitizeRuntimeContracts(runtimeStatus?.contracts),
       capabilities: {
-        smartfarm: smartfarmState,
+        smartfarm: 'DISABLED',
         satellite: capabilities.satellite ?? 'DISABLED',
         persistence: capabilities.persistence ?? 'NOT_AVAILABLE',
-        report: 'TEMPLATE_PLUS_PLAIN_REWRITE',
+        deviceBackup: capabilities.deviceBackup ?? 'NOT_AVAILABLE',
+        report: 'DETERMINISTIC_TEMPLATE',
         assistant: capabilities.assistant ?? assistant?.state ?? 'FALLBACK',
       },
       guarantees: {
-        // 종합 점수를 제공하되 가중치와 산식을 응답에 공개한다.
-        compositeScoreWeightsPublished: true,
+        singleCompositeScore: false,
         missingValueReweighting: false,
         unverifiedSoilRepresentativeValue: false,
         freeFormLlm: false,
@@ -880,6 +921,20 @@ async function collectCoreEnvelopes({
       clock,
       'FIELD_PNU_UNAVAILABLE',
     ),
+    soilExam: callSource(
+      adapters.soilExam?.getLatestExam,
+      adapters.soilExam,
+      !request.soilTest && fieldParcelLookupKey
+        ? { pnuCode: fieldParcelLookupKey }
+        : null,
+      SOURCE_BASES.soilExam,
+      signal,
+      deadlineAt,
+      clock,
+      request.soilTest
+        ? 'USER_SOIL_TEST_ALREADY_PROVIDED'
+        : 'FIELD_PNU_UNAVAILABLE',
+    ),
     shortForecast: callSource(
       adapters.kmaShort?.getForecast,
       adapters.kmaShort,
@@ -904,26 +959,6 @@ async function collectCoreEnvelopes({
       clock,
       'VERIFIED_MID_FORECAST_REGION_UNAVAILABLE',
     ),
-    ...(request.options.includeSmartfarmBenchmark &&
-    smartfarmContextSupported(request)
-      ? {
-          smartfarm: callSource(
-            adapters.smartfarm?.getReference,
-            adapters.smartfarm,
-            {
-              crop: request.crop,
-              cultivationMode: request.cultivationMode,
-              growthStage: request.growthStage,
-              regionLabel,
-            },
-            SOURCE_BASES.smartfarm,
-            signal,
-            deadlineAt,
-            clock,
-            'SMARTFARM_REFERENCE_UNAVAILABLE',
-          ),
-        }
-      : {}),
   };
   const entries = await Promise.all(
     Object.entries(calls).map(async ([key, promise]) => [key, await promise]),
@@ -969,6 +1004,19 @@ function measuredPointMetric({ metric, unit }, value) {
   };
 }
 
+/**
+ * 지역 통계 API는 작물 판정에 필요한 핵심 pH 분포만 제공한다. 필지 토양검정용
+ * 보조 화학성 규칙을 지역 통계의 결측으로 계산하면, 정상 수신한 핵심 pH까지
+ * HOLD로 내려가므로 지역 통계에서는 검수된 핵심 규칙만 평가한다.
+ * 실제 필지·사용자 검사값에서는 보조 화학성 규칙도 그대로 평가한다.
+ */
+function selectSoilRulesForBasis(rules, measurementBasis) {
+  const safeRules = Array.isArray(rules) ? rules : [];
+  if (measurementBasis !== 'REGIONAL_STATISTICS') return safeRules;
+  const criticalRules = safeRules.filter((rule) => rule?.critical === true);
+  return criticalRules.length > 0 ? criticalRules : safeRules;
+}
+
 function buildSoilTestEnvelope(soilTest, clock) {
   if (!soilTest || typeof soilTest !== 'object') return null;
   const ph = soilTest.ph;
@@ -1004,28 +1052,62 @@ function buildSoilTestEnvelope(soilTest, clock) {
 /**
  * 실측 검정값과 지역 면적통계를 구분해서 남긴다. 같은 필드에 합치지 않는다.
  */
-function attachSoilMeasurement(module, soilTest, regionalEnvelope) {
+function attachSoilMeasurement(
+  module,
+  { userSoilTest, providerEnvelope, regionalEnvelope },
+) {
   if (!module || typeof module !== 'object') return module;
-  if (!soilTest) {
+  const regionalStatistics = envelopeHasUsableData(regionalEnvelope)
+    ? { state: regionalEnvelope.adapterState, usedForDecision: false }
+    : {
+        state: regionalEnvelope?.adapterState ?? 'UNAVAILABLE',
+        usedForDecision: false,
+      };
+  if (userSoilTest) {
+    const { userConfirmed, ...measured } = userSoilTest;
     return {
       ...module,
       result: {
         ...(module.result ?? {}),
-        measurementBasis: 'REGIONAL_STATISTICS',
-        userSoilTest: null,
+        measurementBasis: 'USER_SOIL_TEST',
+        userSoilTest: measured,
+        providerSoilTest: null,
+        regionalStatistics,
       },
     };
   }
-  const { userConfirmed, ...measured } = soilTest;
+  if (envelopeHasUsableData(providerEnvelope)) {
+    const providerData = providerEnvelope.data;
+    return {
+      ...module,
+      result: {
+        ...(module.result ?? {}),
+        measurementBasis: 'PROVIDER_SOIL_TEST',
+        userSoilTest: null,
+        providerSoilTest: {
+          sampledOn: providerData.sampledOn,
+          examType: providerData.examType,
+          measurements: providerData.metrics.map((metric) => ({
+            metric: metric.metric,
+            unit: metric.unit,
+            value: metric.intervals[0]?.lower ?? null,
+          })),
+        },
+        regionalStatistics,
+      },
+    };
+  }
   return {
     ...module,
     result: {
       ...(module.result ?? {}),
-      measurementBasis: 'USER_SOIL_TEST',
-      userSoilTest: measured,
-      regionalStatistics: envelopeHasUsableData(regionalEnvelope)
-        ? { state: regionalEnvelope.adapterState, usedForDecision: false }
-        : { state: regionalEnvelope?.adapterState ?? 'UNAVAILABLE', usedForDecision: false },
+      measurementBasis: 'REGIONAL_STATISTICS',
+      userSoilTest: null,
+      providerSoilTest: null,
+      regionalStatistics: {
+        ...regionalStatistics,
+        usedForDecision: envelopeHasUsableData(regionalEnvelope),
+      },
     },
   };
 }
@@ -1437,15 +1519,6 @@ function applyEnvelopeQuality(module, envelopeOrEnvelopes) {
     module.blockingReasons = [
       ...new Set([...(module.blockingReasons ?? []), ...qualityReasons]),
     ];
-  }
-  if (
-    qualityReasons.length > 0 &&
-    module.result?.noActiveRisksConfirmed === true
-  ) {
-    module.result.noActiveRisksConfirmed = false;
-    if (module.result.riskState === 'READY') {
-      module.result.riskState = 'PARTIAL';
-    }
   }
 }
 

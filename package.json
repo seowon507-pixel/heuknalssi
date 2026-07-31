@@ -1,15 +1,20 @@
 {
-  "name": "heuknalssi-vercel",
-  "version": "3.0.0",
+  "name": "nong-heuknalssi",
+  "version": "1.0.0",
   "private": true,
-  "description": "흙날씨.진단 — Vercel 배포 래퍼 (정적 UI + backend-v3 서버리스 함수)",
+  "description": "공공데이터 기반 작물·토양·기상 선제 점검 서비스",
   "type": "module",
   "engines": {
-    "node": "22.x"
+    "node": ">=22"
   },
   "scripts": {
     "build": "node scripts/build-vercel.mjs",
     "build:climate-normal": "node scripts/build-climate-normal.mjs",
-    "build:icons": "node scripts/build-icons.mjs"
+    "start": "node --env-file=.env ui-integration/dev-server.mjs --external",
+    "start:safe": "node ui-integration/dev-server.mjs --safe",
+    "test:ui": "node --test ui-integration/*.test.mjs",
+    "test:backend": "npm --prefix backend-v3 test",
+    "check": "npm run test:ui && npm --prefix backend-v3 run check",
+    "verify": "npm run test:ui && npm --prefix backend-v3 run check && npm run test:backend"
   }
 }

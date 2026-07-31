@@ -29,7 +29,6 @@ export {
   evaluateClimate,
 } from "./climate.js";
 export { classifySoilInterval, evaluateSoil } from "./soil.js";
-export { calculateSuitability } from "./suitability.js";
 export {
   evaluateForecast,
   evaluateForecastRisks,

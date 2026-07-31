@@ -4,9 +4,11 @@ import {
   VERIFIED_KAKAO_ADDRESS_CONTRACT_VERSION,
   VERIFIED_KMA_ASOS_CONTRACT_VERSION,
   VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
+  VERIFIED_KMA_LOCATION_CATALOG_CONTRACT_VERSION,
   VERIFIED_KMA_MID_CONTRACT_VERSION,
   VERIFIED_KMA_SHORT_CONTRACT_VERSION,
   VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
+  VERIFIED_SOIL_EXAM_CONTRACT_VERSION,
   VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION,
   createAdapterRegistry,
   createGoogleAiSelector,
@@ -16,7 +18,6 @@ import { createHttpHandler } from '../src/api/index.js';
 import { createApplicationServices } from '../src/application/index.js';
 import { createRuleRegistry } from '../src/domain/index.js';
 import { createDeviceBackupStore } from '../src/infrastructure/index.js';
-import { createWebPushSender } from '../src/infrastructure/web-push.js';
 import { loadConfig } from './config.js';
 
 export function createBackend({
@@ -79,7 +80,17 @@ export function createBackend({
           config.adapterConfig.kmaClimate.enabled &&
           config.adapterConfig.kmaClimate.contractVersion ===
             VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
+        apiKey: config.adapterConfig.kmaClimate.apiKey,
         contractVersion: config.adapterConfig.kmaClimate.contractVersion,
+      },
+      kmaLocationCatalog: {
+        enabled:
+          config.adapterConfig.kmaLocationCatalog.enabled &&
+          config.adapterConfig.kmaLocationCatalog.contractVersion ===
+            VERIFIED_KMA_LOCATION_CATALOG_CONTRACT_VERSION,
+        apiKey: config.adapterConfig.kmaLocationCatalog.apiKey,
+        contractVersion:
+          config.adapterConfig.kmaLocationCatalog.contractVersion,
       },
       soilV2: {
         enabled: config.adapterConfig.soilV2.enabled,
@@ -99,6 +110,18 @@ export function createBackend({
           config.adapterConfig.soilField.contractVersion,
         ...(config.adapterConfig.soilField.endpoint
           ? { endpoint: config.adapterConfig.soilField.endpoint }
+          : {}),
+      },
+      soilExam: {
+        enabled:
+          config.adapterConfig.soilExam.enabled &&
+          config.adapterConfig.soilExam.contractVersion ===
+            VERIFIED_SOIL_EXAM_CONTRACT_VERSION,
+        apiKey: config.adapterConfig.soilExam.serviceKey,
+        contractVersion:
+          config.adapterConfig.soilExam.contractVersion,
+        ...(config.adapterConfig.soilExam.endpoint
+          ? { endpoint: config.adapterConfig.soilExam.endpoint }
           : {}),
       },
       smartfarm: {
@@ -157,32 +180,21 @@ export function createBackend({
       logger,
       requestTimeoutMs: 15_000,
       rateLimits: {
-        // 대상 작물이 5종이라 한 번 조작에 작물 수만큼 호출된다.
-        // 5종을 두세 번 다시 분석해도 막히지 않도록 잡는다.
-        'locations.search': { limit: 60, windowMs: 60_000 },
-        'analyses.create': { limit: 30, windowMs: 60_000 },
-        'analyses.report': { limit: 30, windowMs: 60_000 },
+        'locations.search': { limit: 30, windowMs: 60_000 },
+        'analyses.create': { limit: 10, windowMs: 60_000 },
+        'analyses.report': { limit: 5, windowMs: 60_000 },
         'analyses.assistant': { limit: 20, windowMs: 60_000 },
         'health.preflight': { limit: 30, windowMs: 60_000 },
         // 계정키는 12자리 무작위값이라 대입 시도를 막으려면 조회를 조여야 한다.
         'backup.save': { limit: 10, windowMs: 60_000 },
         'backup.restore': { limit: 5, windowMs: 60_000 },
-        // 시험 알림은 사람이 버튼을 누를 때만 나간다.
-        'push.test': { limit: 6, windowMs: 60_000 },
       },
     },
     clock,
     ...(randomBytes ? { randomBytes } : {}),
     deviceBackup: createDeviceBackupStore({
       url: config.deviceBackupConfig.url,
-      serviceKey: config.deviceBackupConfig.serviceKey,
-      fetchImpl,
-      now: clock,
-    }),
-    webPush: createWebPushSender({
-      publicKey: config.webPushConfig.publicKey,
-      privateKey: config.webPushConfig.privateKey,
-      subject: config.webPushConfig.subject,
+      serviceKey: config.deviceBackupConfig.secretKey,
       fetchImpl,
       now: clock,
     }),
@@ -241,6 +253,12 @@ function buildRuntimeStatus(
         config.adapterConfig.soilField.contractVersion,
         VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
       ),
+      soilExam: configured(
+        config.adapterConfig.soilExam.enabled,
+        config.adapterConfig.soilExam.serviceKey,
+        config.adapterConfig.soilExam.contractVersion,
+        VERIFIED_SOIL_EXAM_CONTRACT_VERSION,
+      ),
       kmaShort: configured(
         config.adapterConfig.kmaShort.enabled,
         config.adapterConfig.kmaShort.serviceKey,
@@ -271,6 +289,8 @@ function buildRuntimeStatus(
         soilContract?.version ?? 'NOT_CONFIGURED',
       soilField:
         config.adapterConfig.soilField.contractVersion ?? 'NOT_CONFIGURED',
+      soilExam:
+        config.adapterConfig.soilExam.contractVersion ?? 'NOT_CONFIGURED',
       kmaShort:
         config.adapterConfig.kmaShort.contractVersion ?? 'NOT_CONFIGURED',
       kmaMid:

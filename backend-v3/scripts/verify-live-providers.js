@@ -4,20 +4,23 @@ import {
   VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
   VERIFIED_KMA_MID_CONTRACT_VERSION,
   VERIFIED_KMA_SHORT_CONTRACT_VERSION,
-  VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION,
+  VERIFIED_SOIL_EXAM_CONTRACT_VERSION,
+  VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
   VERIFIED_SOIL_V2_CONTRACT,
   createKakaoAdapter,
   createKmaAsosObservationAdapter,
   createKmaClimateNormalAdapter,
   createKmaMidForecastAdapter,
   createKmaShortForecastAdapter,
-  createSmartfarmAdapter,
+  createSoilExamAdapter,
+  createSoilFieldAdapter,
   createSoilV2Adapter,
 } from "../src/adapters/index.js";
 
 const publicDataKey = process.env.DATA_GO_KR_SERVICE_KEY;
+const kmaApiHubKey = process.env.KMA_API_HUB_AUTH_KEY;
 const kakaoKey = process.env.KAKAO_REST_API_KEY;
-const smartfarmKey = process.env.SMARTFARM_SERVICE_KEY;
+const SAMPLE_PNU = "4611010100101830025";
 const issues = providerIssueTimes(new Date());
 const common = { timeoutMs: 7_000 };
 
@@ -26,16 +29,21 @@ const probes = await Promise.all([
   probeKmaClimateNormal(),
   probeKmaAsos(),
   probeSoil(),
+  probeSoilExam(),
+  probeSoilField(),
   probeKmaShort(),
   probeKmaMid(),
-  probeSmartfarm(),
 ]);
 
 console.log(JSON.stringify({ probes }, null, 2));
 
 if (
   probes.some(
-    ({ configured, state }) => configured && state !== "SUCCESS",
+    ({ configured, state }) =>
+      configured &&
+      ["AUTH_ERROR", "SCHEMA_CHANGED", "INTERNAL_ERROR", "TIMEOUT"].includes(
+        state,
+      ),
   )
 ) {
   process.exitCode = 1;
@@ -87,19 +95,59 @@ async function probeKmaShort() {
   );
 }
 
-// 평년값은 저장소에 포함된 정적 데이터셋에서 읽으므로 키 없이 항상 검증한다.
 async function probeKmaClimateNormal() {
   const adapter = createKmaClimateNormalAdapter({
     ...common,
     enabled: true,
+    apiKey: kmaApiHubKey,
     contractVersion: VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
   });
   const result = await adapter.getNormals({ stationId: "136" });
   return summary(
     "kmaClimateNormal",
-    true,
+    hasValue(kmaApiHubKey),
     result.adapterState,
     result.data?.observations?.length ?? 0,
+    result.qualityFlags,
+  );
+}
+
+async function probeSoilExam() {
+  if (!hasValue(publicDataKey)) {
+    return summary("soilExamV2", false, "NOT_CONFIGURED");
+  }
+  const adapter = createSoilExamAdapter({
+    ...common,
+    enabled: true,
+    apiKey: publicDataKey,
+    contractVersion: VERIFIED_SOIL_EXAM_CONTRACT_VERSION,
+  });
+  const result = await adapter.getLatestExam({ pnuCode: SAMPLE_PNU });
+  return summary(
+    "soilExamV2",
+    true,
+    result.adapterState,
+    result.data?.metrics?.length ?? 0,
+    result.qualityFlags,
+  );
+}
+
+async function probeSoilField() {
+  if (!hasValue(publicDataKey)) {
+    return summary("soilFieldV3", false, "NOT_CONFIGURED");
+  }
+  const adapter = createSoilFieldAdapter({
+    ...common,
+    enabled: true,
+    apiKey: publicDataKey,
+    contractVersion: VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
+  });
+  const result = await adapter.getFieldProfile({ pnuCode: SAMPLE_PNU });
+  return summary(
+    "soilFieldV3",
+    true,
+    result.adapterState,
+    result.data?.parcelMatched === true ? 1 : 0,
     result.qualityFlags,
   );
 }
@@ -170,30 +218,6 @@ async function probeKmaMid() {
     true,
     result.adapterState,
     result.data?.days?.length ?? 0,
-    result.qualityFlags,
-  );
-}
-
-async function probeSmartfarm() {
-  if (!hasValue(smartfarmKey)) {
-    return summary("smartfarm", false, "NOT_CONFIGURED");
-  }
-  const adapter = createSmartfarmAdapter({
-    ...common,
-    enabled: true,
-    serviceKey: smartfarmKey,
-    contractVersion: VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION,
-  });
-  const result = await adapter.getReference({
-    crop: "CUCUMBER",
-    cultivationMode: "FACILITY_SOIL",
-    regionLabel: "경기도 수원시",
-  });
-  return summary(
-    "smartfarm",
-    true,
-    result.adapterState,
-    result.data?.farmCount ?? 0,
     result.qualityFlags,
   );
 }

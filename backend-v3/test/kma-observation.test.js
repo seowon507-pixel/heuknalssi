@@ -7,6 +7,7 @@ import {
   createKmaAsosObservationAdapter,
   createKmaClimateNormalAdapter,
   parseKmaAsosDaily,
+  parseKmaClimateNormals,
   selectKmaClimateNormals,
   validateDataEnvelope,
 } from "../src/adapters/index.js";
@@ -62,6 +63,18 @@ function climateDataset() {
   };
 }
 
+function climateApiText() {
+  return [
+    "# ST,STN,MM,DD,TA,TA_MAX,TA_MIN,RN,HM,SS,=",
+    ...Array.from(
+      { length: 12 },
+      (_, index) =>
+        `2021,136,${index + 1},0,${-4 + index * 2},1,-9,20,65,180,=`,
+    ),
+    "#7777END",
+  ].join("\n");
+}
+
 test("ASOS parser keeps seven completed days and marks blank dry-day precipitation", () => {
   const parsed = parseKmaAsosDaily(asosPayload(), {
     stationId: "136",
@@ -92,6 +105,17 @@ test("climate-normal selector requires one official monthly mean for every month
     unit: "degC",
   });
   assert.equal(parsed.monthlyNormals[11].normalPeriod, "1991-2020");
+});
+
+test("climate-normal API parser freezes the 1991-2020 monthly response contract", () => {
+  const parsed = parseKmaClimateNormals(climateApiText(), {
+    stationId: "136",
+  });
+
+  assert.equal(parsed.normalPeriod, "1991-2020");
+  assert.equal(parsed.observations.length, 12);
+  assert.equal(parsed.observations[0].value, -4);
+  assert.equal(parsed.observations[11].value, 18);
 });
 
 test("live ASOS adapter sends the exact completed-day window and returns a valid envelope", async () => {
@@ -149,29 +173,62 @@ test("어제 자료가 아직 발표되지 않았으면 미완결로 정직하�
   );
 });
 
-test("climate-normal adapter serves the 1991-2020 contract without any network call", async () => {
-  let fetchCalls = 0;
+test("climate-normal adapter uses the KMA API Hub response when available", async () => {
+  let requestedUrl;
   const adapter = createKmaClimateNormalAdapter({
     enabled: true,
+    apiKey: "api-hub-key",
     dataset: climateDataset(),
     contractVersion: VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
     now: () => new Date("2026-07-26T03:00:00.000Z"),
-    fetchImpl: async () => {
-      fetchCalls += 1;
-      throw new Error("climate-normal adapter must not call the network");
+    fetchImpl: async (url) => {
+      requestedUrl = url;
+      return new Response(climateApiText(), {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      });
     },
   });
 
   const envelope = await adapter.getNormals({ stationId: "136" });
 
-  assert.equal(fetchCalls, 0);
+  assert.equal(requestedUrl.pathname.endsWith("/sfc_norm1.php"), true);
+  assert.equal(requestedUrl.searchParams.get("norm"), "M");
+  assert.equal(requestedUrl.searchParams.get("tmst"), "2021");
+  assert.equal(requestedUrl.searchParams.get("stn"), "136");
   assert.equal(envelope.adapterState, "SUCCESS");
   assert.equal(envelope.data.observations.length, 12);
   assert.equal(envelope.data.normalPeriod, "1991-2020");
+  assert.ok(envelope.qualityFlags.includes("KMA_API_HUB_LIVE"));
   assert.equal(validateDataEnvelope(envelope).valid, true);
 });
 
-test("climate-normal adapter needs no credential and reports missing stations as NO_DATA", async () => {
+test("climate-normal adapter falls back only to the bundled official dataset", async () => {
+  const adapter = createKmaClimateNormalAdapter({
+    enabled: true,
+    dataset: climateDataset(),
+    contractVersion: VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
+    now: () => new Date("2026-07-26T03:00:00.000Z"),
+    fetchImpl: async () =>
+      new Response("utilization approval required", {
+        status: 403,
+        headers: { "content-type": "text/plain" },
+      }),
+  });
+
+  const envelope = await adapter.getNormals({ stationId: "136" });
+
+  assert.equal(envelope.adapterState, "SUCCESS");
+  assert.ok(
+    envelope.qualityFlags.includes("BUNDLED_OFFICIAL_CLIMATE_NORMALS"),
+  );
+  assert.ok(
+    envelope.qualityFlags.includes("KMA_API_HUB_INTERNAL_ERROR_FALLBACK"),
+  );
+  assert.equal(validateDataEnvelope(envelope).valid, true);
+});
+
+test("climate-normal bundled fallback reports missing stations as NO_DATA", async () => {
   const adapter = createKmaClimateNormalAdapter({
     enabled: true,
     dataset: climateDataset(),

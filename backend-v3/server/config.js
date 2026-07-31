@@ -132,10 +132,17 @@ export function loadConfig(env = process.env) {
         serviceKey: env.DATA_GO_KR_SERVICE_KEY || null,
         contractVersion: env.KMA_ASOS_CONTRACT_VERSION || null,
       },
-      // 평년값은 저장소에 포함된 정적 데이터셋에서 읽는다. 외부 키 없음.
+      // API 허브를 우선 사용하며 미승인·장애 시 같은 기준기간 검수본을 쓴다.
       kmaClimate: {
         enabled: enabled(env.ENABLE_LIVE_KMA_CLIMATE_NORMAL),
+        apiKey: env.KMA_API_HUB_AUTH_KEY || null,
         contractVersion: env.KMA_CLIMATE_NORMAL_CONTRACT_VERSION || null,
+      },
+      kmaLocationCatalog: {
+        enabled: enabled(env.ENABLE_LIVE_KMA_LOCATION_CATALOG),
+        apiKey: env.KMA_API_HUB_AUTH_KEY || null,
+        contractVersion:
+          env.KMA_LOCATION_CATALOG_CONTRACT_VERSION || null,
       },
       soilV2: {
         enabled: enabled(env.ENABLE_LIVE_SOIL),
@@ -149,22 +156,23 @@ export function loadConfig(env = process.env) {
         endpoint: env.SOIL_FIELD_ENDPOINT || null,
         contractVersion: env.SOIL_FIELD_CONTRACT_VERSION || null,
       },
-      smartfarm: {
-        enabled: enabled(env.ENABLE_SMARTFARM),
-        serviceKey: env.SMARTFARM_SERVICE_KEY || null,
-        contractVersion: env.SMARTFARM_CONTRACT_VERSION || null,
+      soilExam: {
+        enabled: enabled(env.ENABLE_LIVE_SOIL_EXAM),
+        serviceKey: env.DATA_GO_KR_SERVICE_KEY || null,
+        endpoint: env.SOIL_EXAM_ENDPOINT || null,
+        contractVersion: env.SOIL_EXAM_CONTRACT_VERSION || null,
       },
-    },
-    // Web Push 발신자 신원. 미설정이면 알림 기능만 꺼지고 분석에는 영향이 없다.
-    webPushConfig: {
-      publicKey: env.VAPID_PUBLIC_KEY || null,
-      privateKey: env.VAPID_PRIVATE_KEY || null,
-      subject: env.VAPID_SUBJECT || null,
+      smartfarm: {
+        enabled: false,
+        serviceKey: null,
+        contractVersion: null,
+      },
     },
     // 기기 이관 백업 저장소. 미설정이면 기능만 꺼지고 분석에는 영향이 없다.
     deviceBackupConfig: {
       url: env.SUPABASE_URL || null,
-      serviceKey: env.SUPABASE_SERVICE_ROLE_KEY || null,
+      secretKey:
+        env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || null,
     },
     assistantConfig: {
       enabled: enabledWhenConfigured(env.ENABLE_GOOGLE_AI, googleAiApiKey),
@@ -172,13 +180,18 @@ export function loadConfig(env = process.env) {
       model: env.GOOGLE_AI_MODEL || 'gemini-3.5-flash-lite',
     },
     capabilities: {
-      smartfarm: enabled(env.ENABLE_SMARTFARM) ? 'HOLD' : 'DISABLED',
+      smartfarm: 'DISABLED',
       satellite: enabled(env.ENABLE_SATELLITE) ? 'UNSUPPORTED' : 'DISABLED',
       persistence: 'NOT_AVAILABLE',
       llmReport: enabled(env.ENABLE_LLM_REPORT) ? 'UNSUPPORTED' : 'DISABLED',
       assistant: enabledWhenConfigured(env.ENABLE_GOOGLE_AI, googleAiApiKey)
         ? 'READY'
         : 'FALLBACK',
+      deviceBackup:
+        env.SUPABASE_URL &&
+        (env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)
+          ? 'CONFIGURED_UNVERIFIED'
+          : 'NOT_AVAILABLE',
     },
   });
 }

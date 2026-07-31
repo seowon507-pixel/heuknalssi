@@ -244,8 +244,16 @@ function parsePhMetric(row, contract, landUse) {
   if (!profile) {
     throw new UnsupportedContractError("Soil V2 land use is unsupported.");
   }
+  const rawAreas = profile.areaFields.map((field) =>
+    extractField(row, field, field),
+  );
+  if (rawAreas.every((value) => value === "-")) {
+    throw new NoDataError(
+      "Soil V2 has no pH distribution for the requested land use.",
+    );
+  }
   const intervals = profile.areaFields.map((field, index) => {
-    const area = requireFiniteNumber(extractField(row, field, field), {
+    const area = requireFiniteNumber(rawAreas[index], {
       field: `Soil V2 ${field}`,
       min: 0,
     });

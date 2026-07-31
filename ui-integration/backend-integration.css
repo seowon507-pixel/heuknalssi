@@ -134,6 +134,10 @@
   display: grid;
   margin-top: 12px;
   gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .location-candidate {
@@ -154,6 +158,17 @@
 .location-candidate:hover {
   border-color: #78957f;
   background: #f7faf7;
+}
+
+.location-candidate:focus-visible {
+  outline: 3px solid rgba(47, 107, 59, .28);
+  outline-offset: 2px;
+  border-color: #2f6b3b;
+}
+
+.location-suggestion {
+  border-color: #d8dfd9;
+  background: #fbfcfb;
 }
 
 .location-candidate[aria-pressed="true"] {

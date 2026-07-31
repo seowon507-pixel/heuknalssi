@@ -16,10 +16,14 @@ export const VERIFIED_KMA_ASOS_CONTRACT_VERSION =
 // 정적 데이터셋으로 전환했으므로 계약 버전도 새 출처를 가리킨다.
 export const VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION =
   "kma-climate-normal-monthly-1991-2020-local-v1";
+export const VERIFIED_KMA_LOCATION_CATALOG_CONTRACT_VERSION =
+  "kma-api-hub-location-catalog-v1-2026-07-27";
 export const VERIFIED_SOIL_V2_CONTRACT_VERSION =
   "data-go-15144685-v1.0.0-2025-11-04";
 export const VERIFIED_SOIL_FIELD_CONTRACT_VERSION =
   "data-go-15144225-v1.0.0-2025-11-04";
+export const VERIFIED_SOIL_EXAM_CONTRACT_VERSION =
+  "data-go-15144647-v1.0.0-2025-11-04";
 export const VERIFIED_SMARTFARM_REFERENCE_CONTRACT_VERSION =
   "smartfarm-reference-v1";
 export const PARTIAL_PROVIDER_FAILURE = "PARTIAL_PROVIDER_FAILURE";

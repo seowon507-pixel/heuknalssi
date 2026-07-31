@@ -5,6 +5,10 @@ import {
   createIdempotencyKey,
   requestFingerprint,
 } from "./api-contract.mjs";
+import { calculateCropConditionScore } from "./crop-condition-score.mjs";
+import { summarizeForecastEvaluation } from "./forecast-presentation.mjs";
+import { hasMissingSoilExamHistory } from "./soil-service-guidance.mjs";
+import { suggestAdministrativeAddresses } from "./address-suggestions.mjs";
 
 window.__BACKEND_INTEGRATION_ENABLED__ = true;
 
@@ -13,6 +17,8 @@ const SOIL_TEST_STORAGE_KEY = "heuknalssi.soilTest.v1";
 const REGION_STORAGE_KEY = "heuknalssi.region.v1";
 const ACCOUNT_KEY_STORAGE_KEY = "heuknalssi.accountKey.v1";
 const SESSION_STORAGE_KEY = "heuknalssi.session.v1";
+const FARMS_STORAGE_KEY = "heuknalssi.farms.v1";
+const ACTIVE_FARM_STORAGE_KEY = "heuknalssi.activeFarm.v1";
 const ALARM_STORAGE_KEY = "heuknalssi.alarm.v1";
 // 알림 모듈 상태는 초기화 중에 접근되므로 반드시 사용처보다 위에 둔다.
 let serviceWorkerReady = null;
@@ -27,20 +33,20 @@ const SOIL_TEST_NUMERIC_FIELDS = Object.freeze([
   "exchangeableCa",
   "exchangeableMg",
 ]);
-// 전문 용어에는 쉬운 설명을 함께 붙인다. 초보 귀농인이 단위만 보고
-// 뜻을 짐작하게 두지 않는다. [표기, 단위, 쉬운 설명]
 const SOIL_TEST_LABELS = Object.freeze({
-  ph: ["산도 pH", "", "흙이 산성인지 알칼리성인지"],
-  electricalConductivity: ["전기전도도 EC", "dS/m", "흙에 녹아 있는 비료 기운(짠기)"],
-  organicMatter: ["유기물", "g/kg", "썩은 낙엽·퇴비처럼 흙을 기름지게 하는 성분"],
-  availablePhosphate: ["유효인산", "mg/kg", "뿌리와 열매에 쓰이는 양분"],
-  exchangeableK: ["칼륨(칼리)", "cmol⁺/kg", "열매를 굵게 하는 양분"],
-  exchangeableCa: ["칼슘", "cmol⁺/kg", "흙의 산성을 눅여 주는 양분"],
-  exchangeableMg: ["마그네슘", "cmol⁺/kg", "잎을 푸르게 하는 양분"],
+  ph: ["산도 pH", ""],
+  electricalConductivity: ["전기전도도", "dS/m"],
+  organicMatter: ["유기물", "g/kg"],
+  availablePhosphate: ["유효인산", "mg/kg"],
+  exchangeableK: ["칼륨 K", "cmol⁺/kg"],
+  exchangeableCa: ["칼슘 Ca", "cmol⁺/kg"],
+  exchangeableMg: ["마그네슘 Mg", "cmol⁺/kg"],
 });
 
 const REQUEST_TIMEOUT_MS = 14_000;
 const REPORT_POLL_DELAYS_MS = Object.freeze([150, 250, 400, 650, 1_000, 1_000]);
+const ADDRESS_SUGGESTION_DELAY_MS = 180;
+let addressSuggestionTimer = null;
 
 const CROP_LABELS = Object.freeze({
   APPLE: "사과",
@@ -140,15 +146,13 @@ const ERROR_MESSAGES = Object.freeze({
 });
 
 class ApiRequestError extends Error {
-  constructor({ code, status = 0, requestId = null, details = null, retryAfterSeconds = null }) {
+  constructor({ code, status = 0, requestId = null, details = null }) {
     super(code || "API_ERROR");
     this.name = "ApiRequestError";
     this.code = code || "API_ERROR";
     this.status = status;
     this.requestId = requestId;
     this.details = details;
-    // 서버가 알려 준 재시도 대기 시간. 사용자에게 몇 초인지 알려 준다.
-    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -156,8 +160,6 @@ class BackendApi {
   constructor(baseUrl = "") {
     this.baseUrl = baseUrl;
     this.csrfToken = null;
-    // 서버가 푸시 발신자 공개키를 주면 앱이 꺼져 있어도 알림을 보낼 수 있다.
-    this.pushPublicKey = null;
   }
 
   async startSession(force = false) {
@@ -167,18 +169,6 @@ class BackendApi {
       throw new ApiRequestError({ code: "SESSION_INVALID", status: 502 });
     }
     this.csrfToken = session.csrfToken;
-    this.pushPublicKey =
-      typeof session.pushPublicKey === "string" && session.pushPublicKey !== ""
-        ? session.pushPublicKey
-        : null;
-  }
-
-  async sendTestPush(subscription, delaySeconds) {
-    return this.request("/api/push/test", {
-      method: "POST",
-      body: { subscription, delaySeconds },
-      csrf: true,
-    });
   }
 
   async preflight() {
@@ -265,15 +255,11 @@ class BackendApi {
       });
       const body = await readResponseBody(response);
       if (!response.ok) {
-        const retryAfterHeader = Number(response.headers.get("Retry-After"));
         const apiError = new ApiRequestError({
           code: body?.error?.code ?? body?.code ?? `HTTP_${response.status}`,
           status: response.status,
           requestId: body?.error?.requestId ?? body?.requestId ?? null,
           details: body?.error?.details ?? body?.details ?? null,
-          retryAfterSeconds: Number.isFinite(retryAfterHeader) && retryAfterHeader > 0
-            ? Math.ceil(retryAfterHeader)
-            : null,
         });
         const sessionExpired = ["SESSION_REQUIRED", "SESSION_INVALID"].includes(
           apiError.code,
@@ -331,7 +317,6 @@ const assistantMessages = document.querySelector("#assistant-messages");
 const assistantContext = document.querySelector("#assistant-context");
 
 let connected = false;
-let sampleData = false;
 let preflight = null;
 let selectedCandidate = null;
 let currentAnalysis = null;
@@ -340,10 +325,13 @@ let currentUiContexts = new Map();
 let pendingAttempt = null;
 let connectionPromise = null;
 let assistantAnalysisId = null;
+let creatingNewFarm = false;
+const savedSessionAtBoot = readStoredSession();
 
-scrubLegacyMockSurfaces();
+initializeDashboardSurfaces();
 setDashboardResultVisibility(false);
 resetDashboard();
+if (savedSessionAtBoot) renderStoredSessionLoading(savedSessionAtBoot);
 syncAssistantContext(null);
 wireInteractions();
 void connectBackend();
@@ -366,6 +354,15 @@ function wireInteractions() {
       void submitAssistantQuestion(button.dataset.assistantQuestion ?? "");
     });
   });
+  document.addEventListener("heuknalssi:show-services", () => {
+    if (document.querySelector("#view-services")?.hidden) {
+      document.querySelector('[data-view="services"]')?.click();
+    }
+  });
+  document.addEventListener("heuknalssi:wizard-cancelled", () => {
+    creatingNewFarm = false;
+    pendingAttempt = null;
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && assistantPanel && !assistantPanel.hidden) {
       closeAssistant();
@@ -378,9 +375,22 @@ function wireInteractions() {
     void useCurrentLocation();
   });
   regionInput.addEventListener("input", () => {
-    clearSelectedCandidate("입력한 지역이 바뀌었습니다. 다시 확인해 주세요.");
+    clearSelectedCandidate();
     updateLocationSearchAvailability();
     pendingAttempt = null;
+    queueAddressSuggestions();
+  });
+  regionInput.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !locationCandidates.hidden) {
+      hideLocationCandidates();
+    }
+    if (
+      event.key === "ArrowDown" &&
+      !locationCandidates.hidden
+    ) {
+      event.preventDefault();
+      locationCandidates.querySelector("button")?.focus();
+    }
   });
   form.addEventListener("change", () => {
     pendingAttempt = null;
@@ -466,16 +476,13 @@ async function performConnection() {
   updateLocationSearchAvailability();
   updateSubmitAvailability();
 
-  const configPromise = readIntegrationConfig();
   try {
     await api.startSession(true);
     preflight = await api.preflight();
-    const integrationConfig = await configPromise;
-    sampleData = integrationConfig.sampleData === true;
     connected = true;
     renderRuntimeState();
+    configureDeviceBackupControl();
   } catch (error) {
-    sampleData = (await configPromise).sampleData === true;
     const message = errorMessage(error);
     setConnectionState("error", message);
     setServiceBanner("error", "연결하지 못했어요", message);
@@ -547,12 +554,23 @@ async function restoreSavedSession(
 
     if (!selectedCandidate) throw new Error("candidate was not selected");
     // 폼 이벤트를 흉내내지 않고 제출 함수를 직접 불러 완료까지 기다린다.
-    await submitAnalysis();
+    const restored = await submitAnalysis();
+    if (!restored) throw new Error("saved analysis refresh failed");
     document.body.dataset.sessionRestore = "ok";
   } catch (error) {
-    // 복원은 편의 기능이다. 실패하면 처음부터 입력하도록 둔다.
+    // 저장된 설정은 보존한다. 일시적인 API 장애 때문에 다시 입력시키지 않는다.
     document.body.dataset.sessionRestore = `failed:${error?.message ?? "unknown"}`;
-    setConnectionState("ready", "분석 조건을 입력해 주세요.");
+    document.body.classList.remove("session-restoring");
+    document.body.classList.add("session-restore-failed");
+    setConnectionState("error", "저장한 농장을 다시 불러오지 못했습니다.");
+    setServiceBanner(
+      "error",
+      "저장한 농장 정보를 갱신하지 못했습니다",
+      "입력한 농장 설정은 이 기기에 남아 있습니다. ‘다시 불러오기’를 눌러 최신 자료만 다시 확인해 주세요.",
+    );
+    serviceBanner.hidden = false;
+    retryConnectionButton.textContent = "다시 불러오기";
+    retryConnectionButton.hidden = false;
   }
 }
 
@@ -578,31 +596,6 @@ function renderRuntimeState() {
     navigator.geolocation ? "" : "error",
   );
   configurePersistenceControl();
-
-  if (sampleData) {
-    serviceBanner.hidden = false;
-    setConnectionState(
-      ready ? "ready" : "hold",
-      "백엔드 연결됨 · 개발 샘플 데이터 사용 중",
-    );
-    setServiceBanner(
-      "sample",
-      "개발 샘플 · 농업 의사결정 금지",
-      ready
-        ? "API 전체 흐름 검증용 샘플입니다. 실제 재배·토지 의사결정에 사용하지 마세요."
-        : `API 흐름 검증용 샘플이며 운영 준비는 보류 상태입니다. ${blockerCopy}`,
-    );
-    runtimeModeLabel.textContent = "개발 샘플 · 의사결정 금지";
-    runtimeSafetyNotice.classList.add("runtime-sample-warning");
-    replaceNotice(
-      runtimeSafetyNotice,
-      "개발 샘플 데이터입니다. 농업 의사결정에 사용하지 마세요.",
-      ready
-        ? "세션·위치 후보·분석·보고서 연결을 검증하기 위한 값입니다."
-        : `운영 준비 보류(HOLD): ${blockerCopy}`,
-    );
-    return;
-  }
 
   if (ready) {
     setConnectionState("ready", "실시간 자료 분석 가능");
@@ -638,10 +631,29 @@ function configurePersistenceControl() {
   input.disabled = !available;
   if (!available) input.checked = false;
   if (container) container.hidden = !available;
-  label.textContent = "이 지역·작물 조합을 내 분석에 저장합니다. (선택)";
+  label.textContent = "이 기기에 농장 설정을 저장합니다. (선택)";
 }
 
-async function searchLocations() {
+function configureDeviceBackupControl() {
+  const createButton = document.querySelector("#account-key-create");
+  const restoreButton = document.querySelector("#account-key-restore");
+  const input = document.querySelector("#account-key-input");
+  const status = document.querySelector("#account-key-status");
+  if (!createButton && !restoreButton) return;
+
+  const available = ["READY", "AVAILABLE"].includes(
+    preflight?.capabilities?.deviceBackup,
+  );
+  if (createButton) createButton.disabled = !available;
+  if (restoreButton) restoreButton.disabled = !available;
+  if (input) input.disabled = !available;
+  if (!available && status) {
+    status.textContent =
+      "기기 이관 저장소가 연결되지 않아 현재 입력은 이 기기에만 저장됩니다.";
+  }
+}
+
+async function searchLocations({ autoSelectSingle = false } = {}) {
   const query = regionInput.value.trim();
   if (!connected) {
     showRegionError("먼저 백엔드에 다시 연결해 주세요.");
@@ -673,6 +685,13 @@ async function searchLocations() {
       return;
     }
     renderLocationCandidates(candidates);
+    if (autoSelectSingle && candidates.length === 1) {
+      selectLocationCandidate(
+        candidates[0],
+        locationCandidates.querySelector(".location-candidate"),
+      );
+      return;
+    }
     setLocationStatus(
       `${candidates.length}개의 후보를 찾았습니다. 실제 지역과 맞는 항목을 선택해 주세요.`,
     );
@@ -684,6 +703,60 @@ async function searchLocations() {
     setBusy(searchLocationButton, false, "입력한 지역 확인");
     updateLocationSearchAvailability();
   }
+}
+
+function queueAddressSuggestions() {
+  clearTimeout(addressSuggestionTimer);
+  const query = regionInput.value.trim();
+  if (query.length < 2) {
+    hideLocationCandidates();
+    setLocationStatus("시·도 또는 시·군·구를 두 글자 이상 입력해 주세요.");
+    return;
+  }
+  setLocationStatus("입력한 지역의 주소 후보를 찾고 있습니다.");
+  addressSuggestionTimer = setTimeout(() => {
+    if (regionInput.value.trim() !== query || selectedCandidate) return;
+    const suggestions = suggestAdministrativeAddresses(query);
+    if (suggestions.length === 0) {
+      hideLocationCandidates();
+      setLocationStatus(
+        "행정구역 후보가 없으면 상세 주소를 계속 입력한 뒤 ‘입력한 지역 확인’을 눌러 주세요.",
+      );
+      return;
+    }
+    renderAdministrativeSuggestions(suggestions);
+    setLocationStatus(
+      `${suggestions.length}개의 시·군·구 후보가 있습니다. 농장 지역을 선택해 주세요.`,
+    );
+  }, ADDRESS_SUGGESTION_DELAY_MS);
+}
+
+function renderAdministrativeSuggestions(suggestions) {
+  const fragments = suggestions.map((displayName) => {
+    const item = element("div");
+    item.setAttribute("role", "listitem");
+    const button = element("button", "location-candidate location-suggestion");
+    button.type = "button";
+    const copy = element("span");
+    copy.append(
+      element("strong", "", displayName),
+      element("small", "", "시·군·구 주소 후보"),
+    );
+    const action = element("span", "candidate-check", "선택");
+    action.setAttribute("aria-hidden", "true");
+    button.append(copy, action);
+    button.addEventListener("click", () => {
+      regionInput.value = displayName;
+      hideLocationCandidates();
+      setLocationStatus(`${displayName}의 실제 위치를 확인하고 있습니다.`);
+      void searchLocations({ autoSelectSingle: true });
+    });
+    item.append(button);
+    return item;
+  });
+  locationCandidates.replaceChildren(...fragments);
+  locationCandidates.hidden = false;
+  regionInput.setAttribute("aria-expanded", "true");
 }
 
 async function useCurrentLocation() {
@@ -793,6 +866,7 @@ function renderLocationCandidates(candidates) {
   });
   locationCandidates.replaceChildren(...fragments);
   locationCandidates.hidden = false;
+  regionInput.setAttribute("aria-expanded", "true");
 }
 
 function selectLocationCandidate(candidate, button) {
@@ -820,12 +894,12 @@ function selectLocationCandidate(candidate, button) {
 async function submitAnalysis() {
   if (!connected) {
     showSubmitError("백엔드 연결을 먼저 복구해 주세요.");
-    return;
+    return false;
   }
   if (!selectedCandidate) {
     showRegionError("현재 위치를 사용하거나 검색 결과에서 농장 지역을 선택해 주세요.");
     navigateToWizardStep(1);
-    return;
+    return false;
   }
 
   let payloads;
@@ -839,7 +913,7 @@ async function submitAnalysis() {
   } catch (error) {
     if (error instanceof ContractValidationError) {
       showContractError(error);
-      return;
+      return false;
     }
     throw error;
   }
@@ -895,12 +969,14 @@ async function submitAnalysis() {
         void requestAndPollReport(automaticReportButton, { automatic: true });
       }
     }
+    return true;
   } catch (error) {
     if (error?.code === "LOCATION_TOKEN_INVALID") {
       clearSelectedCandidate("확인한 지역 정보가 만료되었습니다. 지역을 다시 확인해 주세요.");
       navigateToWizardStep(1);
     }
     showSubmitError(errorMessage(error));
+    return false;
   } finally {
     form.removeAttribute("aria-busy");
     setBusy(runAnalysisButton, false, "이 조건으로 분석하기");
@@ -920,10 +996,12 @@ function renderAnalysis(analysis) {
     `${regionLabel} · ${cropLabel} 농장 분석`;
   document.querySelector("#dashboard-mode-copy").textContent =
     summary.usageMode === "ACTIVE_GROWING"
-      ? "현재 재배 조건 기준 기상·토양·예보 분석"
-      : "후보지 기준 기상·토양·예보 분석";
+      ? "재배 중 생육 기준 날씨·토양·예보 분석"
+      : "재배 전 환경 기준 기후·토양·예보 분석";
   document.querySelector("#sidebar-mode-value").textContent =
-    summary.usageMode === "ACTIVE_GROWING" ? "이미 농사 중" : "농지를 알아보는 중";
+    summary.usageMode === "ACTIVE_GROWING"
+      ? "재배 중 생육 점검"
+      : "재배 전 환경 분석";
 
   renderLiveOutlook(analysis);
   renderDecisionPanel(analysis);
@@ -932,6 +1010,7 @@ function renderAnalysis(analysis) {
   renderSmartfarmReference(analysis);
   renderExplanation(analysis);
   renderEvidenceDialog(analysis);
+  renderTechnicalSettings(analysis);
   syncAssistantContext(analysis);
   writeStoredTodo(analysis);
   setDashboardResultVisibility(true);
@@ -959,21 +1038,32 @@ function renderLiveOutlook(analysis) {
     element(
       "span",
       "forecast-source-badge",
-      sampleData ? "개발 샘플 예보" : "기상청 단기·중기 예보",
+      "기상청 단기·중기 예보",
     ),
   );
   forecastCard.append(header);
 
   if (days.length > 0) {
+    const activeRisks = activeForecastRisks(analysis);
+    const threshold = forecastTemperatureThreshold(
+      analysis,
+      activeRisks,
+      days,
+    );
     const chartShell = element("div", "forecast-chart-shell");
     chartShell.append(
-      temperatureChart(days),
+      temperatureRangeChart(days, threshold),
       forecastChartSummary(days),
+      forecastChartLegend(threshold),
     );
     const dayList = element("div", "forecast-day-list");
     dayList.setAttribute("role", "list");
     dayList.setAttribute("aria-label", "날짜별 예보");
-    dayList.append(...days.map(forecastDayCard));
+    dayList.append(
+      ...days.map((day) =>
+        forecastDayCard(day, activeRisks.some((risk) => riskCoversDate(risk, day.date))),
+      ),
+    );
     forecastCard.append(
       chartShell,
       dayList,
@@ -1019,9 +1109,7 @@ function renderLiveOutlook(analysis) {
     actionHeaderCopy,
     element("span", "live-action-status", displayAction.status),
   );
-  const visual = element("div", "live-action-visual");
-  visual.setAttribute("aria-hidden", "true");
-  visual.append(element("span", "live-action-stem"));
+  const visual = actionVisual(analysis, weatherGuide, soilGuide);
   const meta = element("div", "live-action-meta");
   meta.append(
     element(
@@ -1039,7 +1127,7 @@ function renderLiveOutlook(analysis) {
     element(
       "span",
       "",
-      sampleData ? "샘플 값 · 농업 의사결정 금지" : "농장별 안내",
+      "농장별 안내",
     ),
   );
   const actionButton = element(
@@ -1083,6 +1171,7 @@ function actionConditionSummary(label, condition) {
 function renderFarmConditionGuide(analysis, idSuffix = "dashboard") {
   const guide = element("section", "farm-condition-guide");
   const titleId = `farm-condition-guide-title-${idSuffix}`;
+  const missingSoilExamHistory = hasMissingSoilExamHistory(analysis);
   guide.setAttribute("aria-labelledby", titleId);
   const weather = forecastRiskGuide(analysis);
   const soil = soilConditionGuide(analysis);
@@ -1114,13 +1203,17 @@ function renderFarmConditionGuide(analysis, idSuffix = "dashboard") {
     conditionFactCard("농장 토양", soil),
   );
 
-  const actionBox = element("section", "farm-condition-actions");
+  const actionBox = element(
+    "section",
+    "farm-condition-actions action-priority-card",
+  );
   const combinedActions = uniqueText([
     ...weather.actions,
     ...soil.actions,
-  ]).slice(0, 5);
+  ]).slice(0, 3);
   actionBox.append(
-    element("h3", "", "필요한 행동"),
+    element("span", "farm-condition-action-kicker", "가장 중요한 안내"),
+    element("h3", "", "오늘 바로 할 일"),
     actionStepList(combinedActions, "farm-condition-action-list"),
   );
   if (weather.recheck) {
@@ -1131,11 +1224,64 @@ function renderFarmConditionGuide(analysis, idSuffix = "dashboard") {
     );
     actionBox.append(recheck);
   }
-  guide.append(header, facts, actionBox);
+  const verificationActions = uniqueText([
+    ...(weather.verificationActions ?? []),
+    ...(soil.verificationActions ?? []),
+  ]);
+  if (verificationActions.length) {
+    const verification = element("details", "farm-condition-verification");
+    const body = element("div", "farm-condition-verification-body");
+    body.append(
+      actionStepList(
+        verificationActions,
+        "farm-condition-verification-list",
+      ),
+    );
+    verification.append(
+      element("summary", "", "정확도를 높이는 방법"),
+      body,
+    );
+    actionBox.append(verification);
+  }
+  guide.append(header, actionBox, facts);
+  if (missingSoilExamHistory) {
+    const callout = element("section", "soil-exam-service-callout");
+    const copy = element("div", "soil-exam-service-copy");
+    const copyId = `soil-exam-service-copy-${idSuffix}`;
+    copy.id = copyId;
+    copy.append(
+      element("span", "soil-exam-service-kicker", "토양 정보 보완"),
+      element("h3", "", "최근 토양검정 이력 없음"),
+      element(
+        "p",
+        "",
+        "이 필지는 공공 토양검정 조회에서 최근 화학성 결과를 찾지 못했습니다. 무료 검사를 받으면 실제 밭의 pH와 EC를 다음 분석에 반영할 수 있습니다.",
+      ),
+    );
+    const serviceButton = element(
+      "button",
+      "button button-primary soil-exam-service-button",
+      "무료 토양검정 받으러 가기",
+    );
+    serviceButton.type = "button";
+    serviceButton.setAttribute("aria-describedby", copyId);
+    serviceButton.addEventListener("click", () => {
+      document.dispatchEvent(
+        new CustomEvent("heuknalssi:show-services", {
+          detail: { targetId: "soil-exam-title" },
+        }),
+      );
+    });
+    callout.append(copy, serviceButton);
+    guide.append(callout);
+  }
   return guide;
 }
 
 function conditionFactCard(label, guide) {
+  const fullReason =
+    typeof guide.reason === "string" ? guide.reason.trim() : "";
+  const summaryReason = conditionFactSummary(fullReason);
   const card = element(
     "article",
     `condition-fact-card ${guide.tone ? `is-${guide.tone}` : ""}`.trim(),
@@ -1152,19 +1298,40 @@ function conditionFactCard(label, guide) {
           ? "왜 확인이 필요한가요"
           : "왜 주의해야 하나요",
     ),
-    element("p", "", guide.reason),
+    element("p", "condition-fact-summary", summaryReason),
   );
+  const details = element("details", "condition-fact-details");
+  const detailsBody = element("div", "condition-fact-details-body");
+  if (fullReason && fullReason !== summaryReason) {
+    detailsBody.append(
+      element("p", "condition-fact-full-reason", fullReason),
+    );
+  }
   if (guide.caveat) {
-    card.append(element("p", "condition-fact-caveat", guide.caveat));
+    detailsBody.append(element("p", "condition-fact-caveat", guide.caveat));
   }
   if (isSafeHttpUrl(guide.sourceUrl)) {
     const link = element("a", "condition-source-link", "검수 출처");
     link.href = guide.sourceUrl;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-    card.append(link);
+    detailsBody.append(link);
+  }
+  if (detailsBody.childNodes.length > 0) {
+    details.append(
+      element("summary", "", "근거와 한계"),
+      detailsBody,
+    );
+    card.append(details);
   }
   return card;
+}
+
+function conditionFactSummary(reason) {
+  if (!reason) return "현재 확인 가능한 근거를 정리하고 있습니다.";
+  const firstSentence = reason.match(/^.*?[.!?](?:\s|$)/u)?.[0]?.trim();
+  const summary = firstSentence || reason;
+  return summary.length > 110 ? `${summary.slice(0, 107).trim()}…` : summary;
 }
 
 function actionStepList(actions, className) {
@@ -1207,23 +1374,33 @@ function forecastDisplayDays(analysis) {
     : [];
 }
 
-function temperatureChart(days) {
+function temperatureRangeChart(days, threshold = null) {
   const svgNamespace = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNamespace, "svg");
   svg.setAttribute("class", "forecast-temperature-chart");
-  svg.setAttribute("viewBox", "0 0 560 116");
+  svg.setAttribute("viewBox", "0 0 560 150");
   svg.setAttribute("role", "img");
-  const temperatures = days.map((day) =>
+  const highs = days.map((day) =>
     Number.isFinite(day.maxTemperature) ? day.maxTemperature : null,
   );
-  const available = temperatures.filter(Number.isFinite);
+  const lows = days.map((day) =>
+    Number.isFinite(day.minTemperature) ? day.minTemperature : null,
+  );
+  const available = [...highs, ...lows, threshold?.value].filter(Number.isFinite);
   svg.setAttribute(
     "aria-label",
     available.length
-      ? `최고기온 흐름 ${available.map((value) => `${formatNumber(value)}도`).join(", ")}`
-      : "최고기온 자료 없음",
+      ? `최고·최저기온과 강수확률 흐름. 최고기온 ${highs
+          .filter(Number.isFinite)
+          .map((value) => `${formatNumber(value)}도`)
+          .join(", ")}${
+            Number.isFinite(threshold?.value)
+              ? `, 작물 주의 기준 ${formatNumber(threshold.value)}도`
+              : ""
+          }`
+      : "기온 자료 없음",
   );
-  [22, 50, 78].forEach((y) => {
+  [22, 52, 82, 118].forEach((y) => {
     const line = document.createElementNS(svgNamespace, "line");
     line.setAttribute("class", "grid-line");
     line.setAttribute("x1", "8");
@@ -1236,23 +1413,86 @@ function temperatureChart(days) {
   const minimum = Math.min(...available);
   const maximum = Math.max(...available);
   const span = Math.max(maximum - minimum, 4);
-  const points = temperatures.map((value, index) => {
+  const pointFor = (value, index) => {
     if (!Number.isFinite(value)) return null;
     const x = days.length === 1 ? 280 : 18 + (index * 524) / (days.length - 1);
-    const y = 70 - ((value - minimum) / span) * 48;
+    const y = 82 - ((value - minimum) / span) * 58;
     return { x, y, value, index };
+  };
+  const highPoints = highs.map(pointFor);
+  const lowPoints = lows.map(pointFor);
+  const paired = highPoints
+    .map((high, index) => ({ high, low: lowPoints[index] }))
+    .filter(({ high, low }) => high && low);
+
+  if (Number.isFinite(threshold?.value)) {
+    const thresholdY = 82 - ((threshold.value - minimum) / span) * 58;
+    const thresholdLine = document.createElementNS(svgNamespace, "line");
+    thresholdLine.setAttribute("class", "risk-threshold-line");
+    thresholdLine.setAttribute("x1", "8");
+    thresholdLine.setAttribute("x2", "552");
+    thresholdLine.setAttribute("y1", String(thresholdY));
+    thresholdLine.setAttribute("y2", String(thresholdY));
+    const thresholdLabel = document.createElementNS(svgNamespace, "text");
+    thresholdLabel.setAttribute("class", "risk-threshold-label");
+    thresholdLabel.setAttribute("x", "548");
+    thresholdLabel.setAttribute("y", String(Math.max(thresholdY - 5, 12)));
+    thresholdLabel.setAttribute("text-anchor", "end");
+    thresholdLabel.textContent =
+      `주의 기준 ${formatNumber(threshold.value)}°`;
+    svg.append(thresholdLine, thresholdLabel);
+  }
+
+  if (paired.length > 1) {
+    const band = document.createElementNS(svgNamespace, "polygon");
+    band.setAttribute("class", "temperature-band");
+    band.setAttribute(
+      "points",
+      [
+        ...paired.map(({ high }) => `${high.x},${high.y}`),
+        ...[...paired]
+          .reverse()
+          .map(({ low }) => `${low.x},${low.y}`),
+      ].join(" "),
+    );
+    svg.append(band);
+  }
+
+  days.forEach((day, index) => {
+    if (!Number.isFinite(day.precipitationProbability)) return;
+    const x = days.length === 1 ? 280 : 18 + (index * 524) / (days.length - 1);
+    const height = Math.max(
+      day.precipitationProbability > 0 ? 3 : 0,
+      Math.min(26, (day.precipitationProbability / 100) * 26),
+    );
+    const bar = document.createElementNS(svgNamespace, "rect");
+    bar.setAttribute("class", "precipitation-bar");
+    bar.setAttribute("x", String(x - 9));
+    bar.setAttribute("y", String(118 - height));
+    bar.setAttribute("width", "18");
+    bar.setAttribute("height", String(height));
+    bar.setAttribute("rx", "5");
+    svg.append(bar);
   });
-  const visiblePoints = points.filter(Boolean);
-  const polyline = document.createElementNS(svgNamespace, "polyline");
-  polyline.setAttribute("class", "temperature-line");
-  polyline.setAttribute(
-    "points",
-    visiblePoints.map(({ x, y }) => `${x},${y}`).join(" "),
-  );
-  svg.append(polyline);
-  visiblePoints.forEach(({ x, y, value, index }) => {
+
+  [
+    ["temperature-line is-high", highPoints],
+    ["temperature-line is-low", lowPoints],
+  ].forEach(([className, points]) => {
+    const visible = points.filter(Boolean);
+    if (visible.length === 0) return;
+    const polyline = document.createElementNS(svgNamespace, "polyline");
+    polyline.setAttribute("class", className);
+    polyline.setAttribute(
+      "points",
+      visible.map(({ x, y }) => `${x},${y}`).join(" "),
+    );
+    svg.append(polyline);
+  });
+
+  highPoints.filter(Boolean).forEach(({ x, y, value, index }) => {
     const point = document.createElementNS(svgNamespace, "circle");
-    point.setAttribute("class", "temperature-point");
+    point.setAttribute("class", "temperature-point is-high");
     point.setAttribute("cx", String(x));
     point.setAttribute("cy", String(y));
     point.setAttribute("r", "4");
@@ -1265,12 +1505,92 @@ function temperatureChart(days) {
     const dateLabel = document.createElementNS(svgNamespace, "text");
     dateLabel.setAttribute("class", "temperature-date-label");
     dateLabel.setAttribute("x", String(x));
-    dateLabel.setAttribute("y", "108");
+    dateLabel.setAttribute("y", "144");
     dateLabel.setAttribute("text-anchor", "middle");
     dateLabel.textContent = formatForecastDate(days[index].date);
     svg.append(point, valueLabel, dateLabel);
   });
+
+  lowPoints.filter(Boolean).forEach(({ x, y }) => {
+    const point = document.createElementNS(svgNamespace, "circle");
+    point.setAttribute("class", "temperature-point is-low");
+    point.setAttribute("cx", String(x));
+    point.setAttribute("cy", String(y));
+    point.setAttribute("r", "3.2");
+    svg.append(point);
+  });
   return svg;
+}
+
+function forecastChartLegend(threshold = null) {
+  const legend = element("div", "forecast-chart-legend");
+  legend.setAttribute("aria-label", "예보 그래프 범례");
+  [
+    ["is-high", "최고기온"],
+    ["is-low", "최저기온"],
+    ["is-rain", "강수확률"],
+    ...(Number.isFinite(threshold?.value)
+      ? [["is-threshold", "작물 주의 기준"]]
+      : []),
+  ].forEach(([className, label]) => {
+    const item = element("span", className, label);
+    item.prepend(element("i", ""));
+    legend.append(item);
+  });
+  return legend;
+}
+
+function forecastTemperatureThreshold(analysis, risks, days) {
+  const temperatureRisk = risks.find(
+    (risk) =>
+      ["minTemperature", "maxTemperature"].includes(risk?.trigger?.metric) &&
+      Number.isFinite(risk?.trigger?.comparison?.threshold),
+  );
+  if (temperatureRisk) {
+    return {
+      metric: temperatureRisk.trigger.metric,
+      operator: temperatureRisk.trigger.comparison.operator,
+      value: temperatureRisk.trigger.comparison.threshold,
+    };
+  }
+  const temperatures = days
+    .flatMap((day) => [day?.minTemperature, day?.maxTemperature])
+    .filter(Number.isFinite);
+  const minimum = temperatures.length ? Math.min(...temperatures) : null;
+  const maximum = temperatures.length ? Math.max(...temperatures) : null;
+  const candidates = (analysis?.forecast?.evidence ?? [])
+    .filter(
+      (item) =>
+        ["minTemperature", "maxTemperature"].includes(item?.metric) &&
+        Number.isFinite(item?.calculation?.comparison?.threshold),
+    )
+    .map((item) => ({
+      metric: item.metric,
+      operator: item.calculation.comparison.operator,
+      value: item.calculation.comparison.threshold,
+    }))
+    .filter(
+      (candidate, index, all) =>
+        all.findIndex(
+          (item) =>
+            item.metric === candidate.metric &&
+            item.operator === candidate.operator &&
+            item.value === candidate.value,
+        ) === index,
+    )
+    .map((candidate) => ({
+      ...candidate,
+      distance:
+        !Number.isFinite(minimum) || !Number.isFinite(maximum)
+          ? 0
+          : candidate.value < minimum
+            ? minimum - candidate.value
+            : candidate.value > maximum
+              ? candidate.value - maximum
+              : 0,
+    }))
+    .sort((left, right) => left.distance - right.distance);
+  return candidates[0] ?? null;
 }
 
 function forecastChartSummary(days) {
@@ -1294,10 +1614,16 @@ function forecastChartSummary(days) {
   return summary;
 }
 
-function forecastDayCard(day) {
+function forecastDayCard(day, isRiskDay = false) {
   const card = element(
     "article",
-    `forecast-day ${day.sourceType === "SHORT_GRID" ? "is-short" : ""}`.trim(),
+    [
+      "forecast-day",
+      day.sourceType === "SHORT_GRID" ? "is-short" : "",
+      isRiskDay ? "is-risk" : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
   );
   card.setAttribute("role", "listitem");
   const precipitationProbability = Number.isFinite(day.precipitationProbability)
@@ -1311,6 +1637,9 @@ function forecastDayCard(day) {
     element("span", "forecast-day-date", formatForecastDate(day.date)),
     forecastGlyph(day),
   );
+  if (isRiskDay) {
+    card.append(element("span", "forecast-day-alert", "주의"));
+  }
   const temperature = element("strong", "forecast-day-temperature");
   temperature.append(
     document.createTextNode(formatNullableTemperature(day.maxTemperature)),
@@ -1322,10 +1651,21 @@ function forecastDayCard(day) {
     element(
       "span",
       "forecast-day-source",
-      day.sourceType === "SHORT_GRID" ? "오늘~3일 예보" : "4일 이후 예보",
+      day.sourceType === "SHORT_GRID" ? "단기 예보" : "중기 예보",
     ),
   );
   return card;
+}
+
+function riskCoversDate(risk, date) {
+  const from = risk?.dateRange?.from;
+  const to = risk?.dateRange?.to ?? from;
+  return (
+    typeof from === "string" &&
+    typeof to === "string" &&
+    date >= from &&
+    date <= to
+  );
 }
 
 function forecastGlyph(day) {
@@ -1359,6 +1699,63 @@ function forecastGlyph(day) {
     svg.append(path);
   });
   wrap.append(svg);
+  return wrap;
+}
+
+function actionVisual(analysis, weatherGuide, soilGuide) {
+  const risk = activeForecastRisks(analysis)[0] ?? null;
+  const metric = risk?.trigger?.metric;
+  const kind =
+    metric === "precipitationProbability" ||
+    metric === "precipitationAmount"
+      ? "rain"
+      : weatherGuide.risk
+        ? "temperature"
+        : soilGuide.tone === "caution"
+          ? "soil"
+          : "check";
+  const labels = {
+    rain: "비 예보 점검",
+    temperature: "기온 변화 점검",
+    soil: "토양 상태 점검",
+    check: "현재 범위 양호",
+  };
+  const paths = {
+    rain: [
+      "M7 13.5h9a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 6.24 6.8 3.4 3.4 0 0 0 7 13.5Z",
+      "M9 17l-1 3",
+      "M14 17l-1 3",
+    ],
+    temperature: [
+      "M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z",
+      "M12 9v8",
+      "M17.5 4.5h2",
+      "M18.5 3.5v2",
+    ],
+    soil: [
+      "M4 7c4 1.8 12 1.8 16 0",
+      "M4 12c4 1.8 12 1.8 16 0",
+      "M4 17c4 1.8 12 1.8 16 0",
+      "M12 7v10",
+    ],
+    check: ["M5 12.5l4 4L19 6.5"],
+  };
+  const wrap = element("div", `live-action-visual is-${kind}`);
+  wrap.setAttribute("aria-hidden", "true");
+  const svgNamespace = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNamespace, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.8");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  paths[kind].forEach((value) => {
+    const path = document.createElementNS(svgNamespace, "path");
+    path.setAttribute("d", value);
+    svg.append(path);
+  });
+  wrap.append(svg, element("span", "", labels[kind]));
   return wrap;
 }
 
@@ -1503,73 +1900,101 @@ function renderStateOverview(analysis) {
   const overview = document.querySelector(".overview-score");
   const inner = element("div", "overview-score-inner");
   const heading = element("div", "overview-heading");
-  const title = element("h2", "", "현재 농장 상태");
+  const title = element("h2", "", "오늘의 작물 상태");
   title.id = "readiness-title";
   heading.append(
-    element("span", "overview-kicker", "현재 확인 결과"),
+    element("span", "overview-kicker", "현재 상태"),
     title,
   );
-  const currentState = analysis?.state ?? "UNAVAILABLE";
+  const status = farmStatusSummary(analysis);
+  const condition = calculateCropConditionScore(analysis);
+  const conditionScore = condition.score;
   const stateVisual = element("div", "current-state-visual");
   const stateRing = element(
     "div",
-    `current-state-ring ${
-      ["COMPLETE", "READY"].includes(currentState)
-        ? "is-good"
-        : currentState === "PARTIAL"
-          ? ""
-          : "is-hold"
-    }`.trim(),
+    `current-state-ring is-${status.tone}`,
   );
   stateRing.setAttribute("role", "img");
   stateRing.setAttribute(
     "aria-label",
-    `현재 농장 상태 ${stateLabel(currentState)}`,
+    conditionScore === null
+      ? `오늘의 작물 상태 ${status.label}, 생육점수 산정 전`
+      : `오늘의 작물 상태 ${condition.label}, 생육점수 ${conditionScore}점`,
   );
-  // 생육 적합도 점수. 자료가 모자라 점수를 못 내면 숫자 대신 상태를 보여 준다.
-  const suitability = analysis?.suitability ?? null;
-  const scored = suitability?.scored === true;
-  stateRing.append(
-    element("span", "", scored ? `${suitability.score}점` : stateLabel(currentState)),
+  stateRing.style.setProperty(
+    "--condition-percent",
+    `${conditionScore ?? 0}%`,
   );
-  const stateCopy = element("div", "current-state-copy");
-  if (scored) {
-    stateCopy.append(
-      element("strong", "", `생육 적합도 ${suitability.score}점 · ${suitability.grade}`),
-      element(
-        "span",
-        "",
-        suitability.modules
-          .map((item) => `${item.label} ${item.score}점`)
-          .join(" · "),
-      ),
+  if (conditionScore === null) {
+    stateRing.append(
+      element("strong", "", "—"),
+      element("span", "", "생육점수"),
     );
   } else {
-    stateCopy.append(
-      element("strong", "", stateLabel(currentState)),
-      element(
-        "span",
-        "",
-        suitability?.blockedReason ??
-          "기상·토양·예보를 각각 확인한 현재 상태입니다.",
-      ),
+    const scoreLine = element("strong", "");
+    scoreLine.append(
+      document.createTextNode(String(conditionScore)),
+      element("em", "", "점"),
     );
+    stateRing.append(scoreLine, element("span", "", "생육점수"));
   }
+  const stateCopy = element("div", "current-state-copy");
+  stateCopy.append(
+    element(
+      "strong",
+      "",
+      conditionScore === null ? status.label : condition.label,
+    ),
+    element("span", "", status.detail),
+  );
   stateVisual.append(stateRing, stateCopy);
+
   const axes = element("div", "axis-status-list");
   [
-    ["기후 조건", analysis?.climate?.state, "작물·작기별 규칙과 비교"],
-    ["토양 조건", analysis?.soil?.state, "지역 대표자료와 필지 실측을 구분"],
-    ["가까운 예보", analysis?.forecast?.state, "장기 적합성과 분리한 위험 신호"],
-  ].forEach(([label, value, help]) => {
-    const state = value ?? "UNAVAILABLE";
+    {
+      label: "날씨 영향",
+      score: condition.components.forecast,
+      help: forecastConditionHelp(analysis),
+    },
+    {
+      label: "토양 적합",
+      score: condition.components.soil,
+      help: soilConditionHelp(analysis),
+    },
+    {
+      label: "점수 근거",
+      score: null,
+      valueLabel: condition.basisLabel,
+      help: "날씨 60% · 토양 40%",
+    },
+  ].forEach(({ label, score, valueLabel, help }) => {
+    const tone =
+      score === null ? "caution" : score >= 70 ? "good" : "caution";
     const card = element(
       "article",
-      `axis-status ${toneForState(state) === "good" ? "" : "is-caution"}`.trim(),
+      `axis-status ${tone === "good" ? "" : "is-caution"}`.trim(),
     );
+    const scoreValue = element(
+      "strong",
+      `axis-score-value${score === null ? " is-unavailable" : ""}`,
+    );
+    if (score === null) {
+      scoreValue.append(
+        element(
+          "b",
+          "",
+          valueLabel ?? "산정 대기",
+        ),
+      );
+    } else {
+      scoreValue.append(
+        element("b", "", String(score)),
+        element("em", "", "점"),
+      );
+    }
     card.append(
       element("span", "", label),
-      element("strong", "", stateLabel(state)),
+      scoreValue,
       element("small", "", help),
     );
     axes.append(card);
@@ -1577,84 +2002,78 @@ function renderStateOverview(analysis) {
   const overall = element(
     "p",
     "score-state",
-    scored
-      ? `${suitability.modules.map((m) => `${m.label} ${m.itemCount}개 항목`).join(" · ")} 비교 결과입니다. 확인되지 않은 항목은 아래에서 별도로 표시합니다.`
-      : "확인되지 않은 항목은 아래에서 별도로 표시합니다.",
+    conditionScore === null
+      ? "날씨·토양 값이 모두 확인되면 생육점수를 표시합니다. 부족한 값은 0점으로 계산하지 않습니다."
+      : `${conditionScore}점은 가까운 예보 60%와 작물별 토양 적합도 40%를 반영했습니다. 더 정확히 확인하려면 사진·센서값을 추가할 수 있습니다.`,
   );
   inner.append(heading, stateVisual, axes, overall);
 
-  // 점수를 어떻게 냈는지 감추지 않는다.
-  if (scored) {
-    const how = element("details", "score-method");
-    how.append(element("summary", "", "점수는 어떻게 계산했나요"));
-    const body = element("div", "details-body");
-    const list = element("ul", "reason-list");
-    list.append(
-      element(
-        "li",
-        "",
-        `항목 편차 = ${suitability.method.itemDeviation}`,
-      ),
-      element(
-        "li",
-        "",
-        `항목 중요도 = 매우 중요 ${suitability.method.weights.CRITICAL} · 중요 ${suitability.method.weights.IMPORTANT} · 보조 ${suitability.method.weights.SUPPORTING}`,
-      ),
-      element("li", "", `항목별 점수 = ${suitability.method.moduleScore}`),
-      element("li", "", `종합 점수 = ${suitability.method.totalScore}`),
-      element("li", "", suitability.method.note),
-    );
-    body.append(list);
-    if (suitability.nearTermRiskDays > 0) {
-      body.append(
-        element(
-          "p",
-          "formula-note",
-          `가까운 예보 위험 ${suitability.nearTermRiskDays}건은 지금 당장의 주의 사항이라 적합도 점수에 섞지 않고 따로 표시합니다.`,
-        ),
-      );
-    }
-    how.append(body);
-    inner.append(how);
-  }
-
-  const button = element("button", "button button-secondary score-evidence-button", "분석 근거 보기");
+  const button = element(
+    "button",
+    "button button-secondary score-evidence-button",
+    "상태 자세히",
+  );
   button.type = "button";
   button.addEventListener("click", () => openEvidenceDialog());
+  overview.replaceChildren(inner, button);
+}
 
-  const spatial = element("section", "overview-spatial");
-  const spatialTitle = element(
-    "h3",
-    "overview-spatial-title",
-    `자료 공간 범위 · ${parcelStateLabel(analysis?.inputSummary?.parcelState)}`,
-  );
-  const distanceList = element("dl", "distance-list");
-  const distanceSources = (analysis?.dataSources ?? [])
-    .filter((source) => Number.isFinite(source?.distanceKm))
-    .slice(0, 3);
-  if (distanceSources.length) {
-    distanceSources.forEach((source) => {
-      const row = element("div", "distance-row");
-      row.append(
-        element("dt", "", source.sourceName ?? source.sourceId ?? "자료"),
-        element("dd", "", `${formatNumber(source.distanceKm)}km`),
-      );
-      distanceList.append(row);
-    });
-  } else {
-    const row = element("div", "distance-row");
-    row.append(
-      element("dt", "", "거리 정보"),
-      element("dd", "", "제공되지 않음"),
-    );
-    distanceList.append(row);
+function forecastConditionHelp(analysis) {
+  const score = calculateCropConditionScore(analysis).components.forecast;
+  if (!Number.isFinite(score)) {
+    return "작물별 예보 판정 완료 후 반영";
   }
-  spatial.append(
-    spatialTitle,
-    distanceList,
-    element("p", "spatial-caveat", "지역 자료는 필지 실측값이 아닙니다."),
+  const risks = activeForecastRisks(analysis);
+  if (risks.length === 0) return "확인된 예보 범위에서 주의 기준 초과 없음";
+  const dates = new Set(
+    risks.flatMap((risk) =>
+      forecastDisplayDays(analysis)
+        .filter((day) => riskCoversDate(risk, day.date))
+        .map((day) => day.date),
+    ),
   );
-  overview.replaceChildren(inner, button, spatial);
+  return `주의 날짜 ${dates.size}일 · 기준 초과 정도 반영`;
+}
+
+function soilConditionHelp(analysis) {
+  const basis = analysis?.soil?.result?.measurementBasis;
+  if (basis === "USER_SOIL_TEST") return "등록한 필지 토양검정값 기준";
+  if (basis === "PROVIDER_SOIL_TEST") return "공공 API의 최근 필지 토양검정 기준";
+  if (basis === "REGIONAL_STATISTICS") {
+    return "지역 토양 통계 기준 · 실제 밭과 다를 수 있음";
+  }
+  return "작물별 토양 적합도 확인 후 반영";
+}
+
+function farmStatusSummary(analysis) {
+  const weather = forecastRiskGuide(analysis);
+  const soil = soilConditionGuide(analysis);
+  const detail = resolveDisplayAction(analysis).title;
+  if (weather.risk && weather.severity === "WARNING") {
+    return { label: "주의", tone: "danger", detail };
+  }
+  if (weather.risk || soil.tone === "caution") {
+    return { label: "점검 필요", tone: "caution", detail };
+  }
+  if (weather.bounded && soil.ready) {
+    return {
+      label: "현재 범위 양호",
+      tone: "good",
+      detail: `${weather.evaluatedDayCount}일 예보 범위에서 확인된 주의 신호가 없습니다.`,
+    };
+  }
+  if (weather.ready && soil.ready) {
+    return {
+      label: "양호",
+      tone: "good",
+      detail: "현재 확인된 위험 신호가 없습니다.",
+    };
+  }
+  return {
+    label: "확인 필요",
+    tone: "hold",
+    detail: "확인 가능한 자료를 기준으로 우선 행동을 안내합니다.",
+  };
 }
 
 function renderMetricStrip(analysis) {
@@ -1662,7 +2081,11 @@ function renderMetricStrip(analysis) {
   const metrics = [
     ["기후 조건", analysis?.climate?.state, "작물·작기 기준과 비교"],
     ["토양 조건", analysis?.soil?.state, "필지 실측 여부를 함께 확인"],
-    ["가까운 예보", analysis?.forecast?.state, "날짜·지속기간이 있는 별도 신호"],
+    [
+      "가까운 예보",
+      analysis?.forecast?.result?.riskState ?? analysis?.forecast?.state,
+      "날짜·지속기간이 있는 작물별 신호",
+    ],
     ["자료 전체", analysis?.state, "결측과 출처 한계를 포함한 상태"],
   ];
   strip.replaceChildren(
@@ -1685,7 +2108,7 @@ function renderMetricStrip(analysis) {
 function renderSmartfarmReference(analysis) {
   const panel = document.querySelector("#smartfarm-reference-panel");
   if (!panel) return;
-  const module = analysis?.smartfarm;
+  const module = null;
   if (
     !module ||
     !["READY", "PARTIAL"].includes(module.state)
@@ -1711,7 +2134,7 @@ function renderSmartfarmReference(analysis) {
     element(
       "span",
       `status-label ${toneForState(module.state)}`,
-      sampleData ? "개발 샘플 비교" : stateLabel(module.state),
+      stateLabel(module.state),
     ),
   );
 
@@ -1878,23 +2301,6 @@ function renderExplanation(analysis) {
     element("p", "", summary.title),
     element("p", "muted", summary.detail),
   );
-
-  // 확정된 분석 문장을 쉬운 말로 다시 쓴 결과. 검증을 통과한 경우에만 붙인다.
-  const plain = analysis?.report?.plainLanguage;
-  if (plain?.state === "READY" && plain.paragraphs?.length) {
-    const easy = element("div", "plain-report");
-    easy.append(
-      element("h3", "", "쉬운 말로 다시 읽기 "),
-      ...plain.paragraphs.map((text) => element("p", "", text)),
-      element(
-        "p",
-        "formula-note",
-        "위 분석 결과를 초보 농업인이 읽기 쉬운 말로 다시 쓴 것입니다. 새로운 진단이나 처방은 만들지 않으며, 분석에 없는 숫자가 나오면 자동으로 버려집니다.",
-      ),
-    );
-    explanation.append(easy);
-  }
-
   grid.classList.add("is-user-summary");
   grid.replaceChildren(explanation);
 }
@@ -1981,72 +2387,47 @@ function renderEvidenceDialog(analysis) {
     ),
   );
   const body = dialog.querySelector(".dialog-body");
+  body.replaceChildren(renderFarmConditionGuide(analysis, "dialog"));
+}
 
-  const evidenceSection = element("section");
-  evidenceSection.append(element("h3", "", "모듈별 근거"));
-  const evidence = collectEvidence(analysis);
-  if (evidence.length === 0) {
-    evidenceSection.append(
-      element(
-        "p",
-        "backend-empty",
-        "표시할 근거가 없습니다. 자료 상태와 한계를 확인해 주세요.",
-      ),
-    );
-  } else {
-    evidenceSection.append(evidenceTable(evidence.slice(0, 80)));
-    if (evidence.length > 80) {
-      evidenceSection.append(
-        element(
-          "p",
-          "muted",
-          `화면에는 ${evidence.length}개 중 앞의 80개 근거를 표시합니다.`,
-        ),
-      );
-    }
-  }
+function renderTechnicalSettings(analysis) {
+  const container = document.querySelector("#technical-analysis-settings");
+  if (!container) return;
 
-  const sourceSection = element("section", "panel");
-  sourceSection.append(
-    element("h3", "", "출처"),
-    sourceGrid(analysis?.dataSources),
+  const sourceDetails = element("details");
+  const sourceBody = element("div", "details-body");
+  sourceDetails.append(
+    element("summary", "", "사용한 공공데이터 출처"),
+    sourceBody,
   );
-  const limits = element("section", "panel");
-  limits.id = "dialog-limits";
-  limits.tabIndex = -1;
-  limits.append(element("h3", "", "원자료와 한계"), limitationList(analysis?.limitations));
-  const technical = element("details", "evidence-technical-details");
-  const technicalBody = element("div", "evidence-technical-body");
-  technical.append(
-    element("summary", "", "원자료·출처·규칙 보기"),
-    technicalBody,
+  sourceBody.append(sourceGrid(analysis?.dataSources));
+
+  const ruleDetails = element("details");
+  const ruleBody = element("div", "details-body");
+  ruleDetails.append(
+    element("summary", "", "작물별 판정 기준과 한계"),
+    ruleBody,
   );
-  technicalBody.append(
+  ruleBody.append(
+    element(
+      "p",
+      "",
+      "같은 농장 위치의 날씨 원자료는 모든 작물에 공통으로 사용합니다. 작물과 생육 단계에 따라 위험 기준과 필요한 행동만 달라집니다.",
+    ),
+    element(
+      "p",
+      "",
+      "필지 토양검정값은 모든 작물에 동일하게 사용합니다. 필지 검정값이 없을 때만 과수원·밭 지역통계를 구분하고, 각 작물의 적정 범위로 해석합니다.",
+    ),
+    limitationList(analysis?.limitations),
     element(
       "p",
       "muted",
       `규칙 버전 · ${analysis?.ruleVersion ?? "제공되지 않음"}`,
     ),
-    evidenceSection,
-    sourceSection,
-    limits,
   );
-  const content = [renderFarmConditionGuide(analysis, "dialog")];
-  if (sampleData) {
-    const warning = element(
-      "div",
-      "notice notice-warning runtime-sample-warning",
-    );
-    warning.append(
-      element(
-        "p",
-        "",
-        "개발 샘플 근거입니다. 농업 의사결정에 사용하지 마세요.",
-      ),
-    );
-    content.unshift(warning);
-  }
-  body.replaceChildren(...content, technical);
+
+  container.replaceChildren(sourceDetails, ruleDetails);
 }
 
 function renderReportPanel(panel, analysis) {
@@ -2301,7 +2682,7 @@ function reportSections(report) {
 
 function primaryDisplayAction(analysis) {
   const actions = Array.isArray(analysis?.actions)
-    ? analysis.actions.filter(isUserFacingAction)
+    ? analysis.actions.filter(isPrimaryUserAction)
     : [];
   const primaryActionId = analysis?.primaryAction?.actionId;
   if (primaryActionId) {
@@ -2311,6 +2692,13 @@ function primaryDisplayAction(analysis) {
     if (matching) return matching;
   }
   return actions[0] ?? null;
+}
+
+function isPrimaryUserAction(action) {
+  return (
+    isUserFacingAction(action) &&
+    action?.actionId !== "REQUEST_FIELD_SOIL_TEST"
+  );
 }
 
 function activeForecastRisks(analysis) {
@@ -2335,9 +2723,15 @@ function activeForecastRisks(analysis) {
 function forecastRiskGuide(analysis) {
   const risk = activeForecastRisks(analysis)[0] ?? null;
   const days = forecastDisplayDays(analysis);
-  const noRiskConfirmed =
-    analysis?.forecast?.state === "READY" &&
-    analysis?.forecast?.result?.noActiveRisksConfirmed === true;
+  const evaluation = summarizeForecastEvaluation({
+    crop: analysis?.inputSummary?.crop,
+    forecastState:
+      analysis?.forecast?.result?.riskState ?? analysis?.forecast?.state,
+    days,
+    risks: activeForecastRisks(analysis),
+    missingMetrics: analysis?.forecast?.result?.missingMetrics,
+    ruleEvaluations: analysis?.forecast?.result?.ruleEvaluations,
+  });
   const regional =
     analysis?.inputSummary?.locationPrecision === "ADMIN_AREA_BROAD";
   const scopeCaveat = regional
@@ -2346,25 +2740,16 @@ function forecastRiskGuide(analysis) {
   if (!risk) {
     return {
       risk: false,
-      ready: noRiskConfirmed,
+      ready: evaluation.ready,
+      bounded: evaluation.bounded,
+      evaluationKind: evaluation.kind,
+      evaluatedDayCount: evaluation.evaluatedDayCount,
       regional,
-      tone: noRiskConfirmed ? "good" : "unknown",
-      condition: noRiskConfirmed
-        ? "현재 확인된 작물 위험 신호 없음"
-        : days.length > 0
-          ? "일부 예보만 확인됨"
-          : "예보 자료 확인 필요",
-      reason: noRiskConfirmed
-        ? "연결된 예보를 작물별 검수 기준과 비교했으며 현재 활성화된 위험 규칙은 없습니다."
-        : days.length > 0
-          ? "확인되지 않은 날짜나 값이 있어 위험이 없다고 단정할 수 없습니다."
-        : "현재 예보값이 없어 작물별 가까운 위험을 확인하지 못했습니다.",
-      actions: noRiskConfirmed
-        ? ["예보가 갱신되면 같은 농장 조건으로 다시 확인합니다."]
-        : ["농장 위치를 확인한 뒤 예보를 다시 불러옵니다."],
-      recheck: noRiskConfirmed
-        ? "다음 예보 갱신 뒤 같은 조건으로 다시 확인합니다."
-        : "예보 연결을 복구한 뒤 다시 확인합니다.",
+      tone: evaluation.tone,
+      condition: evaluation.condition,
+      reason: evaluation.reason,
+      actions: evaluation.actions,
+      recheck: evaluation.recheck,
       caveat: scopeCaveat,
       sourceUrl: null,
     };
@@ -2392,6 +2777,7 @@ function forecastRiskGuide(analysis) {
 
 function soilConditionGuide(analysis) {
   const soil = analysis?.soil;
+  const missingSoilExamHistory = hasMissingSoilExamHistory(analysis);
   if (soil?.state === "NOT_APPLICABLE") {
     return {
       ready: true,
@@ -2416,16 +2802,32 @@ function soilConditionGuide(analysis) {
       : null;
   const ph = metrics.find((metric) => metric?.metric === "PH");
 
-  // 사용자가 등록한 토양검정 결과가 판단 근거이면 지역 분포 문구를 쓰지 않는다.
-  if (soil?.result?.measurementBasis === "USER_SOIL_TEST" && ph) {
-    const measured = soil.result.userSoilTest ?? {};
+  // 필지 토양검정이 판단 근거이면 지역 분포 문구를 쓰지 않는다.
+  const measurementBasis = soil?.result?.measurementBasis;
+  if (
+    ["USER_SOIL_TEST", "PROVIDER_SOIL_TEST"].includes(measurementBasis) &&
+    ph
+  ) {
+    const userMeasured = soil.result.userSoilTest ?? {};
+    const providerMeasured = soil.result.providerSoilTest ?? {};
+    const providerValues = Object.fromEntries(
+      (providerMeasured.measurements ?? []).map((item) => [
+        item.metric,
+        item.value,
+      ]),
+    );
+    const valueFor = (metric) =>
+      measurementBasis === "USER_SOIL_TEST"
+        ? userMeasured[SOIL_METRIC_FIELDS[metric]]
+        : providerValues[metric];
+    const measuredPh = valueFor("PH");
     const withinRange = ph.fitRatio >= 1;
     // 검수된 규칙으로 실제 판정된 항목만 적는다. 판정 못 한 값은 세지 않는다.
     const judged = metrics.map((metric) => ({
       label: SOIL_METRIC_LABELS[metric.metric] ?? metric.metric,
       inside: metric.fitRatio >= 1,
       range: metricOptimalRange(soil, metric.ruleId),
-      value: measured[SOIL_METRIC_FIELDS[metric.metric]] ?? null,
+      value: valueFor(metric.metric) ?? null,
     }));
     const outside = judged.filter((item) => !item.inside);
     const phRange = judged.find((item) => item.label === "산도 pH")?.range ?? null;
@@ -2433,13 +2835,17 @@ function soilConditionGuide(analysis) {
     return {
       ready: true,
       tone: outside.length === 0 ? "good" : "caution",
-      condition: `내 밭 pH ${measured.ph} · ${
+      condition: `내 밭 pH ${measuredPh} · ${
         outside.length === 0
           ? `검사 ${judged.length}개 항목 모두 기준 안`
           : `${outside.length}개 항목 기준 밖`
       }`,
       reason:
-        `등록하신 토양검정 결과로 판단했습니다. 산도 pH ${measured.ph}는 ${
+        `${
+          measurementBasis === "USER_SOIL_TEST"
+            ? "등록하신"
+            : "농촌진흥청에서 확인한 최근"
+        } 토양검정 결과로 판단했습니다. 산도 pH ${measuredPh}는 ${
           phRange ? `기준 ${phRange[0]}~${phRange[1]} ` : "작물 기준 "
         }${withinRange ? "안입니다." : "밖입니다."} ` +
         (outside.length === 0
@@ -2455,22 +2861,34 @@ function soilConditionGuide(analysis) {
                   }`,
               )
               .join(" · ")}.`),
-      caveat: `${measured.sampledOn} 검사${
-        measured.issuer ? ` · ${measured.issuer}` : ""
+      caveat: `${
+        measurementBasis === "USER_SOIL_TEST"
+          ? userMeasured.sampledOn
+          : providerMeasured.sampledOn
+      } 검사${
+        measurementBasis === "USER_SOIL_TEST" && userMeasured.issuer
+          ? ` · ${userMeasured.issuer}`
+          : providerMeasured.examType
+            ? ` · ${providerMeasured.examType}`
+            : ""
       } 기준입니다. 지역 평균이 아니라 이 필지의 실측값입니다.`,
       actions:
         outside.length === 0
           ? [
-              "모든 항목이 기준 안이므로 처방서의 시용량을 그대로 지키면 됩니다.",
-              "다음 작기 전에 토양검정을 다시 받아 변화를 확인합니다.",
+              "현재 토양 관리 기록과 검정기관 처방서의 작물별 시비 기준을 유지합니다.",
             ]
           : [
               `처방서에서 ${outside
                 .map((item) => item.label)
                 .join(" · ")} 관련 시용량을 확인해 조정합니다.`,
-              "조정 후 다음 작기 전에 토양검정을 다시 받아 확인합니다.",
             ],
-      sourceUrl: null,
+      verificationActions: [
+        "토양을 조정했다면 다음 작기 전에 다시 검사해 변화를 확인합니다.",
+      ],
+      sourceUrl:
+        measurementBasis === "PROVIDER_SOIL_TEST"
+          ? soilExamSourceUrl(analysis)
+          : null,
     };
   }
 
@@ -2480,15 +2898,25 @@ function soilConditionGuide(analysis) {
       : "";
     return {
       ready: true,
-      tone: ph?.outsideRatio > 0 ? "caution" : "info",
-      condition: "필지 배수·토성·뿌리층 자료 확인됨",
+      tone:
+        missingSoilExamHistory || ph?.outsideRatio > 0
+          ? "caution"
+          : "info",
+      condition: missingSoilExamHistory
+        ? "토양검정 이력 없음"
+        : "필지 배수·토성·뿌리층 자료 확인됨",
       reason:
-        `선택한 필지의 1:5,000 토양도에서 배수등급, 표토 토성, 유효토심 자료를 확인했습니다.${regionalPhSummary}`,
+        missingSoilExamHistory
+          ? `토양검정 화학성 상세정보 V2에서 이 필지의 최근 3년 이내 검사 결과를 찾지 못했습니다. 1:5,000 토양도의 배수·토성·유효토심 자료만 확인됐습니다.${regionalPhSummary}`
+          : `선택한 필지의 1:5,000 토양도에서 배수등급, 표토 토성, 유효토심 자료를 확인했습니다.${regionalPhSummary}`,
       caveat:
         "토양도는 필지 토양의 물리 특성 참고자료이며, pH·EC는 최근 토양검정 결과로 별도 확인해야 합니다.",
       actions: [
-        "배수가 나쁘거나 뿌리층이 얕은지 농업기술센터에서 필지 토양도 코드의 의미를 확인합니다.",
+        "비가 온 뒤 물이 오래 고이는 곳과 흙이 단단해 뿌리가 막히는 곳을 현장에서 확인합니다.",
+      ],
+      verificationActions: [
         "최근 토양검정 결과에서 pH와 EC를 확인합니다.",
+        "필지 토양도에서 배수·토성·뿌리층 정보를 함께 확인합니다.",
       ],
       sourceUrl: soilFieldSourceUrl(analysis) ?? soilSourceUrl(analysis),
     };
@@ -2497,18 +2925,29 @@ function soilConditionGuide(analysis) {
     const fit = formatPercent(ph.fitRatio);
     const uncertain = formatPercent(ph.uncertainRatio);
     const outside = formatPercent(ph.outsideRatio);
+    const regionalBasis = regionalSoilBasisLabel(analysis);
     return {
       ready: true,
-      tone: ph.outsideRatio > 0 ? "caution" : "good",
+      tone:
+        missingSoilExamHistory || ph.outsideRatio > 0
+          ? "caution"
+          : "good",
       condition:
-        ph.outsideRatio > 0
-          ? `지역 pH 기준 밖 면적 ${outside}`
-          : `지역 pH 기준 범위 면적 ${fit}`,
+        missingSoilExamHistory
+          ? "토양검정 이력 없음"
+          : ph.outsideRatio > 0
+          ? `${regionalBasis} · 기준 밖 면적 ${outside}`
+          : `${regionalBasis} · 기준 범위 면적 ${fit}`,
       reason:
-        `지역 토양 통계에서 작물 pH 기준과 겹치는 면적은 ${fit}, 경계에 걸친 면적은 ${uncertain}, 기준 밖 면적은 ${outside}입니다.`,
+        `${
+          missingSoilExamHistory
+            ? "토양검정 화학성 상세정보 V2에서 이 필지의 최근 3년 이내 검사 결과를 찾지 못했습니다. 대신 "
+            : ""
+        }${regionalBasis}를 이 작물의 pH 적정 범위와 비교했습니다. 기준과 겹치는 면적은 ${fit}, 경계에 걸친 면적은 ${uncertain}, 기준 밖 면적은 ${outside}입니다.`,
       caveat:
-        "지역 pH 분포이며 실제 밭의 pH·EC 측정값은 아닙니다.",
-      actions: [
+        `${regionalBasis}이며 실제 밭의 pH·EC 측정값이 아닙니다. 같은 위치라도 과수원·밭 통계와 작물별 적정 범위가 달라 해석이 달라질 수 있습니다.`,
+      actions: [],
+      verificationActions: [
         "실제 밭의 토양검정 결과에서 pH와 EC를 확인합니다.",
         "검정 결과가 없다면 가까운 농업기술센터에 토양검정을 신청합니다.",
       ],
@@ -2519,11 +2958,16 @@ function soilConditionGuide(analysis) {
   return {
     ready: false,
     tone: "unknown",
-    condition: "농장 토양 pH·EC 미확인",
+    condition: missingSoilExamHistory
+      ? "토양검정 이력 없음"
+      : "농장 토양 pH·EC 미확인",
     reason:
-      "현재 연결 자료에서 농장 토양의 pH와 EC를 확인하지 못했습니다. 토양 상태를 임의로 추정하지 않습니다.",
+      missingSoilExamHistory
+        ? "토양검정 화학성 상세정보 V2에서 이 필지의 최근 3년 이내 검사 결과를 찾지 못했습니다. 실제 밭의 pH와 EC는 무료 토양검정으로 확인할 수 있습니다."
+        : "현재 연결 자료에서 농장 토양의 pH와 EC를 확인하지 못했습니다. 토양 상태를 임의로 추정하지 않습니다.",
     caveat: "지역 통계는 실제 밭의 측정값이 아닙니다.",
-    actions: [
+    actions: [],
+    verificationActions: [
       "기존 토양검정 결과가 있다면 pH와 EC 값을 등록합니다.",
       "검정 결과가 없다면 가까운 농업기술센터에 토양검정을 신청합니다.",
     ],
@@ -2531,9 +2975,25 @@ function soilConditionGuide(analysis) {
   };
 }
 
+function regionalSoilBasisLabel(analysis) {
+  const crop = analysis?.inputSummary?.crop;
+  const region = analysis?.inputSummary?.regionLabel?.trim();
+  const landUse = ["APPLE", "PEAR"].includes(crop) ? "과수원" : "밭";
+  return `${region ? `${region} ` : ""}${landUse} 지역 pH 통계`;
+}
+
 function soilFieldSourceUrl(analysis) {
   const source = (analysis?.dataSources ?? []).find((item) =>
     /soil-field|토양특성/iu.test(
+      `${item?.sourceId ?? ""} ${item?.sourceName ?? ""}`,
+    ),
+  );
+  return isSafeHttpUrl(source?.sourceUrl) ? source.sourceUrl : null;
+}
+
+function soilExamSourceUrl(analysis) {
+  const source = (analysis?.dataSources ?? []).find((item) =>
+    /soil-exam|토양검정/iu.test(
       `${item?.sourceId ?? ""} ${item?.sourceName ?? ""}`,
     ),
   );
@@ -2667,7 +3127,9 @@ function resolveDisplayAction(analysis) {
 }
 
 function isUserFacingAction(action) {
-  return action?.actionId !== "COLLECT_REQUIRED_DATA";
+  return !["COLLECT_REQUIRED_DATA", "REQUEST_FIELD_SOIL_TEST"].includes(
+    action?.actionId,
+  );
 }
 
 function userActionTitle(action, analysis = null) {
@@ -2779,7 +3241,9 @@ function closeWizardAfterAnalysis() {
   document.querySelector(".app-shell").inert = false;
   document.querySelector(".skip-link").inert = false;
   document.body.classList.remove("wizard-open");
+  document.body.classList.remove("session-restoring", "session-restore-failed");
   document.body.classList.add("analysis-ready");
+  document.body.dataset.profileState = "ready";
   document
     .querySelector('[data-view="dashboard"]')
     ?.click();
@@ -2801,7 +3265,35 @@ function resetDashboard() {
   }
 }
 
-function scrubLegacyMockSurfaces() {
+function renderStoredSessionLoading(saved) {
+  const region = saved.region.trim();
+  const crops = saved.crops
+    .map((crop) => CROP_LABELS[String(crop).toUpperCase()] ?? crop)
+    .join(", ");
+  const context = [region, crops].filter(Boolean).join(" · ");
+  document.querySelector("#sidebar-context-value").textContent = context;
+  document.querySelector("#topbar-context-value").textContent = context;
+  document.querySelector("#sidebar-mode-value").textContent =
+    saved.situation === "growing"
+      ? "재배 중 생육 점검"
+      : "재배 전 환경 분석";
+  document.querySelector("#dashboard-title").textContent =
+    `${context} 최신 자료 확인 중`;
+  document.querySelector("#dashboard-mode-copy").textContent =
+    "저장된 농장 설정으로 기상·토양·예보를 다시 확인하고 있습니다.";
+  const summary = document.querySelector(".summary-panel");
+  if (summary) {
+    summary.replaceChildren(
+      element(
+        "p",
+        "backend-empty",
+        "농장 설정은 저장되어 있습니다. 최신 자료만 다시 불러옵니다.",
+      ),
+    );
+  }
+}
+
+function initializeDashboardSurfaces() {
   const sidebarContext = document.querySelector("#sidebar-context-value");
   if (sidebarContext) sidebarContext.textContent = "분석 조건을 입력해 주세요";
   const sidebarMode = document.querySelector("#sidebar-mode-value");
@@ -2815,32 +3307,7 @@ function scrubLegacyMockSurfaces() {
   }
 
   const recent = document.querySelector(".sidebar-recent");
-  if (recent) {
-    recent.replaceChildren(
-      element("h2", "", "최근 분석"),
-      element(
-        "p",
-        "recent-analysis",
-        "새 분석을 시작하면 방금 확인한 결과를 다시 볼 수 있습니다.",
-      ),
-    );
-  }
-
-  const analysisSurface = document.querySelector(
-    "#view-analyses .analysis-list-surface",
-  );
-  if (analysisSurface) {
-    const panel = element("section", "panel");
-    panel.append(
-      element("h2", "", "최근 분석"),
-      element(
-        "p",
-        "",
-        "새 분석을 시작하면 이 화면에서 최근 결과를 확인할 수 있습니다.",
-      ),
-    );
-    analysisSurface.replaceChildren(panel);
-  }
+  if (recent) renderFarmList(recent);
 
   renderRegionLabels();
   setupSoilTestPanel();
@@ -2865,6 +3332,7 @@ function setDashboardResultVisibility(visible) {
   [
     "#live-outlook",
     ".decision-flow",
+    ".risk-panel",
     ".action-workspace",
     ".overview-score",
   ].forEach((selector) => {
@@ -2881,7 +3349,7 @@ function setDashboardResultVisibility(visible) {
       if (target) target.hidden = true;
     },
   );
-  document.querySelector(".decision-flow")?.classList.add("is-user-focused");
+  document.querySelector(".decision-flow")?.classList.remove("is-user-focused");
 }
 
 function openAssistant() {
@@ -3009,11 +3477,16 @@ function updateSubmitAvailability() {
 function clearSelectedCandidate(statusMessage = "") {
   selectedCandidate = null;
   delete regionInput.dataset.candidateVerified;
-  locationCandidates.hidden = true;
-  locationCandidates.replaceChildren();
+  hideLocationCandidates();
   updateSubmitAvailability();
   syncWizardNextState();
   if (statusMessage) setLocationStatus(statusMessage);
+}
+
+function hideLocationCandidates() {
+  locationCandidates.hidden = true;
+  locationCandidates.replaceChildren();
+  regionInput.setAttribute("aria-expanded", "false");
 }
 
 function syncWizardNextState() {
@@ -3194,39 +3667,169 @@ function readStoredRegion() {
  */
 function writeStoredSession(values, region) {
   const storage = safeStorage();
-  if (!storage) return;
+  if (!storage || typeof region !== "string" || !region.trim()) return;
   try {
-    storage.setItem(
-      SESSION_STORAGE_KEY,
-      JSON.stringify({
-        situation: values.situation,
-        crops: values.crops,
-        cropSettings: values.cropSettings,
-        region,
-      }),
-    );
+    const profile = {
+      situation: values.situation,
+      crops: values.crops,
+      cropSettings: values.cropSettings,
+      region: region.trim(),
+    };
+    const farms = readStoredFarms();
+    const activeId = storage.getItem(ACTIVE_FARM_STORAGE_KEY);
+    const current =
+      creatingNewFarm ? null : farms.find((farm) => farm.id === activeId);
+    const farm = {
+      ...profile,
+      id: current?.id ?? createFarmId(),
+      name: farmDisplayName(profile),
+      updatedAt: new Date().toISOString(),
+    };
+    const nextFarms = [
+      farm,
+      ...farms.filter((item) => item.id !== farm.id),
+    ].slice(0, 12);
+    storage.setItem(FARMS_STORAGE_KEY, JSON.stringify(nextFarms));
+    storage.setItem(ACTIVE_FARM_STORAGE_KEY, farm.id);
+    // 이전 버전과의 호환을 위해 현재 농장 한 건도 함께 유지한다.
+    storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(profile));
+    creatingNewFarm = false;
+    renderFarmList();
   } catch {
     // 저장소가 가득 찼거나 막혀 있으면 복원 없이 계속 쓴다.
   }
 }
 
 function readStoredSession() {
-  const raw = safeStorage()?.getItem(SESSION_STORAGE_KEY);
+  const storage = safeStorage();
+  const farms = readStoredFarms();
+  if (farms.length) {
+    const activeId = storage?.getItem(ACTIVE_FARM_STORAGE_KEY);
+    return farms.find((farm) => farm.id === activeId) ?? farms[0];
+  }
+  const raw = storage?.getItem(SESSION_STORAGE_KEY);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
-    return typeof parsed?.region === "string" &&
-      Array.isArray(parsed?.crops) &&
-      parsed.crops.length > 0
-      ? parsed
-      : null;
+    if (!isStoredFarmProfile(parsed)) return null;
+    if (storage) {
+      const migrated = {
+        ...parsed,
+        id: createFarmId(),
+        name: farmDisplayName(parsed),
+        updatedAt: new Date().toISOString(),
+      };
+      storage.setItem(FARMS_STORAGE_KEY, JSON.stringify([migrated]));
+      storage.setItem(ACTIVE_FARM_STORAGE_KEY, migrated.id);
+      return migrated;
+    }
+    return parsed;
   } catch {
     return null;
   }
 }
 
 function clearStoredSession() {
-  safeStorage()?.removeItem(SESSION_STORAGE_KEY);
+  const storage = safeStorage();
+  storage?.removeItem(SESSION_STORAGE_KEY);
+  storage?.removeItem(FARMS_STORAGE_KEY);
+  storage?.removeItem(ACTIVE_FARM_STORAGE_KEY);
+}
+
+function readStoredFarms() {
+  const raw = safeStorage()?.getItem(FARMS_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (farm) => typeof farm?.id === "string" && isStoredFarmProfile(farm),
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function isStoredFarmProfile(profile) {
+  return (
+    typeof profile?.region === "string" &&
+    profile.region.trim() !== "" &&
+    profile?.situation === "growing" &&
+    Array.isArray(profile?.crops) &&
+    profile.crops.length > 0
+  );
+}
+
+function createFarmId() {
+  return globalThis.crypto?.randomUUID?.() ??
+    `farm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function farmDisplayName(profile) {
+  const region =
+    profile?.region
+      ?.replace(/^(대한민국|한국)\s*/u, "")
+      .split(/\s+/u)
+      .slice(-2)
+      .join(" ") || "내 농장";
+  const crops = (profile?.crops ?? [])
+    .slice(0, 2)
+    .map((crop) => CROP_LABELS[String(crop).toUpperCase()] ?? crop)
+    .join("·");
+  return crops ? `${region} · ${crops}` : region;
+}
+
+function renderFarmList(target = document.querySelector(".sidebar-recent")) {
+  if (!target) return;
+  const farms = readStoredFarms();
+  const activeId = safeStorage()?.getItem(ACTIVE_FARM_STORAGE_KEY);
+  const list = element("div", "farm-switcher");
+  for (const farm of farms) {
+    const button = element(
+      "button",
+      `farm-switch-button${farm.id === activeId ? " is-active" : ""}`,
+    );
+    button.type = "button";
+    button.dataset.farmId = farm.id;
+    if (farm.id === activeId) button.setAttribute("aria-current", "true");
+    button.append(
+      element("strong", "", farmDisplayName(farm)),
+      element(
+        "span",
+        "",
+        farm.situation === "growing" ? "재배 관리" : "재배 전 진단",
+      ),
+    );
+    button.addEventListener("click", () => selectStoredFarm(farm));
+    list.append(button);
+  }
+  const add = element("button", "farm-add-button", "＋ 농장 추가");
+  add.type = "button";
+  add.id = "add-farm";
+  add.addEventListener("click", startNewFarm);
+  target.replaceChildren(
+    element("h2", "", "내 농장"),
+    ...(farms.length
+      ? [list]
+      : [element("p", "recent-analysis", "저장된 농장이 없습니다.")]),
+    add,
+  );
+}
+
+function selectStoredFarm(farm) {
+  const storage = safeStorage();
+  if (!storage || !isStoredFarmProfile(farm)) return;
+  const { id, name, updatedAt, ...profile } = farm;
+  storage.setItem(ACTIVE_FARM_STORAGE_KEY, id);
+  storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(profile));
+  window.location.reload();
+}
+
+function startNewFarm() {
+  creatingNewFarm = true;
+  clearSelectedCandidate("");
+  document.dispatchEvent(new CustomEvent("heuknalssi:open-new-farm"));
 }
 
 function notificationsSupported() {
@@ -3297,52 +3900,6 @@ function todoNotificationCopy() {
   };
 }
 
-/** VAPID 공개키는 base64url 문자열로 오지만 구독에는 바이트 배열이 필요하다. */
-function decodeVapidKey(value) {
-  const padded = String(value).replace(/-/gu, "+").replace(/_/gu, "/");
-  const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "="));
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-}
-
-/**
- * 푸시 구독을 확보한다. 앱을 나가 있어도 알림이 뜨려면 페이지 타이머가
- * 아니라 이 구독으로 서버가 밀어 넣어야 한다.
- *
- * 아이폰은 홈 화면에 추가한 앱에서만 푸시를 허용한다. 사파리 탭에서 열면
- * pushManager가 아예 없거나 구독이 거부되므로 그대로 null을 돌려준다.
- */
-async function ensurePushSubscription() {
-  if (!api.pushPublicKey) return null;
-  const registration = await registerServiceWorker();
-  if (!registration?.pushManager) return null;
-  try {
-    const existing = await registration.pushManager.getSubscription();
-    // 서버 키가 바뀌었으면 옛 구독으로는 보낼 수 없다. 지우고 다시 받는다.
-    if (existing) {
-      const applied = existing.options?.applicationServerKey;
-      const sameKey =
-        !applied ||
-        base64UrlFromBuffer(applied) === api.pushPublicKey;
-      if (sameKey) return existing.toJSON();
-      await existing.unsubscribe();
-    }
-    const created = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: decodeVapidKey(api.pushPublicKey),
-    });
-    return created.toJSON();
-  } catch {
-    // 권한 거부·미지원. 화면 타이머로 물러선다.
-    return null;
-  }
-}
-
-function base64UrlFromBuffer(buffer) {
-  let binary = "";
-  for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/gu, "-").replace(/\//gu, "_").replace(/=+$/u, "");
-}
-
 async function showNotificationNow(copy) {
   const registration = await registerServiceWorker();
   if (registration?.active) {
@@ -3387,7 +3944,13 @@ function scheduleAlarm() {
     alarmTimer = null;
   }
   const alarm = readStoredAlarm();
-  if (!alarm || Notification?.permission !== "granted") return;
+  if (
+    !notificationsSupported() ||
+    !alarm ||
+    Notification.permission !== "granted"
+  ) {
+    return;
+  }
 
   const now = new Date();
   const [hour, minute] = alarm.time.split(":").map(Number);
@@ -3417,6 +3980,9 @@ function renderNotificationState() {
   const permissionCopy = document.querySelector("#risk-notification-status");
   const status = document.querySelector("#notification-status");
   const enableButton = document.querySelector("#notification-enable");
+  const saveButton = document.querySelector("#notification-save");
+  const testButton = document.querySelector("#notification-test");
+  const timeInput = document.querySelector("#notification-time");
   if (!badge) return;
 
   if (!notificationsSupported()) {
@@ -3426,9 +3992,20 @@ function renderNotificationState() {
         "이 브라우저는 알림을 지원하지 않습니다. 크롬이나 사파리에서 열어 주세요.";
     }
     if (enableButton) enableButton.disabled = true;
+    if (saveButton) saveButton.disabled = true;
+    if (testButton) testButton.disabled = true;
+    if (timeInput) timeInput.disabled = true;
+    if (status) {
+      status.textContent =
+        "이 브라우저에서는 알림 시간을 저장하거나 시험할 수 없습니다.";
+    }
     return;
   }
 
+  if (enableButton) enableButton.disabled = false;
+  if (saveButton) saveButton.disabled = false;
+  if (testButton) testButton.disabled = false;
+  if (timeInput) timeInput.disabled = false;
   const permission = Notification.permission;
   badge.textContent =
     permission === "granted" ? "켜짐" : permission === "denied" ? "차단됨" : "꺼짐";
@@ -3444,7 +4021,6 @@ function renderNotificationState() {
   }
 
   const alarm = readStoredAlarm();
-  const timeInput = document.querySelector("#notification-time");
   if (alarm && timeInput) timeInput.value = alarm.time;
   if (status) {
     status.textContent = alarm
@@ -3473,6 +4049,10 @@ function setupNotificationPanel() {
   });
 
   document.querySelector("#notification-save")?.addEventListener("click", () => {
+    if (!notificationsSupported()) {
+      if (status) status.textContent = "이 브라우저는 알림을 지원하지 않습니다.";
+      return;
+    }
     const time = document.querySelector("#notification-time")?.value ?? "";
     if (!/^\d{2}:\d{2}$/u.test(time)) {
       if (status) status.textContent = "알림 받을 시간을 골라 주세요.";
@@ -3488,6 +4068,10 @@ function setupNotificationPanel() {
   });
 
   document.querySelector("#notification-test")?.addEventListener("click", async () => {
+    if (!notificationsSupported()) {
+      if (status) status.textContent = "이 브라우저는 알림을 지원하지 않습니다.";
+      return;
+    }
     if (Notification.permission !== "granted") {
       const permission = await Notification.requestPermission();
       renderNotificationState();
@@ -3497,34 +4081,7 @@ function setupNotificationPanel() {
       }
     }
     await registerServiceWorker();
-
-    // 서버 푸시로 보내야 홈 화면으로 나가 있어도 배너가 뜬다. 페이지
-    // 타이머는 앱을 나가는 순간 멈춰서 아무것도 오지 않는다.
-    const subscription = await ensurePushSubscription();
-    if (subscription) {
-      if (status) {
-        status.textContent = "10초 뒤에 알림이 갑니다. 지금 홈 화면으로 나가 보세요.";
-      }
-      try {
-        await api.sendTestPush(subscription, 10);
-        if (status) status.textContent = "시험 알림을 보냈습니다.";
-      } catch (error) {
-        if (status) {
-          status.textContent =
-            error?.code === "PUSH_SUBSCRIPTION_EXPIRED"
-              ? "알림 권한이 끊겼습니다. 알림을 다시 허용해 주세요."
-              : "시험 알림을 보내지 못했습니다. 잠시 뒤 다시 눌러 주세요.";
-        }
-      }
-      return;
-    }
-
-    // 푸시를 쓸 수 없는 환경(홈 화면에 추가하지 않은 아이폰 등)에서는
-    // 앱을 열어 둔 동안에만 뜬다는 것을 분명히 알린다.
-    if (status) {
-      status.textContent =
-        "10초 뒤에 시험 알림이 갑니다. 이 기기에서는 앱을 열어 두어야 뜹니다.";
-    }
+    if (status) status.textContent = "10초 뒤에 시험 알림이 갑니다. 앱을 닫지 마세요.";
     setTimeout(() => {
       const copy = todoNotificationCopy();
       void showNotificationNow({
@@ -3701,12 +4258,12 @@ function setupSoilTestPanel() {
 // 검정 지표 ↔ 화면 표기. 서버가 쓰는 지표 이름과 짝을 맞춘다.
 const SOIL_METRIC_LABELS = Object.freeze({
   PH: "산도 pH",
-  EC: "전기전도도(짠기)",
+  EC: "전기전도도",
   ORGANIC_MATTER: "유기물",
   AVAILABLE_PHOSPHATE: "유효인산",
-  EXCHANGEABLE_K: "칼륨(칼리)",
-  EXCHANGEABLE_CA: "칼슘",
-  EXCHANGEABLE_MG: "마그네슘",
+  EXCHANGEABLE_K: "칼륨 K",
+  EXCHANGEABLE_CA: "칼슘 Ca",
+  EXCHANGEABLE_MG: "마그네슘 Mg",
 });
 const SOIL_METRIC_FIELDS = Object.freeze({
   PH: "ph",
@@ -3749,20 +4306,15 @@ function renderDashboardSoilTest() {
     const nodes = [];
     for (const field of SOIL_TEST_NUMERIC_FIELDS) {
       if (stored[field] === undefined) continue;
-      const [label, unit, plain] = SOIL_TEST_LABELS[field];
-      const term = element("dt", "condition-fact-label", label);
-      if (plain) term.title = plain;
-      nodes.push(term);
-      const value = element("dd", "condition-fact-title");
-      value.append(
+      const [label, unit] = SOIL_TEST_LABELS[field];
+      nodes.push(element("dt", "condition-fact-label", label));
+      nodes.push(
         element(
-          "span",
-          "",
+          "dd",
+          "condition-fact-title",
           unit === "" ? String(stored[field]) : `${stored[field]} ${unit}`,
         ),
       );
-      if (plain) value.append(element("small", "muted", plain));
-      nodes.push(value);
     }
     list.replaceChildren(...nodes);
   }
@@ -3881,7 +4433,7 @@ function setupAccountKeyPanel() {
 function readFormValues() {
   const crops = selectedCheckboxValues("crop");
   return {
-    situation: selectedRadioValue("situation") || "planning",
+    situation: selectedRadioValue("situation") || "growing",
     crops,
     analysisMonth: new Date().getMonth() + 1,
     cropSettings: Object.fromEntries(
@@ -3895,6 +4447,7 @@ function readFormValues() {
       ]),
     ),
     saveConsent: document.querySelector("#save-consent")?.checked === true,
+    smartfarmAvailable: false,
     soilTest: readStoredSoilTest(),
   };
 }
@@ -3944,7 +4497,7 @@ function cropSettingsComplete() {
 }
 
 function growthSettingsComplete() {
-  if ((selectedRadioValue("situation") || "planning") === "planning") {
+  if ((selectedRadioValue("situation") || "growing") === "planning") {
     return true;
   }
   const crops = selectedCheckboxValues("crop");
@@ -4120,34 +4673,12 @@ function locationResolutionLabel(mode) {
 
 function errorMessage(error) {
   const code = error?.code ?? "UNKNOWN_ERROR";
-  if (code === "RATE_LIMITED") {
-    const wait = error?.retryAfterSeconds;
-    return wait
-      ? `요청이 몰려 잠시 쉬어야 합니다. ${wait}초 뒤에 다시 눌러 주세요.`
-      : "요청이 몰려 잠시 쉬어야 합니다. 잠시 뒤 다시 눌러 주세요.";
-  }
   const base =
     ERROR_MESSAGES[code] ??
     (code.startsWith("INVALID_")
       ? "입력 조건을 다시 확인해 주세요."
       : "요청을 완료하지 못했습니다. 다시 시도해 주세요.");
   return error?.requestId ? `${base} (요청 ${error.requestId})` : base;
-}
-
-async function readIntegrationConfig() {
-  try {
-    const response = await fetch("/__integration/config", {
-      credentials: "same-origin",
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) return { sampleData: false };
-    const config = await response.json();
-    return config && typeof config === "object"
-      ? config
-      : { sampleData: false };
-  } catch {
-    return { sampleData: false };
-  }
 }
 
 async function readResponseBody(response) {

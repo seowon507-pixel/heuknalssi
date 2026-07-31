@@ -75,6 +75,7 @@ export function buildAnalysisRequests(values, candidateToken) {
         analysisMonth: values?.analysisMonth,
         growth: cropSettings.growth ?? values?.growth,
         saveConsent: values?.saveConsent,
+        smartfarmAvailable: values?.smartfarmAvailable === true,
         // 등록된 토양검정 결과는 작물과 무관하게 같은 필지 값이므로 모두에 싣는다.
         soilTest: values?.soilTest,
       },
@@ -125,6 +126,7 @@ export function buildAnalysisRequest(values, candidateToken) {
       includeSmartfarmBenchmark: smartfarmReferenceAvailable(
         crop,
         cultivationMode,
+        values?.smartfarmAvailable === true,
       ),
       includeSatelliteObservation: false,
       saveConsent: values?.saveConsent === true,
@@ -235,16 +237,23 @@ export function requestFingerprint(request) {
 }
 
 /**
- * SmartFarm 공개 비교자료는 요청하지 않는다.
- *
- * 발급된 키로 열리는 서비스에는 대상 5종 중 오이만 코호트가 있고(133농가)
- * 사과·감자는 0농가다. 코드가 참조하는 시설·노지 API는 같은 키로 계속
- * SERVICE_KEY_IS_NOT_REGISTERED_ERROR를 반환한다. 핵심 분석에 반영되지
- * 않는 참고자료가 출처 목록에 AUTH_ERROR로 남으면 고장으로 보이므로
- * 아예 요청하지 않는다. 어댑터와 파서는 승인 시 되살릴 수 있게 남겨 둔다.
+ * SmartFarm은 핵심 판정이 아니라 동종 농가 참고자료다.
+ * 서버 사전점검에서 실제 사용 가능하다고 확인된 경우에만, 백엔드가
+ * 지원하는 작물·재배환경 조합으로 요청한다. 공급자 장애는 핵심 분석과
+ * 분리되어 있으므로 실패해도 기상·토양 판정을 막지 않는다.
  */
-function smartfarmReferenceAvailable() {
-  return false;
+function smartfarmReferenceAvailable(crop, cultivationMode, available) {
+  if (!available) return false;
+  if (
+    crop === "CUCUMBER" &&
+    ["FACILITY_SOIL", "FACILITY_HYDRO"].includes(cultivationMode)
+  ) {
+    return true;
+  }
+  return (
+    ["APPLE", "POTATO"].includes(crop) &&
+    cultivationMode === "OPEN_FIELD"
+  );
 }
 
 function cultivationModeFor(crop, cultivationValue) {
