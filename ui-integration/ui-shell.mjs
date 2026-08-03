@@ -503,7 +503,17 @@
     announce(`${heading?.textContent || '현재'} 화면으로 이동했습니다.`);
   }
 
+  document.addEventListener('click', (event) => {
+    const trigger = event.target instanceof Element
+      ? event.target.closest('[data-open-new-farm="true"]')
+      : null;
+    if (!trigger) return;
+    event.preventDefault();
+    document.dispatchEvent(new CustomEvent('heuknalssi:new-farm-started'));
+    openWizard(true);
+  }, true);
   document.addEventListener('heuknalssi:open-new-farm', () => {
+    document.dispatchEvent(new CustomEvent('heuknalssi:new-farm-started'));
     openWizard(true);
   });
   document.addEventListener('heuknalssi:show-services', (event) => {

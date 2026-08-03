@@ -166,10 +166,40 @@ test("완료한 농장 설정은 이 기기에 저장하고 다음 방문에 자
   assert.match(client, /function selectStoredFarm/);
   assert.match(client, /function startNewFarm/);
   assert.match(client, /if \(mobileFarmDialog\?\.open\) mobileFarmDialog\.close\(\)/);
+  assert.match(client, /add\.dataset\.openNewFarm = "true"/u);
   assert.match(client, /＋ 농장 추가/);
   assert.match(html, /id="mobile-farm-trigger"/);
   assert.match(html, /id="mobile-farm-dialog"/);
   assert.match(shell, /heuknalssi:open-new-farm/);
+  assert.match(shell, /data-open-new-farm="true"/u);
+  assert.match(shell, /heuknalssi:new-farm-started/u);
+  assert.match(
+    client,
+    /document\.addEventListener\("heuknalssi:new-farm-started", startNewFarm\)/u,
+  );
+});
+
+test("데스크톱에서도 농장 추가와 전환 진입점이 실제로 보인다", async () => {
+  const html = await readProductUi();
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+  const farmSection = html.match(
+    /<section class="sidebar-recent"[^>]*id="sidebar-farm-list"[^>]*>/u,
+  )?.[0];
+
+  assert.ok(farmSection, "desktop farm list section must exist");
+  assert.doesNotMatch(farmSection, /\shidden(?:\s|>)/u);
+  assert.match(
+    html,
+    /id="sidebar-farm-trigger"[^>]*aria-expanded="true"[^>]*aria-controls="sidebar-farm-list"/u,
+  );
+  assert.match(html, /data-view="services">추가 서비스<\/button>/u);
+  assert.match(html, /data-view="mypage">마이페이지<\/button>/u);
+  assert.match(client, /sidebarFarmList\.hidden = !expanding/u);
+  assert.match(client, /add\.id = includeHeading \? "add-farm" : "add-farm-mobile"/u);
+  assert.match(client, /creatingNewFarm \? null : farms\.find/u);
 });
 
 test("입력 중 위치 토큰이 만료되면 같은 확인 지역만 갱신해 분석을 한 번 재시도한다", async () => {
@@ -421,7 +451,7 @@ test("목표 대시보드 조작은 실제 저장·가이드·기능 화면으�
   assert.match(markup, /id="dashboard-all-actions"[^>]*aria-expanded="false"/);
   assert.match(markup, /id="dashboard-photo-check"/);
   assert.doesNotMatch(markup, /data-dashboard-anchor=/);
-  assert.match(markup, /data-view="services">기록 &amp; 리포트/);
+  assert.match(markup, /data-view="services">추가 서비스/);
   assert.match(markup, /id="satellite-service-panel"/);
   assert.match(markup, /data-service-anchor="photo-journal-panel"/);
   assert.match(markup, /data-open-dialog="weather"/);

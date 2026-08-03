@@ -2500,21 +2500,21 @@
         </span>
         <span class="brand-copy"><span class="brand-name">흙날씨</span><span class="brand-module">농지 진단 AI</span></span>
       </div>
-      <div class="sidebar-context" aria-label="현재 농장">
+      <button class="sidebar-context" id="sidebar-farm-trigger" type="button" aria-label="내 농장 목록 접기" aria-expanded="true" aria-controls="sidebar-farm-list">
         <span class="sidebar-kicker">현재 농장</span>
         <strong id="sidebar-context-value">평창군 진부면 · 감자</strong>
         <span id="sidebar-mode-value">재배 중 생육 점검</span>
-      </div>
+      </button>
       <nav class="nav-list">
         <button class="nav-button" type="button" data-view="dashboard" aria-current="page">대시보드</button>
         <button class="nav-button" type="button" data-view="crop-management">작물 관리</button>
         <button class="nav-button" type="button" data-view="pest-alerts">병해충 경보 <span class="nav-alert-count" id="pest-nav-count" hidden>0</span></button>
-        <button class="nav-button" type="button" data-view="services">기록 &amp; 리포트</button>
+        <button class="nav-button" type="button" data-view="services">추가 서비스</button>
         <button class="nav-button" id="sidebar-guide-trigger" type="button">영농 가이드</button>
-        <button class="nav-button" type="button" data-view="mypage">설정</button>
+        <button class="nav-button" type="button" data-view="mypage">마이페이지</button>
       </nav>
-      <section class="sidebar-recent" aria-labelledby="sidebar-recent-title" hidden>
-        <h2 id="sidebar-recent-title">최근 분석</h2>
+      <section class="sidebar-recent" id="sidebar-farm-list" aria-labelledby="sidebar-recent-title">
+        <h2 id="sidebar-recent-title">내 농장</h2>
         <p class="recent-analysis"><strong>평창군 진부면 · 감자</strong>4월 13일 확인</p>
       </section>
       <button class="sidebar-support" id="sidebar-support-trigger" type="button"><span aria-hidden="true">◉</span> 상담 &amp; 도움말</button>

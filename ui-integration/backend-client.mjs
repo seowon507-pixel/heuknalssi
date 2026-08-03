@@ -548,6 +548,21 @@ function wireInteractions() {
   document.querySelector("#sidebar-support-trigger")?.addEventListener("click", openAssistant);
   document.querySelector("#sidebar-guide-trigger")?.addEventListener("click", openAssistant);
   document.querySelector("#pest-assistant-trigger")?.addEventListener("click", openAssistant);
+  const sidebarFarmTrigger = document.querySelector("#sidebar-farm-trigger");
+  const sidebarFarmList = document.querySelector("#sidebar-farm-list");
+  sidebarFarmTrigger?.addEventListener("click", () => {
+    if (!sidebarFarmList) return;
+    const expanding = sidebarFarmList.hidden;
+    sidebarFarmList.hidden = !expanding;
+    sidebarFarmTrigger.setAttribute("aria-expanded", String(expanding));
+    sidebarFarmTrigger.setAttribute(
+      "aria-label",
+      expanding ? "내 농장 목록 접기" : "내 농장 목록 펼치기",
+    );
+    if (expanding) {
+      sidebarFarmList.querySelector("button")?.focus({ preventScroll: true });
+    }
+  });
   document.querySelector("#dashboard-refresh")?.addEventListener("click", () => {
     window.location.reload();
   });
@@ -6146,10 +6161,12 @@ function renderFarmList(
   }
   const add = element("button", "farm-add-button", "＋ 농장 추가");
   add.type = "button";
-  add.id = "add-farm";
-  add.addEventListener("click", startNewFarm);
+  add.id = includeHeading ? "add-farm" : "add-farm-mobile";
+  add.dataset.openNewFarm = "true";
+  const heading = element("h2", "", "내 농장");
+  if (includeHeading) heading.id = "sidebar-recent-title";
   target.replaceChildren(
-    ...(includeHeading ? [element("h2", "", "내 농장")] : []),
+    ...(includeHeading ? [heading] : []),
     ...(farms.length
       ? [list]
       : [element("p", "recent-analysis", "저장된 농장이 없습니다.")]),
@@ -6196,8 +6213,9 @@ function startNewFarm() {
   if (mobileFarmDialog?.open) mobileFarmDialog.close();
   creatingNewFarm = true;
   clearSelectedCandidate("");
-  document.dispatchEvent(new CustomEvent("heuknalssi:open-new-farm"));
 }
+
+document.addEventListener("heuknalssi:new-farm-started", startNewFarm);
 
 function notificationsSupported() {
   return (

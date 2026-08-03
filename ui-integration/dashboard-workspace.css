@@ -62,12 +62,28 @@ body {
 
 .sidebar-context {
   position: relative;
+  display: block;
+  width: 100%;
   min-height: 84px;
   margin: 32px 0 27px;
   padding: 14px 18px;
   border: 1px solid rgb(211 232 218 / 45%);
   border-radius: 13px;
   background: rgb(13 39 27 / 76%);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-context:hover {
+  border-color: rgb(127 218 161 / 78%);
+  background: rgb(20 60 41 / 86%);
+}
+
+.sidebar-context:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
 }
 
 .sidebar-context::after {
@@ -80,6 +96,11 @@ body {
   border-bottom: 2px solid #dbe7de;
   content: "";
   transform: rotate(45deg);
+}
+
+.sidebar-context[aria-expanded="false"]::after {
+  top: 38px;
+  transform: rotate(-135deg);
 }
 
 .sidebar-kicker {
@@ -101,6 +122,29 @@ body {
 
 .sidebar-context span:last-child {
   display: none;
+}
+
+.sidebar-recent {
+  min-height: 0;
+  max-height: min(31vh, 300px);
+  margin: 0 8px 18px;
+  padding: 0 2px 4px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #47745a transparent;
+}
+
+.sidebar-recent[hidden] {
+  display: none;
+}
+
+.sidebar-recent h2 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 5px 0 7px;
+  background: #0c2d20;
+  color: #9eb5a5;
 }
 
 .nav-list {
