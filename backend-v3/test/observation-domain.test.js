@@ -47,6 +47,16 @@ test("observation contract freezes Asia/Seoul, seven days, four fields, and the 
       "meanTemperature",
       "precipitationAmount",
     ],
+    optionalDailyFields: [
+      "averageRelativeHumidity",
+      "minimumRelativeHumidity",
+      "sunshineDuration",
+      "solarRadiation",
+      "groundTemperature",
+      "soilTemperature5cm",
+      "meanWindSpeed",
+      "evaporationAmount",
+    ],
   });
 });
 

@@ -9,6 +9,7 @@ import {
   evaluateAnalysisStates,
   evaluateClimate,
   evaluateForecast,
+  estimateFieldConditions,
   evaluateObservation,
   evaluateSoil,
   mergeAndRankActions,
@@ -535,6 +536,17 @@ export function createApplicationServices({
       envelopes.midForecast,
     ]);
 
+    const estimateCoordinates = resolvedLocation.administrativeRepresentative ??
+      resolvedLocation;
+    const fieldConditionsEstimate = estimateFieldConditions({
+      cultivationMode: request.cultivationMode,
+      latitude: estimateCoordinates.latitude,
+      recentDays: observations.result?.days ?? [],
+      forecastDays: forecast.result?.mergedDisplayDays ?? [],
+      observationDistanceKm: locationKeys.observationDistanceKm,
+      fieldProfile: soil.result?.fieldProfile ?? null,
+    });
+
     const internalModules = {
       climate,
       soil,
@@ -615,6 +627,7 @@ export function createApplicationServices({
       soil,
       observations,
       forecast,
+      fieldConditionsEstimate,
       smartfarm: null,
       satellite: request.options.includeSatelliteObservation
         ? unavailableModule('SATELLITE_P2_NOT_ENABLED', 'UNSUPPORTED')
@@ -1624,6 +1637,9 @@ function forecastUnits() {
     precipitationProbability: '%',
     precipitationAmount: 'mm',
     windSpeed: 'm/s',
+    minRelativeHumidity: '%',
+    maxRelativeHumidity: '%',
+    meanRelativeHumidity: '%',
   };
 }
 
@@ -1909,27 +1925,40 @@ function buildSoilEvidence(result, rules, envelope) {
 
 function buildObservationEvidence(result, envelope) {
   const metrics = [
-    ['minTemperature', '℃'],
-    ['maxTemperature', '℃'],
-    ['meanTemperature', '℃'],
-    ['precipitationAmount', 'mm'],
+    ['minTemperature', '℃', true],
+    ['maxTemperature', '℃', true],
+    ['meanTemperature', '℃', true],
+    ['precipitationAmount', 'mm', true],
+    ['averageRelativeHumidity', '%', false],
+    ['minimumRelativeHumidity', '%', false],
+    ['sunshineDuration', 'hour', false],
+    ['solarRadiation', 'MJ/m²', false],
+    ['groundTemperature', '℃', false],
+    ['soilTemperature5cm', '℃', false],
+    ['meanWindSpeed', 'm/s', false],
+    ['evaporationAmount', 'mm', false],
   ];
   return (result?.days ?? []).flatMap((day) => {
-    const rawItems = metrics.map(([metric, unit]) => {
+    const rawItems = metrics.flatMap(([metric, unit, required]) => {
       const included = Number.isFinite(day[metric]);
-      return observationEvidenceItem({
-        day,
-        envelope,
-        result,
-        suffix: metric,
-        metric,
-        value: included ? day[metric] : null,
-        unit,
-        reference: null,
-        effect: 'RAW_DAILY_OBSERVATION',
-        inclusion: included ? 'INCLUDED' : 'EXCLUDED',
-        exclusionReason: included ? null : 'MISSING_DAILY_VALUE',
-      });
+      if (!required && !included) {
+        return [];
+      }
+      return [
+        observationEvidenceItem({
+          day,
+          envelope,
+          result,
+          suffix: metric,
+          metric,
+          value: included ? day[metric] : null,
+          unit,
+          reference: null,
+          effect: 'RAW_DAILY_OBSERVATION',
+          inclusion: included ? 'INCLUDED' : 'EXCLUDED',
+          exclusionReason: included ? null : 'MISSING_DAILY_VALUE',
+        }),
+      ];
     });
     const hasDeviation = Number.isFinite(day.monthlyNormalDeviation);
     const normalMeanTemperature = monthlyNormalValue(

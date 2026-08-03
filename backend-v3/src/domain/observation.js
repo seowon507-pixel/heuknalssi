@@ -7,6 +7,34 @@ const DAILY_FIELDS = Object.freeze([
   "meanTemperature",
   "precipitationAmount",
 ]);
+const OPTIONAL_DAILY_FIELDS = Object.freeze({
+  averageRelativeHumidity: Object.freeze({ min: 0, max: 100 }),
+  minimumRelativeHumidity: Object.freeze({ min: 0, max: 100 }),
+  sunshineDuration: Object.freeze({ min: 0, max: 24 }),
+  solarRadiation: Object.freeze({ min: 0, max: 100 }),
+  groundTemperature: Object.freeze({ min: -100, max: 100 }),
+  soilTemperature5cm: Object.freeze({ min: -100, max: 100 }),
+  meanWindSpeed: Object.freeze({ min: 0, max: 100 }),
+  evaporationAmount: Object.freeze({ min: 0, max: 100 }),
+});
+const OPTIONAL_MONTHLY_NORMAL_FIELDS = Object.freeze({
+  dailyMaxTemperature: Object.freeze({ min: -100, max: 100 }),
+  dailyMinTemperature: Object.freeze({ min: -100, max: 100 }),
+  relativeHumidity: Object.freeze({ min: 0, max: 100 }),
+  precipitation: Object.freeze({ min: 0, max: 10000 }),
+  sunshineDuration: Object.freeze({ min: 0, max: 1000 }),
+  meanWindSpeed: Object.freeze({ min: 0, max: 100 }),
+  groundSurfaceTemperature: Object.freeze({ min: -100, max: 100 }),
+  soilTemperature0_05m: Object.freeze({ min: -100, max: 100 }),
+  soilTemperature0_1m: Object.freeze({ min: -100, max: 100 }),
+  soilTemperature0_2m: Object.freeze({ min: -100, max: 100 }),
+  soilTemperature0_3m: Object.freeze({ min: -100, max: 100 }),
+  soilTemperature0_5m: Object.freeze({ min: -100, max: 100 }),
+  soilTemperature1_0m: Object.freeze({ min: -100, max: 100 }),
+  soilTemperature1_5m: Object.freeze({ min: -100, max: 100 }),
+  soilTemperature3_0m: Object.freeze({ min: -100, max: 100 }),
+  soilTemperature5_0m: Object.freeze({ min: -100, max: 100 }),
+});
 
 /**
  * Returns the seven completed provider-local calendar days, oldest first.
@@ -181,6 +209,7 @@ export function evaluateObservation(input = {}) {
       maxTemperature: reading.maxTemperature,
       meanTemperature: reading.meanTemperature,
       precipitationAmount: reading.precipitationAmount,
+      ...copyOptionalValues(reading, OPTIONAL_DAILY_FIELDS),
       monthlyNormalDeviation,
     };
   });
@@ -355,6 +384,22 @@ function validateReadings(readings, stationId, expectedDates, errors) {
         );
       }
     }
+    for (const [field, range] of Object.entries(OPTIONAL_DAILY_FIELDS)) {
+      if (!Object.hasOwn(reading, field)) continue;
+      const value = reading[field];
+      if (
+        value !== null &&
+        (!Number.isFinite(value) || value < range.min || value > range.max)
+      ) {
+        errors.push(
+          issue(
+            "INVALID_OPTIONAL_OBSERVATION_VALUE",
+            `${path}.${field}`,
+            `${field} must be null or between ${range.min} and ${range.max}`,
+          ),
+        );
+      }
+    }
     if (
       Number.isFinite(reading.precipitationAmount) &&
       reading.precipitationAmount < 0
@@ -406,6 +451,19 @@ function validateReadings(readings, stationId, expectedDates, errors) {
         ),
       );
     }
+    if (
+      Number.isFinite(reading.minimumRelativeHumidity) &&
+      Number.isFinite(reading.averageRelativeHumidity) &&
+      reading.minimumRelativeHumidity > reading.averageRelativeHumidity
+    ) {
+      errors.push(
+        issue(
+          "INVALID_HUMIDITY_ORDER",
+          path,
+          "minimumRelativeHumidity cannot exceed averageRelativeHumidity",
+        ),
+      );
+    }
   });
 }
 
@@ -446,6 +504,24 @@ function validateMonthlyNormals(normals, stationId, errors) {
           "meanTemperature must be finite",
         ),
       );
+    }
+    for (const [field, range] of Object.entries(
+      OPTIONAL_MONTHLY_NORMAL_FIELDS,
+    )) {
+      if (!Object.hasOwn(normal, field) || normal[field] === null) continue;
+      if (
+        !Number.isFinite(normal[field]) ||
+        normal[field] < range.min ||
+        normal[field] > range.max
+      ) {
+        errors.push(
+          issue(
+            "INVALID_MONTHLY_NORMAL",
+            `${path}.${field}`,
+            `${field} must be null or between ${range.min} and ${range.max}`,
+          ),
+        );
+      }
     }
     if (
       normal.normalPeriod !== undefined &&
@@ -599,9 +675,18 @@ function unique(values) {
   return [...new Set(values)];
 }
 
+function copyOptionalValues(source, specification) {
+  return Object.fromEntries(
+    Object.keys(specification)
+      .filter((field) => Object.hasOwn(source, field))
+      .map((field) => [field, source[field]]),
+  );
+}
+
 export const OBSERVATION_CONTRACT = Object.freeze({
   timeZone: OBSERVATION_TIME_ZONE,
   windowDays: OBSERVATION_WINDOW_DAYS,
   trendMinimumValidDays: TREND_MINIMUM_VALID_DAYS,
   requiredDailyFields: DAILY_FIELDS,
+  optionalDailyFields: Object.freeze(Object.keys(OPTIONAL_DAILY_FIELDS)),
 });

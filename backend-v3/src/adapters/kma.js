@@ -91,6 +91,11 @@ function withQualityFlags(value, qualityFlags) {
   return flags.length === 0 ? value : { ...value, qualityFlags: flags };
 }
 
+function optionalNormalizedMetric(row, field, options) {
+  if (!Object.hasOwn(row, field)) return {};
+  return { [field]: numericField(row, field, options) };
+}
+
 function normalizedForecastDay(row, sourceType, index) {
   if (!row || typeof row !== "object" || Array.isArray(row)) {
     throw new SchemaChangedError(`KMA days[${index}] must be an object.`);
@@ -134,6 +139,18 @@ function normalizedForecastDay(row, sourceType, index) {
       }),
       precipitationAmount: numericField(row, "precipitationAmount", { min: 0 }),
       windSpeed: numericField(row, "windSpeed", { min: 0 }),
+      ...optionalNormalizedMetric(row, "minRelativeHumidity", {
+        min: 0,
+        max: 100
+      }),
+      ...optionalNormalizedMetric(row, "maxRelativeHumidity", {
+        min: 0,
+        max: 100
+      }),
+      ...optionalNormalizedMetric(row, "meanRelativeHumidity", {
+        min: 0,
+        max: 100
+      }),
       risks: []
     },
     Array.isArray(row.qualityFlags) ? row.qualityFlags : []
@@ -236,6 +253,29 @@ function aggregatePrecipitation(values, field, qualityFlags) {
     return null;
   }
   return parsed.reduce((sum, entry) => sum + entry.value, 0);
+}
+
+function aggregateRelativeHumidity(values, date, qualityFlags) {
+  if (values.length === 0) return {};
+  const parsed = parseNumericSeries(values, `${date} REH`, {
+    min: 0,
+    max: 100
+  });
+  if (parsed.hasMissing || parsed.values.length === 0) {
+    qualityFlags.push("SHORT_REH_MISSING");
+    return {
+      minRelativeHumidity: null,
+      maxRelativeHumidity: null,
+      meanRelativeHumidity: null
+    };
+  }
+  return {
+    minRelativeHumidity: Math.min(...parsed.values),
+    maxRelativeHumidity: Math.max(...parsed.values),
+    meanRelativeHumidity:
+      parsed.values.reduce((sum, value) => sum + value, 0) /
+      parsed.values.length
+  };
 }
 
 function parseShortCategoryItems(items) {
@@ -347,6 +387,7 @@ function parseShortCategoryItems(items) {
             "SHORT_WSD_MISSING",
             qualityFlags
           ),
+          ...aggregateRelativeHumidity(values("REH"), date, qualityFlags),
           risks: []
         },
         qualityFlags

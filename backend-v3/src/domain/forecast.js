@@ -11,6 +11,9 @@ const NUMERIC_METRICS = Object.freeze([
   "precipitationProbability",
   "precipitationAmount",
   "windSpeed",
+  "minRelativeHumidity",
+  "maxRelativeHumidity",
+  "meanRelativeHumidity",
 ]);
 
 const TEMPERATURE_SAFETY_MARGIN = Object.freeze({

@@ -31,6 +31,37 @@ const CLIMATE_NORMAL_SOURCE_URL =
   "https://data.kma.go.kr/climate/average30Years/selectAverage30YearsMonthList.do";
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const CLIMATE_NORMAL_OPTIONAL_COLUMNS = Object.freeze([
+  ["TA_MAX", "dailyMaxTemperature", { min: -100, max: 100 }],
+  ["TA_MIN", "dailyMinTemperature", { min: -100, max: 100 }],
+  ["RN", "precipitation", { min: 0, max: 10000 }],
+  ["HM", "relativeHumidity", { min: 0, max: 100 }],
+  ["SS", "sunshineDuration", { min: 0, max: 1000 }],
+]);
+const CLIMATE_PERCENT_METRICS = new Set(["relativeHumidity"]);
+const CLIMATE_TEMPERATURE_METRICS = new Set([
+  "meanTemperature",
+  "dailyMaxTemperature",
+  "dailyMinTemperature",
+  "groundSurfaceTemperature",
+  "soilTemperature0_05m",
+  "soilTemperature0_1m",
+  "soilTemperature0_2m",
+  "soilTemperature0_3m",
+  "soilTemperature0_5m",
+  "soilTemperature1_0m",
+  "soilTemperature1_5m",
+  "soilTemperature3_0m",
+  "soilTemperature5_0m",
+]);
+const CLIMATE_API_METRIC_UNITS = Object.freeze({
+  meanTemperature: "degC",
+  dailyMaxTemperature: "degC",
+  dailyMinTemperature: "degC",
+  precipitation: "mm",
+  relativeHumidity: "percent",
+  sunshineDuration: "hour",
+});
 
 function isoKstDate(value) {
   return new Date(new Date(value).getTime() + KST_OFFSET_MS)
@@ -110,6 +141,13 @@ function nullableNumber(value, field, { min, max }) {
   return number;
 }
 
+function optionalDailyNumber(row, providerField, outputField, range) {
+  if (!Object.hasOwn(row, providerField)) return {};
+  return {
+    [outputField]: nullableNumber(row[providerField], providerField, range),
+  };
+}
+
 export function parseKmaAsosDaily(
   payload,
   { stationId, expectedDates } = {},
@@ -171,6 +209,42 @@ export function parseKmaAsosDaily(
         precipitationText === ""
           ? 0
           : nullableNumber(row.sumRn, "sumRn", { min: 0, max: 5000 }),
+      ...optionalDailyNumber(
+        row,
+        "avgRhm",
+        "averageRelativeHumidity",
+        { min: 0, max: 100 },
+      ),
+      ...optionalDailyNumber(
+        row,
+        "minRhm",
+        "minimumRelativeHumidity",
+        { min: 0, max: 100 },
+      ),
+      ...optionalDailyNumber(row, "sumSsHr", "sunshineDuration", {
+        min: 0,
+        max: 24,
+      }),
+      ...optionalDailyNumber(row, "sumGsr", "solarRadiation", {
+        min: 0,
+        max: 100,
+      }),
+      ...optionalDailyNumber(row, "avgTs", "groundTemperature", {
+        min: -100,
+        max: 100,
+      }),
+      ...optionalDailyNumber(row, "avgCm5Te", "soilTemperature5cm", {
+        min: -100,
+        max: 100,
+      }),
+      ...optionalDailyNumber(row, "avgWs", "meanWindSpeed", {
+        min: 0,
+        max: 100,
+      }),
+      ...optionalDailyNumber(row, "sumLrgEv", "evaporationAmount", {
+        min: 0,
+        max: 100,
+      }),
     });
   }
   if (stationNames.size > 1) {
@@ -270,14 +344,30 @@ export function parseKmaClimateNormals(text, { stationId } = {}) {
         "KMA climate-normal response has duplicate or invalid months.",
       );
     }
-    byMonth.set(month, {
-      metric: "meanTemperature",
+    const monthlyNormal = {
+      stationId: normalizedStationId,
       month,
-      value: parseClimateNumber(values[index.TA], "TA", {
+      meanTemperature: parseClimateNumber(values[index.TA], "TA", {
         min: -100,
         max: 100,
       }),
+      normalPeriod: "1991-2020",
+    };
+    for (const [column, field, range] of CLIMATE_NORMAL_OPTIONAL_COLUMNS) {
+      if (index[column] === undefined) continue;
+      const rawValue = values[index[column]];
+      if (rawValue === undefined || rawValue === null || rawValue === "") {
+        monthlyNormal[field] = null;
+        continue;
+      }
+      monthlyNormal[field] = parseClimateNumber(rawValue, column, range);
+    }
+    byMonth.set(month, {
+      metric: "meanTemperature",
+      month,
+      value: monthlyNormal.meanTemperature,
       unit: "degC",
+      monthlyNormal,
     });
   }
   if (byMonth.size !== 12) {
@@ -291,13 +381,9 @@ export function parseKmaClimateNormals(text, { stationId } = {}) {
   return {
     stationId: normalizedStationId,
     normalPeriod: "1991-2020",
-    observations,
-    monthlyNormals: observations.map((observation) => ({
-      stationId: normalizedStationId,
-      month: observation.month,
-      meanTemperature: observation.value,
-      normalPeriod: "1991-2020",
-    })),
+    metricUnits: CLIMATE_API_METRIC_UNITS,
+    observations: observations.map(({ monthlyNormal: _monthlyNormal, ...item }) => item),
+    monthlyNormals: observations.map((observation) => observation.monthlyNormal),
   };
 }
 
@@ -335,25 +421,52 @@ export function selectKmaClimateNormals(
     );
   }
 
-  const observations = monthlyValues.map((value, index) => ({
-    metric: "meanTemperature",
-    month: index + 1,
-    value: parseClimateNumber(value, "meanTemperature", {
-      min: -100,
-      max: 100,
-    }),
-    unit: "degC",
-  }));
+  const supplementaryMetrics = Object.entries(station.metrics ?? {})
+    .filter(([metric]) => metric !== "meanTemperature")
+    .map(([metric, values]) => {
+      if (!Array.isArray(values) || values.length !== 12) {
+        throw new SchemaChangedError(
+          `KMA climate-normal ${metric} must contain 12 monthly values.`,
+        );
+      }
+      return [metric, values];
+    });
+  const observations = monthlyValues.map((value, index) => {
+    const monthlyNormal = {
+      stationId: normalizedStationId,
+      month: index + 1,
+      meanTemperature: parseClimateNumber(value, "meanTemperature", {
+        min: -100,
+        max: 100,
+      }),
+      normalPeriod: "1991-2020",
+    };
+    for (const [metric, values] of supplementaryMetrics) {
+      const optionalValue = values[index];
+      monthlyNormal[metric] =
+        optionalValue === null || optionalValue === undefined
+          ? null
+          : parseClimateNumber(optionalValue, metric, {
+              min: CLIMATE_TEMPERATURE_METRICS.has(metric) ? -100 : 0,
+              max: CLIMATE_PERCENT_METRICS.has(metric) ? 100 : 10000,
+            });
+    }
+    return {
+      metric: "meanTemperature",
+      month: index + 1,
+      value: monthlyNormal.meanTemperature,
+      unit: "degC",
+      monthlyNormal,
+    };
+  });
   return {
     stationId: normalizedStationId,
     normalPeriod: "1991-2020",
-    observations,
-    monthlyNormals: observations.map((observation) => ({
-      stationId: normalizedStationId,
-      month: observation.month,
-      meanTemperature: observation.value,
-      normalPeriod: "1991-2020",
-    })),
+    metricUnits: structuredClone(dataset.metricUnits ?? {
+      meanTemperature: "degC",
+    }),
+    observations: observations.map(({ monthlyNormal: _monthlyNormal, ...item }) => item),
+    monthlyNormals: observations.map((observation) => observation.monthlyNormal),
   };
 }
 
