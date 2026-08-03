@@ -18,12 +18,18 @@ import { createHttpHandler } from '../src/api/index.js';
 import {
   createActionPlanService,
   createApplicationServices,
+  createPhotoSeasonService,
+  createPestGuidanceService,
+  createReportHistoryService,
   createSatelliteObservationService,
 } from '../src/application/index.js';
 import { createRuleRegistry } from '../src/domain/index.js';
 import {
   createActionPlanRepository,
   createDeviceBackupStore,
+  createPhotoSeasonRepository,
+  createReportHistoryRepository,
+  createSupabasePhotoStorage,
   createSupabaseSharedState,
   TtlMemoryStore,
 } from '../src/infrastructure/index.js';
@@ -214,11 +220,34 @@ export function createBackend({
     store: persistentValueStore(satelliteStore),
     clock,
   });
+  const pestGuidanceService = createPestGuidanceService({
+    getAnalysis: services.getAnalysis,
+  });
+  const photoSeasonFeature = sharedState.configured
+    ? createPhotoSeasonFeature({
+        sharedState,
+        actionPlanService,
+        config,
+        fetchImpl,
+        clock,
+      })
+    : null;
+  const reportHistoryFeature = sharedState.configured
+    ? createReportHistoryService({
+        repository: createReportHistoryRepository({
+          store: sharedState.createTtlStore('report_history'),
+        }),
+        getAnalysis: services.getAnalysis,
+      })
+    : null;
   const handler = createHttpHandler({
     services,
     featureServices: {
       actionPlan: actionPlanService,
+      pestGuidance: pestGuidanceService,
       satellite: satelliteService,
+      ...(photoSeasonFeature ? { photoSeason: photoSeasonFeature } : {}),
+      ...(reportHistoryFeature ? { reportHistory: reportHistoryFeature } : {}),
     },
     config: {
       nodeEnv: config.nodeEnv,
@@ -263,6 +292,57 @@ export function createBackend({
     services,
     handler,
     server: createServer(handler),
+  });
+}
+
+function createPhotoSeasonFeature({
+  sharedState,
+  actionPlanService,
+  config,
+  fetchImpl,
+  clock,
+}) {
+  const repository = createPhotoSeasonRepository({
+    store: sharedState.createTtlStore('farm_photos'),
+  });
+  const objectStorage = createSupabasePhotoStorage({
+    url: config.photoStorageConfig.url,
+    serviceKey: config.photoStorageConfig.secretKey,
+    bucket: config.photoStorageConfig.bucket,
+    uploadStore: sharedState.createTtlStore('photo_uploads'),
+    fetchImpl,
+  });
+  const photoService = createPhotoSeasonService({
+    ...repository,
+    objectStorage,
+    actionRepository: {
+      async listActionsBySeason({
+        ownerSessionId,
+        farmId,
+        cropId,
+        seasonId,
+      }) {
+        const plan = await actionPlanService.listActions({
+          accountId: ownerSessionId,
+          farmId,
+          cropId,
+          seasonId,
+        });
+        return [...plan.today, ...plan.upcoming, ...plan.archived];
+      },
+    },
+    riskRepository: {
+      async listRisksBySeason() {
+        // Persisted risk history is introduced with report history. Until then
+        // an empty list is explicit and does not synthesize risk events.
+        return [];
+      },
+    },
+    clock: { now: () => new Date(clock()) },
+  });
+  return Object.freeze({
+    ...photoService,
+    prepareUpload: objectStorage.prepareUpload,
   });
 }
 

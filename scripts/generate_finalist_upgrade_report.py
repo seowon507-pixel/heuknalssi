@@ -153,25 +153,25 @@ def slide_cover(c):
     text(c, "공공데이터를 오늘의 농장 행동으로", 48, PAGE_H - 194, 26, white, "AppleGothicBold")
     paragraph(c, "기능 추가보다 신뢰 가능한 판단, 실행 가능한 행동, 실제 사용자 흐름을 우선한 본선 제품 개선 결과", 48, PAGE_H - 228, 510, 12, 18, MINT)
     rounded(c, 48, 80, 370, 126, HexColor("#153C29"), HexColor("#316C4C"))
-    text(c, "독립 심사", 72, 174, 10, MINT, "AppleGothicBold")
-    text(c, "84 / 100", 72, 120, 38, white, "AppleGothicBold")
-    pill(c, "CONDITIONAL GO", 248, 111, fill=HexColor("#E8D9B7"), fg=GREEN_950, width=140)
-    text(c, "로컬 본선 데모 GO · 운영 배포 HOLD", 72, 92, 10, MINT)
-    text(c, "검증 커밋 d598890 · 2026.07.31", PAGE_W - 48, 38, 9, MINT, anchor="right")
+    text(c, "독립 제품 심사", 72, 174, 10, MINT, "AppleGothicBold")
+    text(c, "8.60 / 10", 72, 120, 38, white, "AppleGothicBold")
+    pill(c, "ALL GATES PASS", 248, 111, fill=MINT, fg=GREEN_950, width=140)
+    text(c, "PM·소비자·농업 재감사 PASS · P0/P1 0", 72, 92, 10, MINT)
+    text(c, "Revision 3.2 작업 트리 검증본 · 2026.08.01", PAGE_W - 48, 38, 9, MINT, anchor="right")
     c.showPage()
 
 
 def slide_audit(c):
     c.setFillColor(PAPER); c.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
-    title(c, "01 · WHY CHANGE", "57점 프로토타입에서 84점 본선 제품으로", "테스트 수보다 사용자 신뢰를 깨뜨리는 제품 결함부터 제거했습니다.")
+    title(c, "01 · WHY CHANGE", "기능형 화면을 행동 중심 상용 제품으로", "자동 테스트보다 사용자가 3초 안에 목적과 다음 행동을 이해하는지를 우선했습니다.")
     metric_card(c, 42, 343, 230, 124, "초기 독립 감사", "57 / 100", "합산점수·미확인 작기·배포 상태 단절", RED)
-    metric_card(c, 290, 343, 230, 124, "현재 독립 심사", "84 / 100", "로컬 핵심 데모 GO · 운영은 HOLD", GREEN_650)
-    metric_card(c, 538, 343, 260, 124, "검증 범위", "425 TESTS", "UI 93 + Backend 332 · Console 0", BLUE)
+    metric_card(c, 290, 343, 230, 124, "현재 PM 심사", "8.60 / 10", "모든 평가축 8.3 이상 · PASS", GREEN_650)
+    metric_card(c, 538, 343, 260, 124, "자동 검증", "434 TESTS", "UI 102 + Backend 332 · Build PASS", BLUE)
     issues = [
         ("01", "날씨+토양 60:40 합산", "자료 공간·결측을 숨기는 단일 점수 제거"),
         ("02", "미확인 작기 자동 확정", "UNKNOWN을 그대로 보존하고 기후 판단 HOLD"),
-        ("03", "기술 상태가 행동보다 앞섬", "오늘 행동·이유·기한·재확인 중심으로 전환"),
-        ("04", "챗봇의 쓰기 의도 혼동", "제안 후 사용자 확인 전에는 저장 금지"),
+        ("03", "차트와 카드의 행동 중복", "오늘 행동 1개와 추가 주의만 분리"),
+        ("04", "날짜마다 같은 위험 반복", "연속 위험을 하나의 기간 카드로 압축"),
     ]
     y = 298
     for num, before, after in issues:
@@ -244,30 +244,30 @@ def slide_parallel(c):
 
 def slide_before_after(c):
     c.setFillColor(PAPER); c.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
-    title(c, "04 · BEFORE / AFTER", "이번 업그레이드 직전과 최종 버전을 비교했습니다", "동일 농장·작물·화면 크기·외부자료 모드에서 직전 팀 버전과 최종 제품을 다시 실행했습니다.")
-    image_box(c, ROOT / "output/finalist_upgrade_before_full.png", 42, 126, 366, 342,
-              focus_y=0.465)
-    image_box(c, ROOT / "output/finalist_upgrade_after_full.png", 434, 126, 366, 342,
-              focus_y=0.400)
-    pill(c, "BEFORE · 127dfb3", 56, 438, fill=SAND, fg=AMBER, width=126)
-    pill(c, "AFTER · d598890", 448, 438, fill=GREEN_100, fg=GREEN_800, width=126)
-    paragraph(c, "날씨 60%+토양 40% 합산점수와 일회성 안내", 56, 108, 340, 9, 13, SLATE, max_lines=2)
-    paragraph(c, "자료축 분리와 기한·근거·완료 상태를 가진 지속형 행동계획", 448, 108, 340, 9, 13, SLATE, max_lines=2)
+    title(c, "04 · BEFORE / AFTER", "최신 개선 직전과 Revision 3.2를 비교했습니다", "오래된 초기 화면이 아니라 이번 시각개편 바로 직전 실행 화면을 기준으로 비교했습니다.")
+    image_box(c, ROOT / "output/finalist_upgrade_after_dashboard.png", 42, 126, 366, 342,
+              focus_y=0.30)
+    image_box(c, ROOT / "output/UI_FINAL_AFTER_DESKTOP.png", 434, 126, 366, 342,
+              focus_y=0.30)
+    pill(c, "BEFORE · LATEST", 56, 438, fill=SAND, fg=AMBER, width=126)
+    pill(c, "AFTER · R3.2", 448, 438, fill=GREEN_100, fg=GREEN_800, width=126)
+    paragraph(c, "차트가 행동보다 크고 여러 결과 카드가 같은 상태를 반복", 56, 108, 340, 9, 13, SLATE, max_lines=2)
+    paragraph(c, "상태→오늘 행동→7일 변화→추가 주의로 단일 위계 구성", 448, 108, 340, 9, 13, SLATE, max_lines=2)
     footer(c, 5); c.showPage()
 
 
 def slide_surfaces(c):
     c.setFillColor(PAPER); c.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
-    title(c, "05 · ACTUAL USER FLOW", "실제 API 화면에서 골든 플로우를 완주했습니다", "저장 농장 복원 → 작물 분석 → 챗봇 제안 → 사용자 확인 → 투두 저장")
-    image_box(c, ROOT / "output/finalist_final_dashboard.png", 42, 198, 376, 270)
-    image_box(c, ROOT / "output/finalist_final_chatbot.png", 436, 252, 364, 216)
-    image_box(c, ROOT / "output/finalist_final_mobile.png", 436, 76, 120, 160, contain=True)
+    title(c, "05 · ACTUAL USER FLOW", "실제 API 화면에서 5작물 흐름을 완주했습니다", "저장 농장 복원 → 5작물 전환 → 행동·근거·주간 위험 → 모바일 우선 행동")
+    image_box(c, ROOT / "output/UI_FINAL_AFTER_DESKTOP.png", 42, 198, 376, 270)
+    image_box(c, ROOT / "output/UI_FINAL_AFTER_MOBILE.png", 436, 252, 364, 216)
+    image_box(c, ROOT / "output/UI_FINAL_AFTER_MOBILE.png", 436, 76, 120, 160, contain=True)
     rounded(c, 574, 76, 226, 160, GREEN_950)
-    text(c, "확인형 AI 쓰기", 594, 204, 10, MINT, "AppleGothicBold")
-    text(c, "0 → 제안 → 확인 → 1", 594, 168, 18, white, "AppleGothicBold")
-    paragraph(c, "‘이대로 추가’를 누르기 전에는 서버에 저장하지 않습니다.", 594, 136, 182, 9.5, 14, MINT)
-    pill(c, "Console error 0", 594, 92, fill=MINT, fg=GREEN_950, width=126)
-    paragraph(c, "데스크톱은 예보와 행동의 관계를, 모바일은 첫 행동을 먼저 보여줍니다.", 48, 172, 350, 9.5, 14, SLATE)
+    text(c, "모바일 행동 우선", 594, 204, 10, MINT, "AppleGothicBold")
+    text(c, "기한 → 행동 → 근거", 594, 168, 18, white, "AppleGothicBold")
+    paragraph(c, "첫 화면에서 농장·작물·상태·완료 기한을 확인합니다.", 594, 136, 182, 9.5, 14, MINT)
+    pill(c, "Overflow 0", 594, 92, fill=MINT, fg=GREEN_950, width=126)
+    paragraph(c, "데스크톱과 모바일 모두 같은 데이터와 행동 위계를 유지합니다.", 48, 172, 350, 9.5, 14, SLATE)
     footer(c, 6); c.showPage()
 
 
@@ -327,15 +327,15 @@ def slide_data(c):
 def slide_verification(c):
     c.setFillColor(PAPER); c.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
     title(c, "08 · INDEPENDENT REVIEW", "구현자가 아닌 평가자가 최종 판정을 내렸습니다", "자동 테스트, 실제 화면, 농업 의사결정, 챗봇 안전, 배포 상태를 서로 다른 관점으로 검증했습니다.")
-    metric_card(c, 42, 330, 236, 132, "해커톤 심사", "84 / 100", "로컬 GO · Hosted NO-GO", GREEN_650)
-    metric_card(c, 302, 330, 236, 132, "챗봇·AI", "9.0 / 10", "ACCEPTED · P0/P1 0", BLUE)
-    metric_card(c, 562, 330, 236, 132, "농업·계산", "9.0 / 10", "ACCEPTED · P0/P1 0", GREEN_650)
+    metric_card(c, 42, 330, 236, 132, "PM·상용 제품", "8.60 / 10", "PASS · 모든 축 8.3 이상", GREEN_650)
+    metric_card(c, 302, 330, 236, 132, "소비자 모의평가", "8.60 / 10", "5관점 · 개인 최저 8.4", BLUE)
+    metric_card(c, 562, 330, 236, 132, "농업·고령 사용자", "9.0 / 10", "PASS · P0/P1 0", GREEN_650)
     checks = [
-        ("UI", "93 / 93", "PASS"),
+        ("UI", "102 / 102", "PASS"),
         ("Backend", "332 / 332", "PASS"),
         ("Static check", "109 files", "PASS"),
         ("Build", "Vercel assets", "PASS"),
-        ("Browser", "console 0", "PASS"),
+        ("5 crops", "overflow 0", "PASS"),
     ]
     rounded(c, 42, 104, 756, 176, white, LINE)
     text(c, "검증 매트릭스", 64, 246, 12, INK, "AppleGothicBold")
@@ -352,8 +352,8 @@ def slide_demo(c):
     c.setFillColor(GREEN_950); c.rect(0, 0, PAGE_W, PAGE_H, fill=1, stroke=0)
     title(c, "09 · FINAL DEMO", "시연은 기능 목록이 아니라 한 사용자의 하루로", "핵심 가치는 ‘더 많은 데이터’가 아니라 ‘데이터의 한계를 보존한 실행 가능한 행동’입니다.", dark=True)
     steps = [
-        ("01", "농장 자동 복원", "인천 남동구 · 사과·오이"),
-        ("02", "3초 행동 이해", "내일 33℃ · 사과 기준 30℃"),
+        ("01", "농장 자동 복원", "제주 제주시 · 5작물"),
+        ("02", "3초 행동 이해", "8월 1일 34℃ · 사과 기준 30℃"),
         ("03", "근거와 행동", "과원 수분·햇볕 데임 확인"),
         ("04", "확인형 AI", "관수시설 확인을 내일 투두로"),
         ("05", "기록과 회고", "사진·완료 상태·시즌 흐름"),
@@ -369,7 +369,7 @@ def slide_demo(c):
         y -= 72
     rounded(c, 468, 116, 326, 318, HexColor("#153C29"), HexColor("#316C4C"))
     text(c, "발표에서 반드시 구분", 492, 398, 10, MINT, "AppleGothicBold")
-    text(c, "로컬 본선 데모", 492, 354, 20, white, "AppleGothicBold")
+    text(c, "제품 품질 게이트", 492, 354, 20, white, "AppleGothicBold")
     pill(c, "GO", 690, 343, fill=MINT, fg=GREEN_950, width=72)
     text(c, "Hosted / 실사용", 492, 294, 20, white, "AppleGothicBold")
     pill(c, "HOLD", 690, 283, fill=HexColor("#E8D9B7"), fg=RED, width=72)

@@ -29,6 +29,7 @@ export {
   evaluateClimate,
 } from "./climate.js";
 export { classifySoilInterval, evaluateSoil } from "./soil.js";
+export { calculateGrowthScore } from "./growth-score.js";
 export {
   evaluateForecast,
   evaluateForecastRisks,

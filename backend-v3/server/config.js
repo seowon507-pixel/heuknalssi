@@ -188,6 +188,11 @@ export function loadConfig(env = process.env) {
       url: supabaseUrl,
       secretKey: supabaseSecretKey,
     },
+    photoStorageConfig: {
+      url: supabaseUrl,
+      secretKey: supabaseSecretKey,
+      bucket: env.SUPABASE_PHOTO_BUCKET || 'farm-photos',
+    },
     assistantConfig: {
       enabled: enabledWhenConfigured(env.ENABLE_GOOGLE_AI, googleAiApiKey),
       apiKey: googleAiApiKey,
@@ -195,6 +200,8 @@ export function loadConfig(env = process.env) {
     },
     capabilities: {
       smartfarm: 'DISABLED',
+      pestReference: 'REVIEWED_REFERENCE',
+      pestLiveOccurrence: 'NOT_CONNECTED',
       satellite: enabled(env.ENABLE_SATELLITE)
         ? env.COPERNICUS_CLIENT_ID && env.COPERNICUS_CLIENT_SECRET
           ? 'CONFIGURED_UNVERIFIED'
@@ -212,6 +219,10 @@ export function loadConfig(env = process.env) {
         supabaseUrl && supabaseSecretKey
           ? 'CONFIGURED_UNVERIFIED'
           : 'NOT_AVAILABLE',
+      photoHistory:
+        supabaseUrl && supabaseSecretKey
+          ? 'CONFIGURED_UNVERIFIED'
+          : 'LOCAL_ONLY',
     },
   });
 }

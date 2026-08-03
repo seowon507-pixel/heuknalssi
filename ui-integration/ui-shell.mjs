@@ -524,8 +524,13 @@
     lastDialogTrigger = document.activeElement;
     dialog.showModal();
     const limits = document.querySelector('#dialog-limits');
+    const guideSection = dialog.querySelector(`[data-guide-section="${section}"]`);
     if (section === 'limits' && limits) limits.focus();
-    else dialog.querySelector('[data-close-dialog]')?.focus();
+    else if (guideSection) {
+      guideSection.setAttribute('tabindex', '-1');
+      guideSection.focus({ preventScroll: true });
+      guideSection.scrollIntoView({ block: 'start' });
+    } else dialog.querySelector('[data-close-dialog]')?.focus();
   }
 
   function trapDialogFocus(event) {
@@ -566,24 +571,6 @@
   });
   evidenceDialog.addEventListener('close', () => {
     if (lastDialogTrigger instanceof HTMLElement) lastDialogTrigger.focus();
-  });
-
-  const checklistButton = document.querySelector('#first-action');
-  const checklistPanel = document.querySelector('#field-checklist');
-  checklistButton.addEventListener('click', () => {
-    const willOpen = checklistPanel.hidden;
-    checklistPanel.hidden = !willOpen;
-    checklistButton.setAttribute('aria-expanded', String(willOpen));
-    checklistButton.textContent = willOpen
-      ? (document.body.dataset.mode === 'growing' ? '오늘 현장 체크리스트 닫기' : '현장 확인 체크리스트 닫기')
-      : (document.body.dataset.mode === 'growing' ? '오늘 현장 체크리스트 열기' : '현장 확인 체크리스트 열기');
-    if (willOpen) {
-      document.querySelector('#check-water-mark').focus();
-      announce('현장 확인 체크리스트를 열었습니다.');
-    } else {
-      checklistButton.focus();
-      announce('현장 확인 체크리스트를 닫았습니다.');
-    }
   });
 
   const commandDialog = document.querySelector('#command-dialog');

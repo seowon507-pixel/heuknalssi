@@ -2,6 +2,7 @@ import { randomBytes as nodeRandomBytes } from 'node:crypto';
 
 import {
   ALLOWED_CULTIVATION_MODES,
+  calculateGrowthScore,
   createRuleRegistry,
   Crop,
   decideGuidance,
@@ -233,6 +234,8 @@ export function createApplicationServices({
     persistence: 'NOT_AVAILABLE',
     assistant: 'FALLBACK',
     deviceBackup: 'NOT_AVAILABLE',
+    pestReference: 'REVIEWED_REFERENCE',
+    pestLiveOccurrence: 'NOT_CONNECTED',
   },
 } = {}) {
   validateDependencies({
@@ -561,6 +564,13 @@ export function createApplicationServices({
       ...rawDecision,
       message: renderDecisionMessage(request, rawDecision.code),
     };
+    const growthScore = calculateGrowthScore({
+      request,
+      climate,
+      soil,
+      forecast,
+      now: new Date(clock()).toISOString(),
+    });
     const actionCandidates = createActionCandidates({
       request,
       decision,
@@ -597,6 +607,7 @@ export function createApplicationServices({
       state: analysisStates.analysisState,
       conditionState: analysisStates.conditionState,
       riskState: analysisStates.riskState,
+      growthScore,
       decision,
       primaryAction: actionProjection.primaryAction,
       actions,
@@ -899,6 +910,10 @@ export function createApplicationServices({
       contracts: sanitizeRuntimeContracts(runtimeStatus?.contracts),
       capabilities: {
         smartfarm: 'DISABLED',
+        pestReference:
+          capabilities.pestReference ?? 'REVIEWED_REFERENCE',
+        pestLiveOccurrence:
+          capabilities.pestLiveOccurrence ?? 'NOT_CONNECTED',
         satellite: capabilities.satellite ?? 'DISABLED',
         persistence: persistenceHealth.capability,
         deviceBackup: capabilities.deviceBackup ?? 'NOT_AVAILABLE',
@@ -906,8 +921,14 @@ export function createApplicationServices({
         assistant: capabilities.assistant ?? assistant?.state ?? 'FALLBACK',
       },
       guarantees: {
-        singleCompositeScore: false,
-        missingValueReweighting: false,
+        growthScoreCalculation: 'EVIDENCE_WEIGHTED_MEAN_WITH_GUARDRAILS',
+        growthScoreConfidenceSeparated: true,
+        growthScoreMinimumEvidenceStrength: 0.35,
+        regionalSoilMaximumEffectiveShare: 0.12,
+        fieldSoilContinuousGuardrail: true,
+        hydroponicRequiresIndoorEnvironment: true,
+        missingValuesBecomeZero: false,
+        regionalSoilCreatesScoreCap: false,
         unverifiedSoilRepresentativeValue: false,
         freeFormLlm: false,
       },

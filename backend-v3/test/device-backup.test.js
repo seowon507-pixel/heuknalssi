@@ -42,10 +42,64 @@ test('backup payload rejects unknown fields and oversized content', () => {
       error.code === 'INVALID_PAYLOAD',
   );
   assert.throws(
-    () => assertStorablePayload({ region: '가'.repeat(9000) }),
+    () =>
+      assertStorablePayload({
+        region: '강원특별자치도 평창군',
+        todo: { details: '가'.repeat(140_000) },
+      }),
     (error) =>
       error instanceof DeviceBackupError &&
       error.code === 'PAYLOAD_TOO_LARGE',
+  );
+});
+
+test('backup payload accepts the complete local farm workspace and rejects malformed farms', () => {
+  const payload = {
+    version: 2,
+    region: '경상북도 안동시',
+    activeFarmId: 'farm-1',
+    farms: [
+      {
+        id: 'farm-1',
+        name: '안동 사과 농장',
+        updatedAt: '2026-08-03T00:00:00.000Z',
+        situation: 'growing',
+        crops: ['APPLE'],
+        cropSettings: {
+          APPLE: {
+            cultivationMode: 'OPEN_FIELD',
+            growthStage: 'middle',
+            seasonProfile: 'annual',
+          },
+        },
+        region: '경상북도 안동시',
+      },
+    ],
+    alarm: { enabled: true, hour: 7 },
+    todo: { title: '과원 상태 확인' },
+  };
+
+  assert.deepEqual(assertStorablePayload(payload), payload);
+  assert.throws(
+    () =>
+      assertStorablePayload({
+        version: 2,
+        activeFarmId: 'farm-missing',
+        farms: payload.farms,
+      }),
+    (error) =>
+      error instanceof DeviceBackupError &&
+      error.code === 'INVALID_PAYLOAD',
+  );
+  assert.throws(
+    () =>
+      assertStorablePayload({
+        version: 2,
+        farms: [{ ...payload.farms[0], crops: ['UNKNOWN'] }],
+      }),
+    (error) =>
+      error instanceof DeviceBackupError &&
+      error.code === 'INVALID_PAYLOAD',
   );
 });
 

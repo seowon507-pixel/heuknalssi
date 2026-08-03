@@ -6,6 +6,7 @@ import {
   cancelRuleAction,
   createActionItem,
   ruleActionDedupeKey,
+  snoozeActionUntil,
   transitionActionStatus,
 } from "../src/domain/action-plan.js";
 import {
@@ -74,6 +75,7 @@ test("ActionItem은 오늘/당분간, 상태, 기한, 재확인, 출처를 그�
     recheckAt: "2026-08-01T00:00:00.000Z",
     evidenceRefs: [evidence()],
     origin: "RULE",
+    snoozedUntil: null,
     completedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
@@ -112,6 +114,39 @@ test("완료와 건너뜀 상태는 완료시각을 일관되게 전환한다", 
   assert.equal(skipped.completedAt, null);
   assert.equal(skipped.status, "SKIPPED");
   assert.equal(open.status, "OPEN");
+});
+
+test("열린 할 일은 내일로 미루고 다음 날 다시 오늘 목록으로 복귀한다", () => {
+  const snoozed = snoozeActionUntil(item(), "2026-07-31T22:00:00.000Z", {
+    now: "2026-07-31T02:00:00.000Z",
+  });
+
+  assert.equal(snoozed.status, "OPEN");
+  assert.equal(snoozed.horizon, "UPCOMING");
+  assert.equal(snoozed.dueAt, "2026-07-31T22:00:00.000Z");
+  assert.equal(snoozed.snoozedUntil, "2026-07-31T22:00:00.000Z");
+  assert.equal(
+    buildActionPlan([snoozed], {
+      farmId: "farm-a",
+      cropId: "crop-apple-a",
+      now: "2026-07-31T03:00:00.000Z",
+    }).upcoming.length,
+    1,
+  );
+  assert.equal(
+    buildActionPlan([snoozed], {
+      farmId: "farm-a",
+      cropId: "crop-apple-a",
+      now: "2026-07-31T22:30:00.000Z",
+    }).today.length,
+    1,
+  );
+  assert.throws(
+    () => snoozeActionUntil(snoozed, "2026-07-31T01:00:00.000Z", {
+      now: "2026-07-31T02:00:00.000Z",
+    }),
+    (error) => error.code === "ACTION_SNOOZE_INVALID",
+  );
 });
 
 test("목록은 열린 오늘 행동을 첫 행동으로 두고 농장/작물을 섞지 않는다", () => {
@@ -317,6 +352,39 @@ test("상태 변경은 저장된 소유 범위와 낙관적 갱신 기준을 유
   assert.equal(done.status, "DONE");
   assert.equal(done.completedAt, "2026-07-31T02:00:00.000Z");
   assert.equal(repository.lastExpectedUpdatedAt, NOW);
+});
+
+test("응용 서비스는 확인한 사용자의 다시 알림 시각을 저장한다", async () => {
+  const repository = createMemoryRepository();
+  const existing = item();
+  repository.actions.set(existing.actionId, existing);
+  const service = createActionPlanService({
+    repository,
+    clock: () => new Date("2026-07-31T02:00:00.000Z"),
+  });
+
+  const snoozed = await service.snoozeAction({
+    accountId: "account-a",
+    farmId: "farm-a",
+    actionId: existing.actionId,
+    snoozedUntil: "2026-07-31T22:00:00.000Z",
+    confirmed: true,
+    idempotencyKey: "snooze-1",
+  });
+
+  assert.equal(snoozed.status, "OPEN");
+  assert.equal(snoozed.snoozedUntil, "2026-07-31T22:00:00.000Z");
+  await assert.rejects(
+    service.snoozeAction({
+      accountId: "account-a",
+      farmId: "farm-a",
+      actionId: existing.actionId,
+      snoozedUntil: "2026-08-01T22:00:00.000Z",
+      confirmed: false,
+      idempotencyKey: "snooze-2",
+    }),
+    (error) => error.code === "ACTION_CONFIRMATION_REQUIRED",
+  );
 });
 
 test("위험 규칙 재조정은 사라진 OPEN 자동 행동만 해제한다", async () => {

@@ -120,6 +120,10 @@ export function evaluateSoil(input = {}) {
       ruleId: rule.ruleId,
       metric: rule.metric,
       unit: rule.unit,
+      optimalRange: [...rule.optimalRange],
+      ...(measuredPointValue(dataset) === null
+        ? {}
+        : { observedValue: measuredPointValue(dataset) }),
       fitRatio,
       uncertainRatio,
       outsideRatio,
@@ -205,6 +209,19 @@ export function evaluateSoil(input = {}) {
     );
   }
   return soilModule("READY", coverage, [], unique(missingInputs), result);
+}
+
+function measuredPointValue(dataset) {
+  if (
+    dataset?.areaUnit !== "MEASURED_POINT" ||
+    dataset.intervals?.length !== 1
+  ) {
+    return null;
+  }
+  const interval = dataset.intervals[0];
+  return interval.lower === interval.upper && Number.isFinite(interval.lower)
+    ? interval.lower
+    : null;
 }
 
 function validateMetricDataset(dataset, rule) {

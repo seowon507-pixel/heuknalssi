@@ -3,6 +3,7 @@ import {
   createKmaMidForecastAdapter,
   createKmaShortForecastAdapter
 } from "./kma.js";
+import { createKmaHistoricalShortForecastAdapter } from "./kma-historical-forecast.js";
 import {
   createKmaAsosObservationAdapter,
   createKmaClimateNormalAdapter
@@ -61,6 +62,7 @@ export {
   VERIFIED_KMA_ASOS_CONTRACT_VERSION,
   VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
   VERIFIED_KMA_LOCATION_CATALOG_CONTRACT_VERSION,
+  VERIFIED_KMA_HISTORICAL_SHORT_CONTRACT_VERSION,
   VERIFIED_KMA_SHORT_CONTRACT_VERSION,
   VERIFIED_SOIL_V2_CONTRACT_VERSION,
   VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
@@ -95,6 +97,10 @@ export {
   parseKmaForecastZoneCatalog,
   parseKmaSurfaceStationCatalog
 } from "./kma-location-catalog.js";
+export {
+  createKmaHistoricalShortForecastAdapter,
+  HISTORICAL_SHORT_ENDPOINT
+} from "./kma-historical-forecast.js";
 export {
   createKmaMidForecastAdapter,
   createKmaShortForecastAdapter,
@@ -136,6 +142,7 @@ export {
 export const adapterFactories = Object.freeze({
   kakao: createKakaoAdapter,
   kmaShort: createKmaShortForecastAdapter,
+  kmaHistoricalShort: createKmaHistoricalShortForecastAdapter,
   kmaMid: createKmaMidForecastAdapter,
   kmaAsos: createKmaAsosObservationAdapter,
   kmaClimate: createKmaClimateNormalAdapter,

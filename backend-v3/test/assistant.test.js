@@ -12,6 +12,16 @@ import {
 function analysisFixture() {
   return {
     inputSummary: { crop: "APPLE" },
+    growthScore: {
+      state: "READY",
+      score: 62,
+      label: "주의",
+      components: {
+        climate: { score: 88 },
+        soil: { score: 74 },
+        forecast: { score: 62 },
+      },
+    },
     state: "PARTIAL",
     decision: {
       message: "현재 재배지에서 확인된 주의 항목을 먼저 점검하세요.",
@@ -254,16 +264,16 @@ test("배수를 배 작물로 오인하지 않고 근거 부재와 현장 행동
   assert.match(pear.answer, /배 작물 탭/);
 });
 
-test("미지원 비교·쓰기·날짜 수치·종합점수 질문은 성공처럼 답하지 않는다", () => {
+test("생육점수는 근거를 설명하고 미지원 종합점수는 구분한다", () => {
   const cases = [
     ["다른 농장과 비교해 줘", "NOT_SUPPORTED", /비교는 하지 않습니다/],
     ["오늘 할 일을 완료 처리해 줘", "NOT_SUPPORTED", /아무것도 변경되지 않았습니다/],
     ["내일 비가 오나요?", "NOT_SUPPORTED", /7일 예보/],
-    ["생육점수가 90점이니 안전하지?", "NEEDS_CLARIFICATION", /종합점수를 사용하지 않습니다/],
-    ["종합점수가 90점이니 안전한 거죠?", "NEEDS_CLARIFICATION", /종합점수를 사용하지 않습니다/],
-    ["총점이 높으면 위험이 없어?", "NEEDS_CLARIFICATION", /종합점수를 사용하지 않습니다/],
-    ["통합 점수를 알려줘", "NEEDS_CLARIFICATION", /종합점수를 사용하지 않습니다/],
-    ["안전점수 95점이면 괜찮아?", "NEEDS_CLARIFICATION", /종합점수를 사용하지 않습니다/],
+    ["생육점수가 90점이니 안전하지?", "ANSWERED", /현재 생육점수는 62점\(주의\)/],
+    ["종합점수가 90점이니 안전한 거죠?", "NEEDS_CLARIFICATION", /안전이나 수확량을 보증하는 점수/],
+    ["총점이 높으면 위험이 없어?", "NEEDS_CLARIFICATION", /생육점수/],
+    ["통합 점수를 알려줘", "NEEDS_CLARIFICATION", /생육점수/],
+    ["안전점수 95점이면 괜찮아?", "NEEDS_CLARIFICATION", /생육점수/],
   ];
   for (const [question, outcome, answerPattern] of cases) {
     const result = classifyAssistantPolicy(question, analysisFixture());
@@ -272,10 +282,10 @@ test("미지원 비교·쓰기·날짜 수치·종합점수 질문은 성공처�
   }
 });
 
-test("종합점수와 배수 근거 공백을 모델 호출 전에 처리한다", async () => {
-  for (const question of [
-    "종합점수가 90점이니 안전한 거죠?",
-    "배수 상태를 알려줘",
+test("생육점수와 배수 근거를 모델 호출 전에 처리한다", async () => {
+  for (const [question, expectedOutcome] of [
+    ["생육점수를 알려줘", "ANSWERED"],
+    ["배수 상태를 알려줘", "NEEDS_CLARIFICATION"],
   ]) {
     let called = false;
     const result = await answerGroundedQuestion({
@@ -291,7 +301,7 @@ test("종합점수와 배수 근거 공백을 모델 호출 전에 처리한다"
     });
     assert.equal(called, false);
     assert.equal(result.mode, "POLICY");
-    assert.equal(result.outcome, "NEEDS_CLARIFICATION");
+    assert.equal(result.outcome, expectedOutcome);
   }
 });
 

@@ -8,7 +8,10 @@
 
 ## Safety invariants
 
-- Never combine climate, soil, observations, forecasts, smartfarm, or satellite into one score.
+- Keep climate, soil, and forecast component scores visible and separate. The only
+  allowed representative score is `growth-score-v2`, which applies reviewed
+  importance, source trust, coverage, and high-trust risk caps. Observations,
+  smartfarm, and satellite never enter that score.
 - Missing values stay `null`; never coerce an empty value to zero.
 - Unverified adapters and rules return `HOLD`, `UNAVAILABLE`, or `UNSUPPORTED`.
 - LLM output cannot create facts, numbers, causes, diagnoses, pesticide/fertilizer instructions, or actions.

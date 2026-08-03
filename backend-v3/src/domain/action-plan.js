@@ -35,6 +35,7 @@ const ITEM_FIELDS = new Set([
   "ruleId",
   ...DRAFT_FIELDS,
   "status",
+  "snoozedUntil",
   "completedAt",
   "createdAt",
   "updatedAt",
@@ -61,6 +62,7 @@ export function createActionItem(draft, { actionId, ruleId = null, now } = {}) {
     recheckAt: utcTimestamp(draft.recheckAt, "recheckAt"),
     evidenceRefs: validateEvidenceRefs(draft.evidenceRefs),
     origin: enumValue(draft.origin, ACTION_ORIGINS, "origin"),
+    snoozedUntil: null,
     completedAt: null,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -93,6 +95,10 @@ export function assertActionItem(value) {
     recheckAt: utcTimestamp(value.recheckAt, "recheckAt"),
     evidenceRefs: validateEvidenceRefs(value.evidenceRefs),
     origin: enumValue(value.origin, ACTION_ORIGINS, "origin"),
+    snoozedUntil:
+      value.snoozedUntil === null || value.snoozedUntil === undefined
+        ? null
+        : utcTimestamp(value.snoozedUntil, "snoozedUntil"),
     completedAt:
       value.completedAt === null
         ? null
@@ -147,6 +153,38 @@ export function transitionActionStatus(action, status, { now } = {}) {
   };
 }
 
+export function snoozeActionUntil(action, until, { now } = {}) {
+  const current = assertActionItem(action);
+  if (current.status !== "OPEN") {
+    throw new DomainError(
+      "ACTION_STATUS_TRANSITION_INVALID",
+      "only an open action can be snoozed",
+    );
+  }
+  const timestamp = utcTimestamp(now, "now");
+  const snoozedUntil = utcTimestamp(until, "snoozedUntil");
+  const delayMs = Date.parse(snoozedUntil) - Date.parse(timestamp);
+  if (delayMs <= 0 || delayMs > 30 * 24 * 60 * 60 * 1_000) {
+    throw new DomainError(
+      "ACTION_SNOOZE_INVALID",
+      "snoozedUntil must be within the next 30 days",
+    );
+  }
+  return {
+    ...current,
+    horizon: seoulDateKey(snoozedUntil) === seoulDateKey(timestamp)
+      ? "TODAY"
+      : "UPCOMING",
+    dueAt: snoozedUntil,
+    recheckAt:
+      Date.parse(current.recheckAt) >= Date.parse(snoozedUntil)
+        ? current.recheckAt
+        : snoozedUntil,
+    snoozedUntil,
+    updatedAt: timestamp,
+  };
+}
+
 export function cancelRuleAction(action, { now } = {}) {
   const current = assertActionItem(action);
   if (current.origin !== "RULE" || current.ruleId === null) {
@@ -173,7 +211,10 @@ export function ruleActionDedupeKey({ farmId, cropId, ruleId } = {}) {
   return `action-rule:v2:${parts.map(lengthPrefix).join("")}`;
 }
 
-export function buildActionPlan(items, { farmId, cropId = null } = {}) {
+export function buildActionPlan(
+  items,
+  { farmId, cropId = null, now = null } = {},
+) {
   if (!Array.isArray(items)) {
     throw new DomainError("INVALID_ACTION_ITEMS", "action items must be an array");
   }
@@ -182,8 +223,10 @@ export function buildActionPlan(items, { farmId, cropId = null } = {}) {
     cropId === null || cropId === undefined
       ? null
       : requiredIdentifier(cropId, "cropId");
+  const normalizedNow = now === null ? null : utcTimestamp(now, "now");
   const scoped = collapseDuplicateRuleActions(items
     .map(assertActionItem)
+    .map((item) => effectiveOpenHorizon(item, normalizedNow))
     .filter(
       (item) =>
         item.farmId === farmScope &&
@@ -206,6 +249,16 @@ export function buildActionPlan(items, { farmId, cropId = null } = {}) {
     today: structuredClone(today),
     upcoming: structuredClone(upcoming),
     archived: structuredClone(archived.sort(compare)),
+  };
+}
+
+function effectiveOpenHorizon(item, now) {
+  if (item.status !== "OPEN" || now === null) return item;
+  return {
+    ...item,
+    horizon: seoulDateKey(item.dueAt) <= seoulDateKey(now)
+      ? "TODAY"
+      : "UPCOMING",
   };
 }
 

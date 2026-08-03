@@ -7,6 +7,10 @@ product_first_baseline/*_desktop.png
 product_first_baseline/*_viewport.png
 product_first_baseline/11_target_dashboard_v1.png
 product_first_baseline/13_dashboard_fullpage_desktop.jpg
+output/*.png
+output/final-flow/
+output/final-verification/
+output/final-visual/
 
 .env
 .env.local

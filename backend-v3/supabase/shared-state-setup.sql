@@ -33,6 +33,68 @@ alter table public.heuknalssi_rate_limits enable row level security;
 revoke all on table public.heuknalssi_rate_limits from public, anon, authenticated;
 grant select, insert, update, delete on table public.heuknalssi_rate_limits to service_role;
 
+-- Optional cross-device recovery payloads. The user-visible recovery key is
+-- hashed in the backend before this table is reached; raw keys are never stored.
+create table if not exists public.heuknalssi_device_backups (
+  key_hash text primary key check (char_length(key_hash) = 64),
+  payload jsonb not null,
+  updated_at timestamptz not null default clock_timestamp(),
+  check (pg_column_size(payload) <= 131072)
+);
+
+alter table public.heuknalssi_device_backups enable row level security;
+revoke all on table public.heuknalssi_device_backups from public, anon, authenticated;
+grant select, insert, update, delete on table public.heuknalssi_device_backups to service_role;
+
+create or replace function public.save_device_backup(
+  p_key_hash text,
+  p_payload jsonb
+) returns timestamptz
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_updated_at timestamptz := clock_timestamp();
+begin
+  if char_length(p_key_hash) <> 64 or p_key_hash !~ '^[a-f0-9]{64}$' then
+    raise exception 'backup key hash is invalid' using errcode = '22023';
+  end if;
+  if p_payload is null or pg_column_size(p_payload) > 131072 then
+    raise exception 'backup payload is invalid' using errcode = '22023';
+  end if;
+
+  insert into public.heuknalssi_device_backups (
+    key_hash,
+    payload,
+    updated_at
+  ) values (
+    p_key_hash,
+    p_payload,
+    v_updated_at
+  )
+  on conflict (key_hash) do update
+    set payload = excluded.payload,
+        updated_at = excluded.updated_at;
+
+  return v_updated_at;
+end;
+$$;
+
+create or replace function public.load_device_backup(
+  p_key_hash text
+) returns table(payload jsonb, updated_at timestamptz)
+language sql
+security invoker
+set search_path = ''
+as $$
+  select backup.payload, backup.updated_at
+  from public.heuknalssi_device_backups as backup
+  where backup.key_hash = p_key_hash
+    and char_length(p_key_hash) = 64
+    and p_key_hash ~ '^[a-f0-9]{64}$';
+$$;
+
 create or replace function public.heuknalssi_shared_state_get(
   p_namespace text,
   p_key text
@@ -470,3 +532,27 @@ revoke all on function public.heuknalssi_rate_limit_consume(text, integer, bigin
 grant execute on function public.heuknalssi_rate_limit_consume(text, integer, bigint) to service_role;
 revoke all on function public.heuknalssi_shared_state_probe(text) from public, anon, authenticated;
 grant execute on function public.heuknalssi_shared_state_probe(text) to service_role;
+revoke all on function public.save_device_backup(text, jsonb) from public, anon, authenticated;
+grant execute on function public.save_device_backup(text, jsonb) to service_role;
+revoke all on function public.load_device_backup(text) from public, anon, authenticated;
+grant execute on function public.load_device_backup(text) to service_role;
+
+-- Private farm-photo bytes are accessed only through the backend secret. The
+-- browser receives a one-use upload token and never a bucket/object path.
+insert into storage.buckets (
+  id,
+  name,
+  public,
+  file_size_limit,
+  allowed_mime_types
+) values (
+  'farm-photos',
+  'farm-photos',
+  false,
+  10485760,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update
+set public = false,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;

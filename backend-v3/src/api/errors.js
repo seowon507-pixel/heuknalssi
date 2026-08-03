@@ -1,5 +1,8 @@
 import { DomainError } from "../domain/errors.js";
-import { StoreCapacityError } from "../infrastructure/index.js";
+import {
+  PhotoStorageError,
+  StoreCapacityError,
+} from "../infrastructure/index.js";
 
 const ERROR_DEFINITIONS = Object.freeze({
   INVALID_INPUT: {
@@ -112,6 +115,21 @@ const ERROR_DEFINITIONS = Object.freeze({
     message: "The analysis was not found.",
     retryable: false,
   },
+  REPORT_NOT_FOUND: {
+    status: 404,
+    message: "The saved report was not found.",
+    retryable: false,
+  },
+  REPORT_NOT_READY: {
+    status: 409,
+    message: "The analysis report is not ready to save.",
+    retryable: true,
+  },
+  REPORT_SCOPE_MISMATCH: {
+    status: 403,
+    message: "The report does not belong to this farm crop.",
+    retryable: false,
+  },
   NOT_FOUND: {
     status: 404,
     message: "The requested API route was not found.",
@@ -157,6 +175,71 @@ const ERROR_DEFINITIONS = Object.freeze({
     message: "Explicit user confirmation is required.",
     retryable: false,
   },
+  PHOTO_UPLOAD_INVALID: {
+    status: 400,
+    message: "The photo upload is invalid.",
+    retryable: false,
+  },
+  PHOTO_UPLOAD_TOO_LARGE: {
+    status: 413,
+    message: "The photo exceeds the 10MB upload limit.",
+    retryable: false,
+  },
+  PHOTO_UPLOAD_TOKEN_INVALID: {
+    status: 400,
+    message: "The photo upload token is invalid or expired.",
+    retryable: false,
+  },
+  PHOTO_UPLOAD_SCOPE_MISMATCH: {
+    status: 403,
+    message: "The photo upload does not belong to this farm season.",
+    retryable: false,
+  },
+  PHOTO_UPLOAD_CONFLICT: {
+    status: 409,
+    message: "The photo upload was already consumed.",
+    retryable: true,
+  },
+  PHOTO_STORAGE_NOT_CONFIGURED: {
+    status: 503,
+    message: "Private photo storage is not configured.",
+    retryable: false,
+  },
+  PHOTO_STORAGE_UNAVAILABLE: {
+    status: 503,
+    message: "Private photo storage is temporarily unavailable.",
+    retryable: true,
+  },
+  PHOTO_STORAGE_REJECTED: {
+    status: 502,
+    message: "Private photo storage rejected the operation.",
+    retryable: true,
+  },
+  PHOTO_DELETE_CONFIRMATION_REQUIRED: {
+    status: 409,
+    message: "Photo deletion requires explicit confirmation.",
+    retryable: false,
+  },
+  PHOTO_NOT_FOUND: {
+    status: 404,
+    message: "The photo was not found.",
+    retryable: false,
+  },
+  SEASON_COMPLETE_CONFIRMATION_REQUIRED: {
+    status: 409,
+    message: "Season completion requires explicit confirmation.",
+    retryable: false,
+  },
+  SEASON_NOT_FOUND: {
+    status: 404,
+    message: "The farm season was not found.",
+    retryable: false,
+  },
+  SEASON_NOT_ACTIVE: {
+    status: 409,
+    message: "The farm season is already completed.",
+    retryable: false,
+  },
   ACTION_NOT_FOUND: {
     status: 404,
     message: "The farm action was not found.",
@@ -185,6 +268,11 @@ const ERROR_DEFINITIONS = Object.freeze({
   ACTION_STATUS_TRANSITION_INVALID: {
     status: 409,
     message: "The requested farm action status transition is not allowed.",
+    retryable: false,
+  },
+  ACTION_SNOOZE_INVALID: {
+    status: 400,
+    message: "The requested farm action reminder time is invalid.",
     retryable: false,
   },
   METHOD_NOT_ALLOWED: {
@@ -263,6 +351,9 @@ const TRUSTED_SERVICE_CODES = new Set([
   "ACTION_UPDATE_CONFLICT",
   "INTERNAL_ERROR",
   "LOCATION_TOKEN_INVALID",
+  "REPORT_NOT_FOUND",
+  "REPORT_NOT_READY",
+  "REPORT_SCOPE_MISMATCH",
 ]);
 
 function cleanFieldErrors(fieldErrors) {
@@ -315,6 +406,10 @@ export function normalizeApiError(error) {
 
   if (error instanceof StoreCapacityError) {
     return new ApiError("SERVICE_BUSY", { cause: error });
+  }
+
+  if (error instanceof PhotoStorageError) {
+    return new ApiError(error.code, { cause: error });
   }
 
   if (error instanceof DomainError) {

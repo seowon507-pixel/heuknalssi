@@ -22,6 +22,10 @@ async function readUiShell() {
   return readFile(path.join(import.meta.dirname, "ui-shell.mjs"), "utf8");
 }
 
+async function readDashboardCss() {
+  return readFile(path.join(import.meta.dirname, "dashboard-workspace.css"), "utf8");
+}
+
 function visibleMarkup(html) {
   return html
     .replaceAll(/<style[\s\S]*?<\/style>/gi, "")
@@ -168,12 +172,24 @@ test("완료한 농장 설정은 이 기기에 저장하고 다음 방문에 자
   assert.match(shell, /heuknalssi:open-new-farm/);
 });
 
+test("입력 중 위치 토큰이 만료되면 같은 확인 지역만 갱신해 분석을 한 번 재시도한다", async () => {
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(client, /refreshExpiredLocation = true/);
+  assert.match(client, /candidate\.displayName === confirmedName/);
+  assert.match(client, /submitAnalysis\(\{ refreshExpiredLocation: false \}\)/);
+  assert.match(client, /matches\.length !== 1/);
+});
+
 test("농장 저장 ID를 행동·사진·위성 렌더링 전에 확정한다", async () => {
   const client = await readFile(
     path.join(import.meta.dirname, "backend-client.mjs"),
     "utf8",
   );
-  const submitStart = client.indexOf("async function submitAnalysis()");
+  const submitStart = client.indexOf("async function submitAnalysis(");
   const submitEnd = client.indexOf("function collectUiAnalysisContexts", submitStart);
   const submit = client.slice(submitStart, submitEnd);
   assert.ok(submit.indexOf("writeStoredSession(formValues") > 0);
@@ -184,29 +200,41 @@ test("농장 저장 ID를 행동·사진·위성 렌더링 전에 확정한다",
   );
 });
 
-test("날씨·토양·예보를 합산하지 않고 독립 상태로 표시한다", async () => {
+test("생육점수는 백엔드 결과를 표시하고 세 축은 독립 값을 유지한다", async () => {
+  const html = await readProductUi();
   const client = await readFile(
     path.join(import.meta.dirname, "backend-client.mjs"),
     "utf8",
   );
 
-  assert.match(client, /오늘 먼저 볼 것/);
-  assert.match(client, /이번 주 예보/);
-  assert.match(client, /오늘의 점검 항목/);
+  assert.match(client, /function renderDashboardWorkspace/);
+  assert.match(html, /오늘의 농장 상태/);
+  assert.match(client, /오늘 할 일을 불러오고 있습니다/);
+  assert.match(client, /7일 작물 위험 변화/);
   assert.match(client, /setConnectionState\("hold", "부분 분석 가능"\)/);
   assert.match(client, /runtimeModeLabel\.textContent = "부분 분석 가능"/);
   assert.match(client, /serviceBanner\.hidden = false/);
   assert.doesNotMatch(client, /runtimeModeLabel\.textContent = ready \? "실시간 분석" : "분석 준비됨"/);
-  assert.match(client, /renderStateOverview\(analysis\)/);
-  assert.match(client, /current-state-ring/);
-  assert.match(client, /오늘의 작물 상태/);
-  assert.match(client, /기후 조건/);
-  assert.match(client, /토양 조건/);
-  assert.match(client, /가까운 예보/);
+  const renderAnalysisStart = client.indexOf("function renderAnalysis(analysis)");
+  const renderAnalysisEnd = client.indexOf("async function refreshActionPlan", renderAnalysisStart);
+  const renderAnalysisBody = client.slice(renderAnalysisStart, renderAnalysisEnd);
+  assert.match(renderAnalysisBody, /renderDashboardWorkspace\(analysis\)/);
+  assert.doesNotMatch(
+    renderAnalysisBody,
+    /renderLiveOutlook|renderDecisionPanel|renderStateOverview|renderActionsAndReport/,
+  );
+  assert.match(client, /dashboard-state-badge/);
+  assert.match(html, /data-dashboard-axis="climate"[\s\S]*?<dt>날씨<\/dt>/);
+  assert.match(client, /function dashboardStatusIndicators/);
+  assert.match(client, /function dashboardSoilIndicator/);
+  assert.match(html, /data-dashboard-axis="soil"[\s\S]*?<dt>토양<\/dt>/);
+  assert.match(html, /data-dashboard-axis="forecast"[\s\S]*?<dt>예보<\/dt>/);
   assert.match(client, /READY: "확인 완료"/);
-  assert.match(client, /서로 다른 자료를 하나의 점수로 합치지 않습니다/);
-  assert.match(client, /const safeSources = Array\.isArray\(sources\) \? sources : \[\]/);
-  assert.doesNotMatch(client, /생육점수|날씨 60%|calculateCropConditionScore/);
+  assert.doesNotMatch(client, /function dashboardStatusIndex\(status\)/);
+  assert.match(client, /analysis\?\.growthScore/);
+  assert.match(client, /`\$\{status\.score\}점`/);
+  assert.match(client, /현재 작물 생육점수/);
+  assert.doesNotMatch(client, /날씨 60%|calculateCropConditionScore/);
   assert.doesNotMatch(
     client,
     /\[\s*"\.overview-score",\s*"\.metric-strip"/,
@@ -236,7 +264,12 @@ test("일반 대시보드는 행동 중심이고 기술 정보는 마이페이�
   assert.doesNotMatch(markup, />내 분석</);
   assert.match(markup, /id="technical-analysis-settings"/);
   assert.match(markup, /분석 기준 및 데이터 출처/);
-  assert.match(html, /class="evidence-workspace"[^>]*hidden/);
+  const dashboard = html.match(
+    /<section class="view" id="view-dashboard"[\s\S]*?<section class="view product-feature-view" id="view-crop-management"/,
+  )?.[0] ?? "";
+  assert.match(dashboard, /id="dashboard-workspace"/);
+  assert.match(dashboard, /id="dashboard-action-list"/);
+  assert.doesNotMatch(dashboard, /분석 기준 및 데이터 출처|backend-evidence-table/);
   assert.match(client, /function renderTechnicalSettings/);
   assert.match(client, /같은 농장 위치의 날씨 원자료는 모든 작물에 공통/);
   assert.match(client, /필지 토양검정값은 모든 작물에 동일/);
@@ -244,6 +277,28 @@ test("일반 대시보드는 행동 중심이고 기술 정보는 마이페이�
     client.match(/function renderEvidenceDialog[\s\S]*?function renderTechnicalSettings/)?.[0] ?? "",
     /evidenceTable|sourceGrid|limitationList/,
   );
+});
+
+test("작물 관리와 병해충 정보는 대시보드 스크롤 링크가 아닌 독립 제품 화면이다", async () => {
+  const html = await readProductUi();
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(html, /data-view="crop-management">작물 관리<\/button>/);
+  assert.match(html, /data-view="pest-alerts">병해충 경보/);
+  assert.match(html, /id="view-crop-management"[^>]*data-view-panel="crop-management"/);
+  assert.match(html, /id="view-pest-alerts"[^>]*data-view-panel="pest-alerts"/);
+  assert.doesNotMatch(html, /data-dashboard-anchor="crop-management"/);
+  assert.doesNotMatch(html, /data-dashboard-anchor="pest-alerts"/);
+  assert.match(client, /function renderCropManagementView\(analysis\)/);
+  assert.match(client, /function renderPestInformationView\(analysis,/);
+  assert.match(client, /getPestGuidance\(analysisId\)/);
+  assert.doesNotMatch(client, /PEST_OBSERVATION_PROFILES/);
+  assert.match(html, /id="pest-source-link"/);
+  assert.match(client, /기상 위험이 병해충 발생을 뜻하지는 않습니다/);
+  assert.doesNotMatch(client, /희석배수|살포량|다이센엠/u);
 });
 
 test("저장된 농장의 조건 변경과 농장 추가는 첫 단계에서 돌아갈 수 있다", async () => {
@@ -316,20 +371,130 @@ test("농장 분석 도우미는 데스크톱 패널과 모바일 전체 화면�
   assert.match(client, /현재 분석 근거를 확인하고 있습니다/);
 });
 
-test("예보 시각화는 최고·최저기온과 강수 가능성을 함께 보여준다", async () => {
+test("예보 시각화는 최고기온·강수확률·날짜별 작물 위험을 한 축으로 보여준다", async () => {
   const html = await readProductUi();
+  const css = await readDashboardCss();
   const client = await readFile(
     path.join(import.meta.dirname, "backend-client.mjs"),
     "utf8",
   );
 
   assert.match(client, /temperatureRangeChart\(days, threshold\)/);
-  assert.match(client, /temperature-band/);
-  assert.match(client, /precipitation-bar/);
+  assert.match(client, /precipitation-probability-line/);
+  assert.match(client, /forecastRiskLevelRow\(days, risks, analysis\)/);
+  assert.match(client, /FAVORABLE: \{ className: "favorable", label: "양호" \}/);
+  assert.match(client, /NORMAL: \{ className: "normal", label: "보통" \}/);
   assert.match(client, /risk-threshold-line/);
-  assert.match(html, /forecast-chart-legend/);
-  assert.match(html, /action-priority-card/);
-  assert.match(html, /font-size: 17px/);
+  assert.match(html, /id="dashboard-forecast-chart"/);
+  assert.match(html, /id="dashboard-priority-action"/);
+  assert.match(css, /#dashboard-forecast-chart \.forecast-temperature-chart/);
+  assert.match(css, /\.forecast-risk-chip/);
+  assert.match(css, /\.is-favorable \.forecast-risk-chip/);
+  assert.match(css, /\.is-normal \.forecast-risk-chip/);
+  assert.match(css, /\.dashboard-priority-action h3/);
+});
+
+test("행동과 주간 위험은 중복·모호한 날짜·과거 기한을 사용자 문구로 정리한다", async () => {
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(client, /filterWeeklyRisksForOpenAction/);
+  assert.match(client, /오늘 할 일 외 추가 주의 없음/);
+  assert.match(client, /formatExplicitForecastDate/);
+  assert.match(client, /formatActionDueLabelForAction\(/);
+  assert.match(client, /actionHasForecastRisk\(action, analysis\)/);
+  assert.match(client, /forecastRiskCause\(analysis, action\)/);
+  assert.match(client, /composeForecastActionReason\(cause, reason\)/);
+});
+
+test("목표 대시보드 조작은 실제 저장·가이드·기능 화면으로 연결된다", async () => {
+  const html = await readProductUi();
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+  const markup = visibleMarkup(html);
+
+  assert.match(markup, /id="dashboard-complete-all"/);
+  assert.match(markup, /id="dashboard-all-actions"[^>]*aria-expanded="false"/);
+  assert.match(markup, /id="dashboard-photo-check"/);
+  assert.doesNotMatch(markup, /data-dashboard-anchor=/);
+  assert.match(markup, /data-view="services">기록 &amp; 리포트/);
+  assert.match(markup, /id="satellite-service-panel"/);
+  assert.match(markup, /data-service-anchor="photo-journal-panel"/);
+  assert.match(markup, /data-open-dialog="weather"/);
+  assert.match(markup, /data-open-dialog="soil"/);
+  assert.doesNotMatch(markup, /aria-label="주의 3건"/);
+
+  assert.match(client, /async function completeAllOpenActions/);
+  assert.match(client, /for \(const action of openActions\)/);
+  assert.match(client, /await api\.updateAction\(scope\.farmId, action\.actionId, "DONE"/);
+  assert.match(client, /저장하지 못한 \$\{failures\.length\}개는 그대로 남겨 두었습니다/);
+  assert.match(client, /function toggleFullActionPlan/);
+  assert.match(client, /switcher\.hidden = analyses\.length === 0/);
+  assert.doesNotMatch(client, /function updateRiskNavigation/);
+  assert.match(client, /guideButton\.addEventListener\("click", \(\) => openEvidenceDialog\("weather"\)\)/);
+  assert.match(client, /currentActionPlan = plan/);
+});
+
+test("상태 상세는 선택한 날씨·토양 영역으로 이동하고 기술 규칙을 대시보드에 노출하지 않는다", async () => {
+  const shell = await readUiShell();
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(shell, /data-guide-section/);
+  assert.match(
+    client,
+    /conditionFactCard\("날씨", weather, "weather", \{ hideCaveat: regional \}\)/,
+  );
+  assert.match(
+    client,
+    /conditionFactCard\("농장 토양", soil, "soil", \{ hideCaveat: regional \}\)/,
+  );
+  assert.match(client, /actionBox\.dataset\.guideSection = "summary"/);
+  assert.match(client, /function openEvidenceDialog\(section = "summary"\)/);
+});
+
+test("시군구 위치는 지역 참고 분석을 한 번만 알리고 확보된 값을 완료 결과로 표시한다", async () => {
+  const html = await readProductUi();
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(html, /id="dashboard-scope-label"[^>]*hidden>지역 참고 분석<\/span>/);
+  assert.equal((html.match(/>지역 참고 분석<\/span>/g) ?? []).length, 1);
+  assert.match(client, /function hasRegionalReferenceCoverage/);
+  assert.match(client, /label: "지역 기준 양호"/);
+  assert.match(client, /label: "지역 기준 완료"/);
+  assert.match(client, /label: "분석 완료"/);
+  assert.match(client, /analysis\.dataSources\.filter\(sourceUsedInAnalysis\)/);
+  assert.match(client, /지역 예보와 지역 토양 통계를 기준으로 현재 적용할 주의 신호와 행동을 분석했습니다/);
+  assert.match(client, /actionRelevantForDisplay\(action, analysis\)/);
+});
+
+test("행동 유형별 원인과 NOW 기한, 주간 위험 압축을 서로 섞지 않는다", async () => {
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(client, /action\?\.actionId === "CONFIRM_SEASON"/);
+  assert.match(client, /재배 시기와 생육 단계가 확인되지 않아/);
+  assert.match(client, /재배 시기와 현재 생육 단계를 확인한 뒤 다시 분석/);
+  assert.match(client, /formatActionDueLabelForAction/);
+  assert.match(client, /label === "지금 확인" \|\| label\.startsWith\("지연됨"\)/);
+  assert.match(client, /groupWeeklyRiskRanges/);
+  assert.match(client, /composeForecastActionReason/);
+  const weekly = client.slice(
+    client.indexOf("function renderDashboardWeeklyRisks"),
+    client.indexOf("function renderDashboardSoil"),
+  );
+  assert.doesNotMatch(weekly, /slice\(0, 2\)/);
 });
 
 test("결과 첫 화면은 실제 예보 배열을 가까운 예보 시각 자료로 렌더링한다", async () => {
@@ -339,12 +504,13 @@ test("결과 첫 화면은 실제 예보 배열을 가까운 예보 시각 자�
     "utf8",
   );
 
-  assert.match(html, /id="live-outlook"/);
-  assert.match(html, /forecast-temperature-chart/);
-  assert.match(client, /function renderLiveOutlook/);
+  assert.match(html, /id="dashboard-risk-timeline"/);
+  assert.match(html, /id="dashboard-forecast-chart"/);
+  assert.match(client, /function renderDashboardRiskTimeline/);
+  assert.match(client, /temperatureRangeChart\(days, threshold\)/);
   assert.match(client, /mergedDisplayDays/);
   assert.match(client, /slice\(0, 7\)/);
-  assert.match(client, /기상청 단기·중기 예보/);
+  assert.match(client, /7일 작물 위험 변화/);
 });
 
 test("예보가 있으면 대기 문구 대신 검수된 사용자 행동과 입력 조건을 표시한다", async () => {
@@ -408,32 +574,34 @@ test("SmartFarm은 현재 제품 범위에서 비활성화되어 노출되지 �
 
 test("모바일 첫 화면은 가까운 예보보다 오늘의 점검 항목을 먼저 보여준다", async () => {
   const html = await readProductUi();
+  const css = await readDashboardCss();
   const client = await readFile(
     path.join(import.meta.dirname, "backend-client.mjs"),
     "utf8",
   );
 
-  assert.match(
-    html,
-    /@media \(max-width: 620px\)[\s\S]*?\.live-action-card \{[\s\S]*?order: -1;/,
-  );
-  assert.match(
-    html,
-    /@media \(max-width: 620px\)[\s\S]*?\.live-action-visual \{ display: none; \}/,
-  );
-  assert.match(client, /aria-label", "날씨와 토양 상태"/);
-  assert.match(client, /actionConditionSummary\("날씨"/);
-  assert.match(client, /actionConditionSummary\("토양"/);
+  assert.match(html, /id="dashboard-action-list"/);
+  assert.match(css, /@media \(max-width: 620px\)/);
+  assert.match(css, /\.dashboard-overview-grid,\s*\n\s*\.dashboard-content-grid \{\s*\n\s*display: contents;/);
+  assert.match(css, /\.dashboard-actions \{\s*\n\s*order: 2;/);
+  assert.match(css, /\.dashboard-risk-timeline \{\s*\n\s*order: 3;/);
+  assert.match(css, /\.dashboard-axis-list \{\s*\n\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
+  assert.match(css, /\.dashboard-axis-list span \{\s*\n\s*display: none;/);
+  assert.match(html, /data-dashboard-axis="climate"/);
+  assert.match(html, /data-dashboard-axis="soil"/);
 });
 
 test("본문과 주요 조작 요소는 고령 사용자를 위한 최소 크기를 지킨다", async () => {
   const html = await readProductUi();
+  const css = await readDashboardCss();
 
   assert.match(html, /html \{[^}]*font-size: 18px;/);
   assert.match(html, /button, input, select \{ min-height: 52px; \}/);
   assert.match(html, /\.button \{ min-height: 44px;/);
   assert.match(html, /\.crop-result-switcher button \{ min-height: 44px;/);
-  assert.match(html, /\.live-action-button \{[\s\S]*?min-height: 44px;/);
+  assert.match(css, /\.dashboard-text-button \{[\s\S]*?min-height: 48px;/);
+  assert.match(css, /#dashboard-action-list \.action-plan__controls button \{[\s\S]*?min-height: 48px;/);
+  assert.match(css, /\.dashboard-priority-action p,[\s\S]*?font-size: 18px;/);
   assert.doesNotMatch(html, /\.button \{ min-height: 4[0-3]px;/);
 });
 
@@ -442,7 +610,8 @@ test("제품 화면은 검증되지 않은 종합점수와 가짜 알림을 노�
 
   assert.doesNotMatch(markup, /55%와 45%|반영 55%|반영 45%|62\/100|참고지수 62점/);
   assert.doesNotMatch(markup, /나중에 알림/);
-  assert.match(markup, /이번 화면에서 나중에 보기/);
+  assert.match(markup, /id="dashboard-action-list"/);
+  assert.match(markup, /오늘 할 일/);
   // 알림은 이제 실제 기능이다. 켜진 척하는 스위치 대신 권한을 직접 요청하고
   // 서비스워커로 발송하는 경로가 있어야 한다.
   assert.doesNotMatch(markup, /알림 설정 <span class="status-label">준비 중<\/span>/);
@@ -485,10 +654,16 @@ test("백엔드 결과는 primary action과 사용자용 자동 설명을 사용
   );
 
   assert.match(client, /function primaryDisplayAction/);
-  assert.match(client, /우선 조치/);
+  assert.match(client, /function renderDashboardPriorityAction/);
+  assert.match(client, /dashboard-priority-action/);
+  assert.match(client, /이유와 근거 보기/);
+  assert.match(client, /projectAnalysisAction/);
+  assert.match(client, /function renderSummaryPanel[\s\S]*?if \(!panel\) return;/);
+  assert.match(client, /function farmStatusSummary[\s\S]*?const primary = primaryDisplayAction\(analysis\);/);
+  assert.match(client, /primary\.actionId === "CONFIRM_SEASON" \? "확인 필요" : "점검 필요"/);
   assert.match(client, /분석 요약/);
-  assert.match(client, /현재 예보를 불러오지 못했습니다/);
-  assert.match(client, /예보 다시 불러오기/);
+  assert.match(client, /예보를 다시 확인해 주세요/);
+  assert.match(client, /최신 자료만 다시 불러옵니다/);
   assert.match(client, /!\["READY", "PARTIAL"\]\.includes\(module\.state\)/);
   assert.match(client, /automatic: true/);
   assert.match(client, /POST \/api\/locations\/current|\/api\/locations\/current/);
@@ -510,6 +685,7 @@ test("배포 빌드는 브라우저에서 import하는 제품 기능 모듈을 �
     "action-projection.mjs",
     "assistant-action-request.mjs",
     "local-photo-journal.mjs",
+    "dashboard-workspace.css",
   ]) {
     assert.match(buildScript, new RegExp(`"${asset.replaceAll(".", "\\.")}"`));
   }
@@ -521,7 +697,7 @@ test("위성 연결이 비활성이면 필지 조작을 잠그고 준비 필요 
     "utf8",
   );
 
-  assert.match(client, /capabilities\?\.satellite === "READY"/);
+  assert.match(client, /"READY", "CONFIGURED_UNVERIFIED"/);
   assert.match(client, /연결 준비 필요/);
   assert.match(client, /현재 실행 환경에는 위성 데이터 연결이 설정되지 않았습니다/);
   assert.match(client, /#parcel-use-location/);

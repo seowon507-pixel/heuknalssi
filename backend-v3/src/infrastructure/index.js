@@ -41,3 +41,16 @@ export {
   actionPlanRepositoryDefaults,
   createActionPlanRepository,
 } from "./action-plan-repository.js";
+export {
+  createPhotoSeasonRepository,
+  photoSeasonRepositoryDefaults,
+} from "./photo-season-repository.js";
+export {
+  PhotoStorageError,
+  createSupabasePhotoStorage,
+  supabasePhotoStorageDefaults,
+} from "./supabase-photo-storage.js";
+export {
+  createReportHistoryRepository,
+  reportHistoryRepositoryDefaults,
+} from "./report-history-repository.js";

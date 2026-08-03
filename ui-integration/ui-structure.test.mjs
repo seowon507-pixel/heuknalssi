@@ -67,7 +67,7 @@ test("첫 페인트는 저장 설정 확인 전 화면을 잠그고 온보딩 �
   assert.match(html, /id="onboarding"[^>]*\bhidden\b/u);
   assert.match(
     html,
-    /<section class="panel risk-panel"[^>]*\bhidden\b[^>]*>/u,
+    /<section class="dashboard-workspace"[^>]*\bhidden\b[^>]*>/u,
   );
 });
 

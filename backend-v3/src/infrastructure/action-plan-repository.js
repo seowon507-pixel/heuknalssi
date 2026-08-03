@@ -64,19 +64,22 @@ function normalizeDocument(value) {
   });
   const legacyRuleIds = legacyRuleIdsByAction(document.ruleDedupe);
   document.actions = document.actions.map((action) => {
-    if (action.origin === "RULE" && !isIdentifier(action.ruleId)) {
-      const ruleId = legacyRuleIds.get(action.actionId);
+    const current = action.snoozedUntil === undefined
+      ? { ...action, snoozedUntil: null }
+      : action;
+    if (current.origin === "RULE" && !isIdentifier(current.ruleId)) {
+      const ruleId = legacyRuleIds.get(current.actionId);
       if (!ruleId) {
         const error = new Error("legacy action plan rule index is inconsistent");
         error.code = "ACTION_LEGACY_RULE_INDEX_MISSING";
         throw error;
       }
-      return { ...action, ruleId };
+      return { ...current, ruleId };
     }
-    if (action.origin !== "RULE" && action.ruleId === undefined) {
-      return { ...action, ruleId: null };
+    if (current.origin !== "RULE" && current.ruleId === undefined) {
+      return { ...current, ruleId: null };
     }
-    return action;
+    return current;
   });
   const candidates = new Map();
   for (const action of document.actions) {
@@ -299,13 +302,22 @@ export function createActionPlanRepository({
 }
 
 function upsertOpenRuleAction(existing, incoming) {
-  const changed = RULE_UPSERT_FIELDS.some(
-    (field) => !sameValue(existing[field], incoming[field]),
-  );
-  if (!changed) return existing;
+  const preserveSnooze =
+    existing.snoozedUntil !== null &&
+    Date.parse(incoming.dueAt) < Date.parse(existing.snoozedUntil);
   const projected = Object.fromEntries(
     RULE_UPSERT_FIELDS.map((field) => [field, structuredClone(incoming[field])]),
   );
+  if (preserveSnooze) {
+    projected.horizon = existing.horizon;
+    projected.dueAt = existing.dueAt;
+    projected.recheckAt = existing.recheckAt;
+  }
+  projected.snoozedUntil = preserveSnooze ? existing.snoozedUntil : null;
+  const changed = [...RULE_UPSERT_FIELDS, "snoozedUntil"].some(
+    (field) => !sameValue(existing[field], projected[field]),
+  );
+  if (!changed) return existing;
   return {
     ...existing,
     ...projected,

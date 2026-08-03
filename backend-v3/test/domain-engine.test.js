@@ -1312,6 +1312,94 @@ test("forecast risk preserves reviewed trigger facts and action guidance", () =>
   assert.deepEqual(result.risks[0].guidance, forecastRule().guidance);
 });
 
+test("daily forecast outlook exposes danger, caution, normal, and favorable", () => {
+  const context = {
+    crop: "CUCUMBER",
+    cultivationMode: "OPEN_FIELD",
+  };
+  const danger = evaluateForecastRisks({
+    ...context,
+    days: [
+      forecastDay("2026-08-03", "SHORT_GRID", { maxTemperature: 31 }),
+    ],
+    rules: [forecastRule({ severity: "WARNING" })],
+  });
+  const caution = evaluateForecastRisks({
+    ...context,
+    days: [
+      forecastDay("2026-08-03", "SHORT_GRID", { maxTemperature: 31 }),
+    ],
+    rules: [forecastRule({ severity: "CAUTION" })],
+  });
+  const normal = evaluateForecastRisks({
+    ...context,
+    days: [
+      forecastDay("2026-08-03", "SHORT_GRID", { maxTemperature: 29 }),
+    ],
+    rules: [forecastRule()],
+  });
+  const favorable = evaluateForecastRisks({
+    ...context,
+    days: [
+      forecastDay("2026-08-03", "SHORT_GRID", { maxTemperature: 27 }),
+    ],
+    rules: [forecastRule()],
+  });
+
+  assert.equal(danger.dailyOutlooks[0].level, "DANGER");
+  assert.equal(caution.dailyOutlooks[0].level, "CAUTION");
+  assert.equal(normal.dailyOutlooks[0].level, "NORMAL");
+  assert.equal(favorable.dailyOutlooks[0].level, "FAVORABLE");
+});
+
+test("mid forecast uses a wider temperature margin and partial data cannot be favorable", () => {
+  const context = {
+    crop: "CUCUMBER",
+    cultivationMode: "OPEN_FIELD",
+    rules: [forecastRule()],
+  };
+  const midNormal = evaluateForecastRisks({
+    ...context,
+    days: [
+      forecastDay("2026-08-03", "MID_REGIONAL", { maxTemperature: 28 }),
+    ],
+  });
+  const midFavorable = evaluateForecastRisks({
+    ...context,
+    days: [
+      forecastDay("2026-08-03", "MID_REGIONAL", { maxTemperature: 27 }),
+    ],
+  });
+  const partial = evaluateForecastRisks({
+    ...context,
+    days: [
+      forecastDay("2026-08-03", "SHORT_GRID", { maxTemperature: 27 }),
+      forecastDay("2026-08-04", "SHORT_GRID", { maxTemperature: null }),
+    ],
+  });
+
+  assert.equal(midNormal.dailyOutlooks[0].level, "NORMAL");
+  assert.equal(midFavorable.dailyOutlooks[0].level, "FAVORABLE");
+  assert.equal(partial.state, "PARTIAL");
+  assert.equal(partial.dailyOutlooks[0].level, "NORMAL");
+  assert.equal(partial.dailyOutlooks[1].level, "UNKNOWN");
+});
+
+test("an INFO forecast rule is displayed as normal rather than caution", () => {
+  const result = evaluateForecastRisks({
+    crop: "CUCUMBER",
+    cultivationMode: "OPEN_FIELD",
+    days: [
+      forecastDay("2026-08-03", "SHORT_GRID", { maxTemperature: 31 }),
+    ],
+    rules: [forecastRule({ severity: "INFO" })],
+  });
+
+  assert.equal(result.risks.length, 1);
+  assert.equal(result.dailyOutlooks[0].level, "NORMAL");
+  assert.equal(result.dailyOutlooks[0].reason, "INFO_RULE_TRIGGERED");
+});
+
 test("UNSPECIFIED stage never activates a stage-only forecast risk", () => {
   const result = evaluateForecastRisks({
     days: [

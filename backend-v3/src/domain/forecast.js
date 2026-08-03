@@ -13,6 +13,11 @@ const NUMERIC_METRICS = Object.freeze([
   "windSpeed",
 ]);
 
+const TEMPERATURE_SAFETY_MARGIN = Object.freeze({
+  SHORT_GRID: 2,
+  MID_REGIONAL: 3,
+});
+
 export function mergeForecasts(shortForecast = [], midForecast = []) {
   const shortDays = normalizeSourceDays(shortForecast, "SHORT_GRID");
   const midDays = normalizeSourceDays(midForecast, "MID_REGIONAL");
@@ -137,9 +142,19 @@ export function evaluateForecastRisks(input = {}) {
     state = "READY";
   }
 
+  const dailyOutlooks = buildDailyOutlooks({
+    days,
+    activeRules,
+    risks: dedupedRisks,
+    unitsByMetric: input.unitsByMetric,
+    freshness: input.freshness,
+    evaluationState: state,
+  });
+
   return {
     state,
     risks: dedupedRisks,
+    dailyOutlooks,
     missingMetrics,
     ruleEvaluations,
     noActiveRisksConfirmed: state === "READY" && dedupedRisks.length === 0,
@@ -171,8 +186,104 @@ export function evaluateForecast(input = {}) {
       noActiveRisksConfirmed: riskResult.noActiveRisksConfirmed,
       missingMetrics: riskResult.missingMetrics,
       ruleEvaluations: riskResult.ruleEvaluations,
+      dailyOutlooks: riskResult.dailyOutlooks,
+      outlookPolicy: {
+        levels: ["DANGER", "CAUTION", "NORMAL", "FAVORABLE"],
+        temperatureSafetyMargin: { ...TEMPERATURE_SAFETY_MARGIN },
+        version: "forecast-outlook-v1",
+      },
     },
   };
+}
+
+function buildDailyOutlooks({
+  days,
+  activeRules,
+  risks,
+  unitsByMetric,
+  freshness,
+  evaluationState,
+}) {
+  return days.map((day) => {
+    const dayRisks = risks.filter((risk) => riskCoversDate(risk, day.date));
+    if (dayRisks.some((risk) => risk.severity === "WARNING")) {
+      return dailyOutlook(day, "DANGER", "WARNING_RULE_TRIGGERED", activeRules);
+    }
+    if (dayRisks.some((risk) => risk.severity === "CAUTION")) {
+      return dailyOutlook(day, "CAUTION", "CAUTION_RULE_TRIGGERED", activeRules);
+    }
+    if (dayRisks.some((risk) => risk.severity === "INFO")) {
+      return dailyOutlook(day, "NORMAL", "INFO_RULE_TRIGGERED", activeRules);
+    }
+
+    const readings = activeRules.map((rule) => ({
+      rule,
+      reading: metricReading(day, rule, unitsByMetric, freshness),
+    }));
+    const available = readings.filter(({ reading }) => reading.available);
+    const missingRuleCount = readings.length - available.length;
+    if (available.length === 0) {
+      return dailyOutlook(
+        day,
+        "UNKNOWN",
+        activeRules.length === 0 ? "NO_ACTIVE_RULES" : "NO_EVALUABLE_VALUES",
+        activeRules,
+        missingRuleCount,
+      );
+    }
+
+    const withinSafetyMargin = available.some(({ rule, reading }) => {
+      if (compare(reading.value, rule.comparison)) return true;
+      const distance = safeDistanceFromThreshold(reading.value, rule.comparison);
+      const margin = safetyMarginFor(day.sourceType, rule.metric);
+      return distance === null || distance < margin;
+    });
+    const canConfirmFavorable =
+      evaluationState === "READY" &&
+      missingRuleCount === 0 &&
+      available.length === activeRules.length &&
+      !withinSafetyMargin;
+    return dailyOutlook(
+      day,
+      canConfirmFavorable ? "FAVORABLE" : "NORMAL",
+      canConfirmFavorable
+        ? "ALL_RULES_OUTSIDE_SAFETY_MARGIN"
+        : "NO_TRIGGER_WITHIN_SAFETY_MARGIN",
+      activeRules,
+      missingRuleCount,
+    );
+  });
+}
+
+function dailyOutlook(day, level, reason, activeRules, missingRuleCount = 0) {
+  return {
+    date: day.date,
+    sourceType: day.sourceType,
+    level,
+    reason,
+    evaluatedRuleCount: Math.max(0, activeRules.length - missingRuleCount),
+    missingRuleCount,
+  };
+}
+
+function riskCoversDate(risk, date) {
+  return risk?.dateRange?.from <= date && date <= risk?.dateRange?.to;
+}
+
+function safetyMarginFor(sourceType, metric) {
+  if (!["minTemperature", "maxTemperature"].includes(metric)) return 0;
+  return TEMPERATURE_SAFETY_MARGIN[sourceType] ?? 3;
+}
+
+function safeDistanceFromThreshold(value, comparison) {
+  if (!comparison || !Number.isFinite(comparison.threshold)) return null;
+  if (["GT", "GTE"].includes(comparison.operator)) {
+    return comparison.threshold - value;
+  }
+  if (["LT", "LTE"].includes(comparison.operator)) {
+    return value - comparison.threshold;
+  }
+  return null;
 }
 
 function normalizeSourceDays(days, expectedSourceType) {

@@ -1,8 +1,8 @@
 import {
   VERIFIED_KMA_ASOS_CONTRACT_VERSION,
-  VERIFIED_KMA_SHORT_CONTRACT_VERSION,
+  VERIFIED_KMA_HISTORICAL_SHORT_CONTRACT_VERSION,
   createKmaAsosObservationAdapter,
-  createKmaShortForecastAdapter,
+  createKmaHistoricalShortForecastAdapter,
 } from '../src/adapters/index.js';
 import {
   calculateIssuedForecastMetrics,
@@ -12,6 +12,7 @@ import {
 import { REVIEWED_CROP_RULES } from '../runtime/reviewed-crop-rules.js';
 
 const SERVICE_KEY = process.env.DATA_GO_KR_SERVICE_KEY?.trim() || null;
+const API_HUB_KEY = process.env.KMA_API_HUB_AUTH_KEY?.trim() || null;
 const TARGET = Object.freeze({
   label: '경상북도 안동시 검수 지점',
   stationId: '136',
@@ -25,10 +26,9 @@ const TARGET = Object.freeze({
   },
 });
 const HISTORICAL_CLOCK = () => new Date('2025-07-27T00:00:00.000Z');
-const deadlineAt = HISTORICAL_CLOCK().getTime() + 20_000;
 const grid = toKmaGrid(TARGET.latitude, TARGET.longitude);
 
-const common = {
+const observationCommon = {
   enabled: Boolean(SERVICE_KEY),
   apiKey: SERVICE_KEY,
   fetchImpl: globalThis.fetch,
@@ -37,26 +37,30 @@ const common = {
   now: HISTORICAL_CLOCK,
 };
 const observationsAdapter = createKmaAsosObservationAdapter({
-  ...common,
+  ...observationCommon,
   contractVersion: VERIFIED_KMA_ASOS_CONTRACT_VERSION,
 });
-const forecastAdapter = createKmaShortForecastAdapter({
-  ...common,
-  contractVersion: VERIFIED_KMA_SHORT_CONTRACT_VERSION,
+const forecastAdapter = createKmaHistoricalShortForecastAdapter({
+  enabled: Boolean(API_HUB_KEY),
+  apiKey: API_HUB_KEY,
+  fetchImpl: globalThis.fetch,
+  timeoutMs: 10_000,
+  cacheFreshForMs: 0,
+  contractVersion: VERIFIED_KMA_HISTORICAL_SHORT_CONTRACT_VERSION,
 });
 
 const [observationEnvelope, forecastEnvelope] = await Promise.all([
   observationsAdapter.getRecent(
     { stationId: TARGET.stationId, completedDays: 7 },
-    { deadlineAt },
+    { deadlineAt: HISTORICAL_CLOCK().getTime() + 20_000 },
   ),
-  forecastAdapter.getForecast(
+  forecastAdapter.getIssuedForecast(
     {
       ...grid,
       baseDate: TARGET.issuedBaseDate,
       baseTime: TARGET.issuedBaseTime,
     },
-    { deadlineAt },
+    { deadlineAt: Date.now() + 20_000 },
   ),
 ]);
 
@@ -121,8 +125,18 @@ const result = {
     observationWindow: TARGET.observationWindow,
   },
   providerStates: {
-    historicalAsos: observationEnvelope.adapterState,
-    historicalIssuedForecast: forecastEnvelope.adapterState,
+    historicalAsos: {
+      state: observationEnvelope.adapterState,
+      qualityFlags: observationEnvelope.qualityFlags,
+    },
+    historicalIssuedForecast: {
+      state: forecastEnvelope.adapterState,
+      qualityFlags: forecastEnvelope.qualityFlags,
+      requiredCapability:
+        forecastEnvelope.adapterState === 'SUCCESS'
+          ? null
+          : 'KMA_API_HUB_HISTORICAL_SHORT_FORECAST',
+    },
   },
   replay,
   accuracy,

@@ -73,6 +73,7 @@ export function createPhotoSeasonService(options = {}) {
     });
 
     const scope = scopeFrom(input);
+    const ownership = ownershipFrom(input);
     const stored = await objectStorage.commitUpload({
       uploadToken: requiredText(
         input.uploadToken,
@@ -81,6 +82,7 @@ export function createPhotoSeasonService(options = {}) {
       ),
       photoId,
       ...scope,
+      ...ownership,
     });
     let metadata;
     try {
@@ -88,19 +90,19 @@ export function createPhotoSeasonService(options = {}) {
         ...input,
         photoId,
         objectPath: stored?.objectPath,
-      thumbnailPath: stored?.thumbnailPath ?? null,
-      evidenceRefs: [],
-      createdAt,
+        thumbnailPath: stored?.thumbnailPath ?? null,
+        evidenceRefs: [],
+        createdAt,
         deletedAt: null,
       });
     } catch (cause) {
-      await cleanupCommittedObjects(stored, cause);
+      await cleanupCommittedObjects(stored, cause, ownership);
     }
 
     try {
-      await photoRepository.insertPhoto(metadata);
+      await photoRepository.insertPhoto(metadata, ownership);
     } catch (cause) {
-      await cleanupCommittedObjects(metadata, cause);
+      await cleanupCommittedObjects(metadata, cause, ownership);
     }
 
     return toPublicPhotoRecord(metadata);
@@ -108,6 +110,7 @@ export function createPhotoSeasonService(options = {}) {
 
   async function comparePhotos(input = {}) {
     const scope = scopeFrom(input);
+    const ownership = ownershipFrom(input);
     const baselinePhotoId = requiredText(
       input.baselinePhotoId,
       "PHOTO_ID_REQUIRED",
@@ -119,8 +122,16 @@ export function createPhotoSeasonService(options = {}) {
       "currentPhotoId",
     );
     const [baselinePhoto, currentPhoto] = await Promise.all([
-      photoRepository.findPhoto({ farmId: scope.farmId, photoId: baselinePhotoId }),
-      photoRepository.findPhoto({ farmId: scope.farmId, photoId: currentPhotoId }),
+      photoRepository.findPhoto({
+        ...ownership,
+        farmId: scope.farmId,
+        photoId: baselinePhotoId,
+      }),
+      photoRepository.findPhoto({
+        ...ownership,
+        farmId: scope.farmId,
+        photoId: currentPhotoId,
+      }),
     ]);
     domainAssert(
       baselinePhoto && currentPhoto,
@@ -143,7 +154,7 @@ export function createPhotoSeasonService(options = {}) {
       "PHOTO_SCOPE_MISMATCH",
       "Photos must belong to the requested farm, crop, and season.",
     );
-    await photoRepository.insertComparison(comparison);
+    await photoRepository.insertComparison(comparison, ownership);
     return structuredClone(comparison);
   }
 
@@ -154,8 +165,13 @@ export function createPhotoSeasonService(options = {}) {
       "Photo deletion requires explicit user confirmation.",
     );
     const farmId = requiredText(input.farmId, "FARM_ID_REQUIRED", "farmId");
+    const ownership = ownershipFrom(input);
     const photoId = requiredText(input.photoId, "PHOTO_ID_REQUIRED", "photoId");
-    const photo = await photoRepository.findPhoto({ farmId, photoId });
+    const photo = await photoRepository.findPhoto({
+      ...ownership,
+      farmId,
+      photoId,
+    });
     domainAssert(photo, "PHOTO_NOT_FOUND", "The photo was not found.");
     domainAssert(
       photo.farmId === farmId,
@@ -166,14 +182,22 @@ export function createPhotoSeasonService(options = {}) {
     const deletedAt = nowIso(clock);
     // Objects are deleted first to prioritize privacy. This operation is safe to
     // retry because the storage port contract requires idempotent deletion.
-    await objectStorage.deleteObjects({ objectPaths: privatePaths(photo) });
-    await photoRepository.deletePhotoBundle({ farmId, photoId, deletedAt });
+    await objectStorage.deleteObjects({
+      ...ownership,
+      objectPaths: privatePaths(photo),
+    });
+    await photoRepository.deletePhotoBundle({
+      ...ownership,
+      farmId,
+      photoId,
+      deletedAt,
+    });
     return { photoId, deletedAt };
   }
 
   async function getSeasonTimeline(input = {}) {
     const scope = scopeFrom(input);
-    const events = await loadSeasonEvents(scope);
+    const events = await loadSeasonEvents(scope, ownershipFrom(input));
     return buildSeasonSummary({
       ...events,
       generatedAt: nowIso(clock),
@@ -187,7 +211,8 @@ export function createPhotoSeasonService(options = {}) {
       "Season completion requires explicit user confirmation.",
     );
     const scope = scopeFrom(input);
-    const events = await loadSeasonEvents(scope);
+    const ownership = ownershipFrom(input);
+    const events = await loadSeasonEvents(scope, ownership);
     domainAssert(
       events.season.status === "ACTIVE",
       "SEASON_NOT_ACTIVE",
@@ -201,6 +226,7 @@ export function createPhotoSeasonService(options = {}) {
       generatedAt: endedAt,
     });
     await seasonRepository.completeSeason({
+      ...ownership,
       scope,
       expectedStatus: "ACTIVE",
       endedAt,
@@ -209,23 +235,23 @@ export function createPhotoSeasonService(options = {}) {
     return structuredClone(summary);
   }
 
-  async function loadSeasonEvents(scope) {
+  async function loadSeasonEvents(scope, ownership = {}) {
     const [season, actions, risks, photos, comparisons] = await Promise.all([
-      seasonRepository.findSeason(scope),
-      actionRepository.listActionsBySeason(scope),
-      riskRepository.listRisksBySeason(scope),
-      photoRepository.listPhotosBySeason(scope),
-      photoRepository.listComparisonsBySeason(scope),
+      seasonRepository.findSeason({ ...scope, ...ownership }),
+      actionRepository.listActionsBySeason({ ...scope, ...ownership }),
+      riskRepository.listRisksBySeason({ ...scope, ...ownership }),
+      photoRepository.listPhotosBySeason({ ...scope, ...ownership }),
+      photoRepository.listComparisonsBySeason({ ...scope, ...ownership }),
     ]);
     domainAssert(season, "SEASON_NOT_FOUND", "The season was not found.");
     return { season, actions, risks, photos, comparisons };
   }
 
-  async function cleanupCommittedObjects(stored, originalError) {
+  async function cleanupCommittedObjects(stored, originalError, ownership = {}) {
     const objectPaths = privatePaths(stored ?? {});
     try {
       if (objectPaths.length > 0) {
-        await objectStorage.deleteObjects({ objectPaths });
+        await objectStorage.deleteObjects({ ...ownership, objectPaths });
       }
     } catch (cleanupError) {
       throw new DomainError(
@@ -236,6 +262,17 @@ export function createPhotoSeasonService(options = {}) {
     }
     throw originalError;
   }
+}
+
+function ownershipFrom(input) {
+  if (input?.ownerSessionId === undefined) return {};
+  return {
+    ownerSessionId: requiredText(
+      input.ownerSessionId,
+      "OWNER_SESSION_REQUIRED",
+      "ownerSessionId",
+    ),
+  };
 }
 
 function validatePorts(options) {

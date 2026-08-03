@@ -23,6 +23,7 @@ const BROWSER_ASSETS = Object.freeze([
   "action-projection.mjs",
   "local-photo-journal.mjs",
   "backend-integration.css",
+  "dashboard-workspace.css",
 ]);
 
 const uiFile = await findUiFile();

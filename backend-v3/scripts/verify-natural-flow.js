@@ -127,6 +127,27 @@ console.log(
           observations: analysis.observations?.state ?? null,
           forecast: analysis.forecast?.state ?? null,
         },
+        growthScore: {
+          state: analysis.growthScore?.state ?? null,
+          score: analysis.growthScore?.score ?? null,
+          rawScore: analysis.growthScore?.rawScore ?? null,
+          label: analysis.growthScore?.label ?? null,
+          evidenceStrength:
+            analysis.growthScore?.confidence?.evidenceStrength ?? null,
+          componentScores: Object.fromEntries(
+            Object.entries(analysis.growthScore?.components ?? {}).map(
+              ([key, value]) => [key, value?.score ?? null],
+            ),
+          ),
+        },
+        forecastOutlooks: Array.isArray(
+          analysis.forecast?.result?.dailyOutlooks,
+        )
+          ? analysis.forecast.result.dailyOutlooks.map(({ date, level }) => ({
+              date,
+              level,
+            }))
+          : [],
       },
       assistant: {
         httpStatus: assistantResponse.status,

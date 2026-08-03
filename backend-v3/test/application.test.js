@@ -736,7 +736,7 @@ test('regional pH is not held back by field-only supporting chemistry rules', as
   assert.equal(result.soil.result.regionalStatistics.usedForDecision, true);
 });
 
-test('application integrates verified modules without a composite score or hidden reweighting', async () => {
+test('application exposes a source-trust weighted growth score with separate confidence', async () => {
   const calls = {
     climate: [],
     observations: [],
@@ -770,7 +770,25 @@ test('application integrates verified modules without a composite score or hidde
   assert.equal(result.forecast.state, 'READY');
   assert.equal(result.forecast.result.noActiveRisksConfirmed, true);
   assert.equal(result.inputSummary.regionLabel, '경기도 수원시');
-  assert.equal(JSON.stringify(result).match(/"(?:score|penalty)"/giu), null);
+  assert.equal(result.growthScore.state, 'READY');
+  assert.equal(result.growthScore.score, 95);
+  assert.equal(result.growthScore.label, '양호');
+  assert.equal(
+    result.growthScore.calculation,
+    'EVIDENCE_WEIGHTED_MEAN_WITH_GUARDRAILS',
+  );
+  assert.equal(result.growthScore.confidence.coverage, 1);
+  assert.equal(result.growthScore.confidence.level, 'MEDIUM');
+  assert.equal(result.growthScore.confidence.evidenceStrength >= 0.55, true);
+  assert.deepEqual(result.growthScore.confidence.availableComponents, [
+    'climate',
+    'soil',
+    'forecast',
+  ]);
+  assert.deepEqual(result.growthScore.confidence.missingComponents, []);
+  assert.equal(result.growthScore.components.soil.trust, 0.25);
+  assert.equal(Object.hasOwn(result, 'compositeScore'), false);
+  assert.equal(JSON.stringify(result).match(/"penalty"/giu), null);
   assert.deepEqual(calls.soil[0], {
     verifiedSoilAreaCode: '4111710500',
     landUse: 'PFLD',
@@ -1475,6 +1493,21 @@ test('preflight is HOLD until rules, mappings, and every P0 adapter are actually
   assert.equal(ready.locationMappings.verifiedCount, 6);
   assert.equal(ready.locationMappings.p0ReadyCount, 6);
   assert.equal(ready.ruleRegistry.completeCropCount, 5);
+  assert.equal(
+    ready.guarantees.growthScoreCalculation,
+    'EVIDENCE_WEIGHTED_MEAN_WITH_GUARDRAILS',
+  );
+  assert.equal(ready.guarantees.growthScoreConfidenceSeparated, true);
+  assert.equal(ready.guarantees.growthScoreMinimumEvidenceStrength, 0.35);
+  assert.equal(ready.guarantees.regionalSoilMaximumEffectiveShare, 0.12);
+  assert.equal(ready.guarantees.fieldSoilContinuousGuardrail, true);
+  assert.equal(ready.guarantees.hydroponicRequiresIndoorEnvironment, true);
+  assert.equal(ready.guarantees.missingValuesBecomeZero, false);
+  assert.equal(ready.guarantees.regionalSoilCreatesScoreCap, false);
+  assert.equal(
+    Object.hasOwn(ready.guarantees, 'singleCompositeScore'),
+    false,
+  );
   assert.deepEqual(ready.ruleRegistry.configuredCrops, [
     'APPLE',
     'PEAR',

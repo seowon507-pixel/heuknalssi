@@ -1034,6 +1034,11 @@
       background: #EAF7EF;
       color: #226841;
     }
+    .summary-context-chip.is-scope {
+      border-color: #D9C38E;
+      background: #FFF8E8;
+      color: #765115;
+    }
     .risk-panel {
       grid-column: 1;
       grid-row: 2;
@@ -2456,9 +2461,14 @@
       }
       .soil-exam-service-button { width: 100%; }
       .assistant-launcher {
+        position: absolute;
+        top: 68px;
         right: 16px;
-        bottom: calc(80px + env(safe-area-inset-bottom));
+        bottom: auto;
+        width: 52px;
+        height: 52px;
       }
+      #view-dashboard .page-header { padding-right: 62px; }
       .assistant-panel {
         inset: 0;
         z-index: 90;
@@ -2478,6 +2488,7 @@
       body.assistant-open .assistant-launcher { display: none; }
     }
   </style>
+  <link rel="stylesheet" href="/ui-integration/dashboard-workspace.css">
 </head>
 <body data-integration="pending" data-profile-state="checking">
   <a class="skip-link" href="#main-content">본문으로 바로가기</a>
@@ -2487,29 +2498,34 @@
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M4 7.5c3-2.2 5.3-2.2 8 0s5 2.2 8 0M4 12c3-2.2 5.3-2.2 8 0s5 2.2 8 0M5 17h14"/></svg>
         </span>
-        <span class="brand-copy"><span class="brand-name">흙날씨</span><span class="brand-module">농지 진단</span></span>
+        <span class="brand-copy"><span class="brand-name">흙날씨</span><span class="brand-module">농지 진단 AI</span></span>
       </div>
-      <div class="sidebar-context" aria-label="현재 분석">
-        <span class="sidebar-kicker">현재 분석</span>
+      <div class="sidebar-context" aria-label="현재 농장">
+        <span class="sidebar-kicker">현재 농장</span>
         <strong id="sidebar-context-value">평창군 진부면 · 감자</strong>
         <span id="sidebar-mode-value">재배 중 생육 점검</span>
       </div>
       <nav class="nav-list">
         <button class="nav-button" type="button" data-view="dashboard" aria-current="page">대시보드</button>
-        <button class="nav-button" type="button" data-view="services">추가 서비스</button>
-        <button class="nav-button" type="button" data-view="mypage">마이페이지</button>
+        <button class="nav-button" type="button" data-view="crop-management">작물 관리</button>
+        <button class="nav-button" type="button" data-view="pest-alerts">병해충 경보 <span class="nav-alert-count" id="pest-nav-count" hidden>0</span></button>
+        <button class="nav-button" type="button" data-view="services">기록 &amp; 리포트</button>
+        <button class="nav-button" id="sidebar-guide-trigger" type="button">영농 가이드</button>
+        <button class="nav-button" type="button" data-view="mypage">설정</button>
       </nav>
-      <section class="sidebar-recent" aria-labelledby="sidebar-recent-title">
+      <section class="sidebar-recent" aria-labelledby="sidebar-recent-title" hidden>
         <h2 id="sidebar-recent-title">최근 분석</h2>
         <p class="recent-analysis"><strong>평창군 진부면 · 감자</strong>4월 13일 확인</p>
       </section>
-      <div class="sidebar-user"><span class="user-avatar" aria-hidden="true">체험</span><span>체험 사용자<br>설정은 마이페이지에서</span></div>
+      <button class="sidebar-support" id="sidebar-support-trigger" type="button"><span aria-hidden="true">◉</span> 상담 &amp; 도움말</button>
+      <div class="sidebar-update"><span aria-hidden="true">◌</span> 업데이트 <time id="sidebar-updated-at">—</time></div>
     </aside>
 
     <header class="topbar" aria-label="분석 도구">
       <div class="mobile-brand" aria-label="흙날씨"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5c3-2.2 5.3-2.2 8 0s5 2.2 8 0M4 12c3-2.2 5.3-2.2 8 0s5 2.2 8 0M5 17h14"/></svg></span><span class="brand-name">흙날씨</span></div>
       <div class="topbar-context"><strong id="topbar-context-value">분석 조건을 입력해 주세요</strong><span class="test-mode"><span class="test-mode-label" id="runtime-mode-label">API 연결 확인 중</span></span></div>
       <div class="topbar-actions">
+        <span class="topbar-update">업데이트 <time id="topbar-updated-at">—</time><button id="dashboard-refresh" type="button" aria-label="분석 새로고침">↻</button></span>
         <button class="button button-secondary mobile-farm-trigger" id="mobile-farm-trigger" type="button" aria-haspopup="dialog" aria-controls="mobile-farm-dialog">내 농장</button>
         <button class="button command-trigger" id="command-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="command-dialog"><span class="ui-icon icon-search" aria-hidden="true"></span><span>검색 또는 명령…</span><kbd aria-hidden="true">⌘K</kbd></button>
         <button class="button button-secondary" id="open-new-analysis" type="button">조건 바꾸기</button>
@@ -2519,18 +2535,15 @@
     <main class="app-main" id="main-content" tabindex="-1">
       <section class="view" id="view-dashboard" data-view-panel="dashboard" aria-labelledby="dashboard-title">
         <header class="page-header">
-          <div>
-            <h1 id="dashboard-title" tabindex="-1">평창 · 감자 농장 분석</h1>
-            <p class="muted" id="dashboard-mode-copy">현재 재배 조건 기준 기상·토양·예보 분석</p>
+          <div class="dashboard-title-row">
+            <div>
+              <h1 id="dashboard-title" tabindex="-1">평창 · 감자 농장</h1>
+              <span class="dashboard-scope-label" id="dashboard-scope-label" hidden>지역 참고 분석</span>
+              <p class="muted" id="dashboard-mode-copy">현재 재배 조건 기준 기상·토양·예보 분석</p>
+            </div>
+            <nav class="crop-result-switcher" id="crop-result-switcher" aria-label="작물별 분석 결과" hidden></nav>
           </div>
         </header>
-        <section class="panel" id="dashboard-soil-test" aria-labelledby="dashboard-soil-test-title" hidden>
-          <h2 id="dashboard-soil-test-title">내 밭 흙 검사 결과 <span class="status-label good">등록됨</span></h2>
-          <p class="muted no-margin" id="dashboard-soil-test-meta">—</p>
-          <dl class="condition-fact-list" id="dashboard-soil-test-values"></dl>
-          <p class="formula-note">동네 평균이 아니라 이 숫자로 토양을 판단합니다. 값을 고치시려면 마이페이지에서 다시 등록해 주세요.</p>
-        </section>
-
         <div class="integration-banner is-loading" id="backend-service-banner" role="status" aria-live="polite">
           <div>
             <strong id="backend-service-title">백엔드 연결을 확인하고 있습니다.</strong>
@@ -2538,224 +2551,242 @@
           </div>
           <button class="button button-secondary" id="retry-backend-connection" type="button" hidden>다시 연결</button>
         </div>
-        <nav class="crop-result-switcher" id="crop-result-switcher" aria-label="작물별 분석 결과" hidden></nav>
-        <section class="live-outlook" id="live-outlook" aria-label="오늘 행동과 가까운 예보" hidden></section>
-        <section class="panel product-action-plan" id="action-plan-panel" aria-label="오늘과 당분간 할 일" hidden></section>
-
-        <div class="decision-flow" hidden>
-        <section class="panel summary-panel" aria-label="분석 조건 요약">
-          <div class="summary-meta">
-            <div class="summary-primary"><span id="result-region">강원특별자치도 평창군 진부면</span> · <span id="result-crop">감자</span></div>
-            <div><span class="meta-label">자료 갱신</span><span class="meta-value">4월 13일 06:00</span></div>
-            <div><span class="status-label warning">체험용 결과</span></div>
-          </div>
-        </section>
-
-        <section class="panel risk-panel" aria-labelledby="risk-title" hidden>
-          <p class="brief-kicker">자동 위험 분석</p>
-          <span class="headline-status" id="headline-status">현재 판단 · 계속 검토</span>
-          <p class="risk-date">주요 확인 사항 · 4월 16일</p>
-          <h2 class="risk-title" id="risk-title">비 18mm 예보가 있어 배수 상태를 먼저 봐야 합니다</h2>
-          <p id="risk-context">아직 실제 재배시기를 정하지 않았다면 이 비를 생육 위험으로 보지는 않습니다. 농지를 볼 때 배수 상태를 확인할 근거로만 사용하세요.</p>
-          <div class="primary-action-card">
-            <span>우선 조치</span>
-            <strong>비 온 뒤 고인 물 자국과 물 빠지는 길을 확인하세요.</strong>
-          </div>
-          <button class="button button-primary risk-action" id="first-action" type="button" aria-expanded="false" aria-controls="field-checklist">현장 확인 체크리스트 열기</button>
-          <div class="checklist-panel" id="field-checklist" hidden tabindex="-1" aria-labelledby="field-checklist-title">
-            <h3 id="field-checklist-title">현장 확인 체크리스트</h3>
-            <p class="muted" id="checklist-mode-copy">농지를 볼 때 배수 상태를 확인하는 순서입니다.</p>
-            <div class="checklist-items">
-              <div class="checklist-item"><input id="check-water-mark" type="checkbox"><label for="check-water-mark">비 온 뒤 고인 물 자국이 있는지 보기</label></div>
-              <div class="checklist-item"><input id="check-drain-position" type="checkbox"><label for="check-drain-position">물이 빠지는 길과 배수로 위치 확인하기</label></div>
-              <div class="checklist-item"><input id="check-soil-test" type="checkbox"><label for="check-soil-test">토양검정으로 실제 밭의 pH를 확인할 방법 적어두기</label></div>
-            </div>
-          </div>
-        </section>
-
-        <aside class="overview-score" aria-labelledby="readiness-title" hidden>
-          <div class="overview-score-inner">
-            <div class="overview-heading">
-              <span class="overview-kicker">판단 준비 상태</span>
-              <h2 id="readiness-title">항목별 분석 상태</h2>
-            </div>
-            <div class="axis-status-list">
-              <article class="axis-status">
-                <span>기후 조건</span>
-                <strong id="climate-axis-status">대체로 맞음</strong>
-                <small>검수 규칙 범위와 비교</small>
-              </article>
-              <article class="axis-status is-caution">
-                <span>토양 조건</span>
-                <strong id="soil-axis-status">현장 확인 필요</strong>
-                <small>지역 대표자료, 필지 실측 아님</small>
-              </article>
-              <article class="axis-status is-caution">
-                <span>가까운 예보</span>
-                <strong id="forecast-axis-status">4월 16일 비</strong>
-                <small>예보는 장기 적합성과 분리</small>
-              </article>
-            </div>
-            <p class="score-state" id="score-state">일부 자료 부족 · 추가 확인 필요</p>
-          </div>
-          <button class="button button-secondary score-evidence-button" type="button" data-open-dialog="evidence">상태 자세히</button>
-          <section class="overview-spatial" aria-labelledby="overview-spatial-title">
-            <h3 class="overview-spatial-title" id="overview-spatial-title"><span class="ui-icon icon-evidence" aria-hidden="true"></span>자료 공간 범위 · 필지 미등록</h3>
-            <dl class="distance-list">
-              <div class="distance-row"><dt>예보 격자</dt><dd>약 5km</dd></div>
-              <div class="distance-row"><dt>토양 대표지점</dt><dd>6.8km</dd></div>
-              <div class="distance-row"><dt>대관령 관측소</dt><dd>12.4km</dd></div>
-            </dl>
-            <p class="spatial-caveat">실제 필지 경계가 아닙니다.</p>
-          </section>
-        </aside>
-        </div>
-
-        <section class="metric-strip" aria-label="핵심 분석 지표" hidden>
-          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-weather" aria-hidden="true"></span>확인된 사실</span><div class="metric-value metric-copy" id="climate-metric-value">기온은 대체로 적정</div><p class="metric-detail">지역 기후와 작물 기준 비교</p></div>
-          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-soil" aria-hidden="true"></span>확인되지 않은 정보</span><div class="metric-value metric-copy" id="soil-metric-value">내 밭의 pH·배수</div><p class="metric-detail">지역값을 필지 실측으로 보지 않음</p></div>
-          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-data" aria-hidden="true"></span>자료 준비</span><div class="metric-value" id="coverage-value">78%</div><p class="metric-detail">부족한 값은 임의로 채우지 않음</p><div class="metric-track coverage-track" role="meter" aria-label="필요 자료 충족도" aria-valuemin="0" aria-valuemax="100" aria-valuenow="78"><div class="metric-fill coverage-fill" id="coverage-fill"></div></div></div>
-          <div class="metric-cell"><span class="metric-label"><span class="ui-icon icon-rain" aria-hidden="true"></span>가까운 변화</span><div class="metric-value metric-copy">4월 16일 · 18mm</div><p class="metric-detail">재배시기 확정 뒤 위험 재판단</p></div>
-        </section>
-
-        <section class="action-workspace" aria-label="우선 행동과 가까운 변화" hidden>
-          <div class="action-main">
-            <section class="action-planning" data-mode-only="planning" aria-labelledby="planning-action-title">
-              <div class="section-heading"><div><h2 id="planning-action-title"><span class="ui-icon icon-check" aria-hidden="true"></span> 현장 점검 항목</h2><p class="muted">현장 확인 우선 항목</p></div><span class="status-label warning">배수 확인</span></div>
-              <div class="next-step"><span class="step-index">1</span><div><strong>비 온 뒤 고인 물 자국과 배수로 위치를 보세요.</strong><p class="muted no-margin">실제 재배시기를 정하기 전에는 예보를 생육 위험으로 단정하지 않습니다.</p></div></div>
-            </section>
-            <section id="today-task-panel" data-mode-only="growing" aria-labelledby="today-task-title" hidden>
-              <div class="section-heading"><div><h2 id="today-task-title">오늘의 점검 항목</h2><p class="muted">가까운 위험 기준 우선 조치</p></div><span class="status-label info" id="today-task-count">1개 남음</span></div>
-              <div class="task-list"><article class="task-item" id="drainage-task"><p class="task-title">밭의 배수로가 막히지 않았는지 확인하기</p><p>4월 16일 비 예보 전에 물이 빠지는 길만 먼저 살펴보세요.</p><p class="muted" id="task-status">아직 확인 전</p><div class="task-actions"><button class="button button-primary" type="button" data-task-action="complete">완료</button><button class="button button-secondary" type="button" data-task-action="remind">이번 화면에서 나중에 보기</button><button class="button button-quiet" type="button" data-task-action="different">현장과 다름</button></div></article></div>
-            </section>
-          </div>
-          <aside class="action-side">
-            <section class="compact-risk" aria-labelledby="forecast-risk-title"><div class="section-heading"><div><h2 id="forecast-risk-title">10일 안의 변화</h2><p class="muted">참고지수와 별도</p></div><span class="status-label warning">확인 필요</span></div><p class="risk-figure">4월 16일 · 18mm</p><p class="muted">단기예보는 바뀔 수 있어 1~3일 행동 판단에만 우선 사용합니다.</p><button class="button button-quiet" type="button" data-open-dialog="limits">예보 한계</button></section>
-            <section class="compact-change" data-mode-only="growing" aria-labelledby="weekly-change-title" hidden><div class="section-heading"><div><h2 id="weekly-change-title">이번 주 변화</h2><p class="muted">관측과 예보를 나눠 봅니다.</p></div></div><div class="three-up"><div class="source-card"><span class="meta-label">최근 7일 강수</span><strong>11mm</strong><p class="muted no-margin">평년 범위 안</p></div><div class="source-card"><span class="meta-label">앞으로 3일</span><strong>18mm 예보</strong><p class="muted no-margin">4월 16일 집중</p></div><div class="source-card"><span class="meta-label">판단</span><strong>과습 확인 필요</strong><p class="muted no-margin">점수에는 별도</p></div></div></section>
-          </aside>
-        </section>
-
-        <section class="smartfarm-reference-panel" id="smartfarm-reference-panel" aria-labelledby="smartfarm-reference-title" hidden></section>
-
-        <section class="insight-grid" aria-label="분석 설명과 주요 이유" hidden>
-          <article class="panel ai-panel" aria-labelledby="ai-explanation-title">
-            <h2 class="ai-title" id="ai-explanation-title">쉽게 풀어쓴 설명 <span class="status-label info">AI 정리</span></h2>
-            <p id="ai-summary">평창 진부면은 감자를 재배할 때 기온 조건은 대체로 맞지만, 토양 산도가 조금 낮고 토양 자료가 필지에서 멀어 확인이 더 필요합니다.</p>
-            <ol class="plain-steps" id="ai-actions">
-              <li>농지를 보러 갈 때 물이 잘 빠지는지 먼저 확인하세요.</li>
-              <li>농업기술센터나 토양검정으로 내 밭의 pH를 확인하세요.</li>
-              <li>작기를 정한 뒤 재분석해 실제 시기의 예보를 확인하세요.</li>
-            </ol>
-            <p class="formula-note">검증된 구조 결과를 쉬운 말로 정리합니다. 점수 계산, 공식 범위 변경, 누락값 추정은 하지 않습니다.</p>
-          </article>
-          <aside class="panel insight-reasons" aria-labelledby="score-reasons-title">
-            <h2 id="score-reasons-title">주요 분석 근거 3가지</h2>
-            <ol class="reason-list" id="score-reasons">
-              <li>토양 산도 pH 5.1로 공식 적정범위 5.5~6.5보다 낮습니다.</li>
-              <li>유기물 자료가 6.8km 떨어진 대표지점 값이라 불확실성이 있습니다.</li>
-              <li>최근 5년 중 봄철 저온 이탈이 2회 확인됐습니다.</li>
-            </ol>
-          </aside>
-        </section>
-
-        <section class="evidence-workspace" aria-labelledby="evidence-workspace-title" hidden>
-          <div class="evidence-header"><div><h2 id="evidence-workspace-title"><span class="ui-icon icon-evidence" aria-hidden="true"></span>분석 근거와 자료</h2><p class="muted no-margin">출처, 계산 방식, 공간 범위를 필요할 때 확인하세요.</p></div><button class="button button-secondary" type="button" data-open-dialog="evidence">계산 상세</button></div>
-        <section class="panel" aria-labelledby="data-coverage-title">
-          <div class="section-heading">
-            <div><h2 id="data-coverage-title">출처와 자료 상태</h2><p class="muted">어디 자료인지, 얼마나 가까운 자료인지 함께 확인하세요.</p></div>
-            <span class="status-label warning" id="overall-data-badge">일부 부족</span>
-          </div>
-          <div class="notice notice-warning" id="data-state-message" role="status">
-            <p><strong>토양 유기물과 배수등급은 가까운 대표지점 자료입니다.</strong></p>
-            <p>임의 값으로 채우지 않았고, 부족한 만큼 추정 범위를 넓혔습니다.</p>
-          </div>
-
-          <details>
-            <summary>출처별 상태</summary>
-            <div class="details-body"><div class="source-grid" id="source-grid">
-            <article class="source-card" data-source="forecast">
-              <h3>기상청 단기예보 <span class="status-label good" data-source-state>정상</span></h3>
-              <dl><dt>자료</dt><dd>기온·강수·풍속 10일</dd><dt>갱신</dt><dd>4월 13일 06:00</dd><dt>공간범위</dt><dd>진부면 격자 약 5km</dd></dl>
-            </article>
-            <article class="source-card" data-source="history">
-              <h3>기상자료개방포털 <span class="status-label good" data-source-state>정상</span></h3>
-              <dl><dt>자료</dt><dd>최근 10년 일별 관측</dd><dt>갱신</dt><dd>4월 12일</dd><dt>공간범위</dt><dd>대관령 관측소 12.4km</dd></dl>
-            </article>
-            <article class="source-card" data-source="soil">
-              <h3>흙토람·농경지화학성V2 <span class="status-label warning" data-source-state>일부 부족</span></h3>
-              <dl><dt>자료</dt><dd>산도·유기물·배수등급</dd><dt>갱신</dt><dd>2025년 조사</dd><dt>공간범위</dt><dd>대표지점 6.8km</dd></dl>
-            </article>
-            <article class="source-card" data-source="crop-rule">
-              <h3>농사로 <span class="status-label good" data-source-state>정상</span></h3>
-              <dl><dt>자료</dt><dd>작물별 적정범위·재배기술</dd><dt>갱신</dt><dd>규칙 검토 2026-04-01</dd><dt>공간범위</dt><dd>전국 작물 기준</dd></dl>
-            </article>
-            </div></div>
-          </details>
-
-          <details id="data-state-details" hidden>
-            <summary>체험 상태 도구</summary>
-            <div class="details-body">
-              <p>아래는 연결 상태에 따라 화면이 어떻게 달라지는지 확인하는 체험용 제어입니다.</p>
-              <div class="data-controls" aria-label="체험용 자료 상태 선택">
-                <button class="data-state-button" type="button" data-data-state="ready" aria-pressed="false">모두 준비</button>
-                <button class="data-state-button" type="button" data-data-state="partial" aria-pressed="true">일부 부족</button>
-                <button class="data-state-button" type="button" data-data-state="stale" aria-pressed="false">갱신 지연</button>
-                <button class="data-state-button" type="button" data-data-state="error" aria-pressed="false">불러오기 실패</button>
-                <button class="data-state-button" type="button" data-data-state="offline" aria-pressed="false">오프라인</button>
-                <button class="data-state-button" type="button" data-data-state="hold" aria-pressed="false">계산 보류</button>
-              </div>
-              <p class="muted">자료가 부족하면 임의로 채우지 않습니다. 핵심 자료가 없거나 이상치만 남으면 계산을 보류합니다.</p>
-            </div>
-          </details>
-        </section>
-
-        <section class="panel" aria-labelledby="detail-map-title" hidden>
-          <div class="section-heading">
-            <div><h2 id="detail-map-title">계산과 공간 범위</h2><p class="muted">필요할 때만 펼쳐 보세요.</p></div>
-            <button class="button" type="button" data-open-dialog="evidence">계산 상세 보기</button>
-          </div>
-          <details>
-            <summary>근거·원자료·한계 요약</summary>
-            <div class="details-body">
-              <p><strong>계산 규칙:</strong> 작물별 적정범위에서 벗어난 거리 × 민감도 × 변수 가중치로 감점합니다.</p>
-              <p><strong>자료 방어:</strong> 결측은 임의 대체하지 않고, 관측 범위를 벗어난 이상치는 제외합니다. 핵심 자료가 부족하면 계산을 보류합니다.</p>
-              <p><strong>한계:</strong> 이 값은 내 필지의 실측값이 아니며, 가까운 지역자료와 공식 작물 기준을 연결한 참고 결과입니다.</p>
-            </div>
-          </details>
-          <details>
-            <summary>자료 공간범위</summary>
-            <div class="details-body">
-              <div class="field-context">
-                <div><strong>실제 필지가 아닌 체험용 지역자료입니다.</strong><p class="muted">필지 미등록 상태 · 자료별 대표 거리 비교</p></div>
-                <div class="range-diagram" aria-label="진부면 격자 약 5킬로미터, 토양 대표지점 6.8킬로미터, 대관령 관측소 12.4킬로미터">
-                  <span class="range-node">진부면 예보 격자 · 약 5km</span>
-                  <span class="range-node">토양 대표지점 · 6.8km</span>
-                  <span class="range-node">대관령 관측소 · 12.4km</span>
+        <section class="dashboard-workspace" id="dashboard-workspace" aria-label="농장 오늘 점검 대시보드" hidden>
+          <div class="dashboard-overview-grid">
+            <article class="dashboard-surface dashboard-status-summary" id="dashboard-status-summary" aria-labelledby="dashboard-status-title" aria-live="polite">
+              <header class="dashboard-section-header">
+                <div>
+                  <span class="dashboard-eyebrow">현재 확인 결과</span>
+                  <h2 id="dashboard-status-title">오늘의 농장 상태</h2>
                 </div>
+                <span class="dashboard-state-badge is-loading">분석 중</span>
+              </header>
+              <div class="dashboard-status-layout">
+                <div class="dashboard-growth-state" data-state="loading">
+                  <span>생육점수</span>
+                  <strong id="dashboard-growth-state">확인 중</strong>
+                  <p>날씨와 토양 자료로 예상한 상태입니다. 사진을 더하면 정확도를 높일 수 있습니다.</p>
+                </div>
+                <dl class="dashboard-axis-list" aria-label="오늘 날씨, 토양, 7일 예보의 핵심 값">
+                  <div data-dashboard-axis="climate">
+                    <dt>날씨</dt>
+                    <dd id="dashboard-climate-score">—</dd>
+                    <span>작물 주의 기준과 비교</span>
+                  </div>
+                  <div data-dashboard-axis="soil">
+                    <dt>토양</dt>
+                    <dd id="dashboard-soil-score">—</dd>
+                    <span>작물 pH 기준 밖 비율</span>
+                  </div>
+                  <div data-dashboard-axis="forecast">
+                    <dt>예보</dt>
+                    <dd id="dashboard-forecast-score">—</dd>
+                    <span>주의가 예상되는 날짜</span>
+                  </div>
+                </dl>
               </div>
-            </div>
-          </details>
-        </section>
+              <p class="dashboard-mobile-action-summary" id="dashboard-mobile-action-summary" hidden></p>
+              <button class="dashboard-text-button" type="button" data-open-dialog="summary">상태 자세히 보기 <span aria-hidden="true">→</span></button>
+            </article>
 
-        <section class="panel" aria-labelledby="satellite-title" hidden>
-          <details>
-            <summary id="satellite-title">위성으로 변화 살펴보기 · 미등록</summary>
-            <div class="details-body"><div class="map-empty"><div><strong>등록된 필지가 없습니다</strong><p>위성영상은 생육을 확정 판정하지 않습니다. 필지를 등록한 뒤 색 변화와 수분 징후를 현장 기록과 함께 비교합니다.</p></div></div></div>
-          </details>
-        </section>
+            <section class="dashboard-surface dashboard-risk-timeline" id="dashboard-risk-timeline" aria-labelledby="dashboard-risk-timeline-title">
+              <header class="dashboard-section-header">
+                <div>
+                  <span class="dashboard-eyebrow">날짜별 위험</span>
+                  <h2 id="dashboard-risk-timeline-title">7일 위험 변화</h2>
+                </div>
+              </header>
+              <div class="dashboard-forecast-chart" id="dashboard-forecast-chart" aria-label="앞으로 7일 위험 변화를 분석하고 있습니다" aria-live="polite">
+                <p class="dashboard-loading-copy">예보를 확인하고 있습니다.</p>
+              </div>
+            </section>
+          </div>
 
-        <aside class="notice" aria-label="참고지수 이용 안내" hidden>
-          <p><strong>참고지수는 수확량, 성공확률, 안전등급, 토지가치를 뜻하지 않습니다.</strong></p>
-          <p>공식 적정범위와 지역자료의 거리를 이용한 참고값이며, 지역 대표자료는 내 필지 실측자료가 아닙니다. 계약·시비·방제 결정 전에는 현장 확인과 전문가 상담이 필요합니다.</p>
-        </aside>
+          <div class="dashboard-content-grid">
+            <section class="dashboard-surface dashboard-actions" id="dashboard-actions" aria-labelledby="dashboard-actions-title">
+              <header class="dashboard-section-header dashboard-actions-header">
+                <div>
+                  <span class="dashboard-eyebrow">우선순위 순</span>
+                  <h2 id="dashboard-actions-title">오늘 할 일 <span class="dashboard-count" aria-label="분석 중">—</span></h2>
+                </div>
+                <div class="dashboard-action-header-controls">
+                  <button class="dashboard-compact-button is-primary" id="dashboard-complete-all" type="button">✓ 모두 완료 표시</button>
+                  <button class="dashboard-compact-button" id="dashboard-photo-check" type="button">▣ 사진으로 확인</button>
+                </div>
+              </header>
+              <p class="dashboard-action-batch-status" id="dashboard-action-batch-status" role="status" aria-live="polite" hidden></p>
+              <article class="dashboard-priority-action" id="dashboard-priority-action" aria-label="가장 먼저 할 일" aria-live="polite">
+                <div class="dashboard-action-placeholder">
+                  <span class="dashboard-action-check" aria-hidden="true"></span>
+                  <div>
+                    <span class="dashboard-action-level">가장 먼저</span>
+                    <h3>농장 조건에 맞는 행동을 정리하고 있습니다.</h3>
+                    <p>원인, 필요한 행동, 완료 기한과 재확인 시점을 함께 표시합니다.</p>
+                  </div>
+                </div>
+              </article>
+              <div class="dashboard-action-list" id="dashboard-action-list" aria-label="오늘과 당분간 할 일" aria-live="polite"></div>
+              <button class="dashboard-all-actions" id="dashboard-all-actions" type="button" aria-controls="dashboard-action-list" aria-expanded="false">전체 작업 목록 보기 <span aria-hidden="true">→</span></button>
+            </section>
+
+            <aside class="dashboard-side-stack" aria-label="이번 주 위험과 토양 상태">
+              <section class="dashboard-surface dashboard-forecast-detail" aria-labelledby="dashboard-forecast-detail-title">
+                <header class="dashboard-section-header">
+                  <div>
+                    <span class="dashboard-eyebrow">실제 예보와 작물 기준</span>
+                    <h2 id="dashboard-forecast-detail-title">7일 날씨 &amp; 작물 위험</h2>
+                  </div>
+                  <button class="dashboard-inline-link" type="button" data-open-dialog="weather">대응 가이드 <span aria-hidden="true">→</span></button>
+                </header>
+                <div id="dashboard-forecast-detail-chart" aria-live="polite"></div>
+              </section>
+              <section class="dashboard-surface dashboard-weekly-risks" id="dashboard-weekly-risks" aria-labelledby="dashboard-weekly-risks-title">
+                <header class="dashboard-section-header">
+                  <div>
+                    <span class="dashboard-eyebrow">대응 시점</span>
+                    <h2 id="dashboard-weekly-risks-title">이번 주 주의</h2>
+                  </div>
+                </header>
+                <p class="dashboard-loading-copy" role="status">가장 위험한 날과 필요한 대응을 확인하고 있습니다.</p>
+              </section>
+
+              <section class="dashboard-surface dashboard-soil-summary" id="dashboard-soil-summary" aria-labelledby="dashboard-soil-summary-title">
+                <header class="dashboard-section-header">
+                  <div>
+                    <span class="dashboard-eyebrow">농장 환경</span>
+                    <h2 id="dashboard-soil-summary-title">토양 상태</h2>
+                  </div>
+                  <span class="dashboard-data-badge">내 밭 검사값 아님</span>
+                </header>
+                <div class="dashboard-soil-placeholder" role="status">
+                  <strong>토양 자료를 확인하고 있습니다.</strong>
+                  <p>필지 검사값이 없으면 농장 주변 통계를 참고값으로만 표시합니다.</p>
+                </div>
+                <section id="dashboard-soil-test" aria-labelledby="dashboard-soil-test-title" hidden>
+                  <h3 id="dashboard-soil-test-title">내 밭 흙 검사 결과 <span class="status-label good">등록됨</span></h3>
+                  <p class="muted no-margin" id="dashboard-soil-test-meta">—</p>
+                  <dl class="condition-fact-list" id="dashboard-soil-test-values"></dl>
+                  <p class="formula-note">등록한 필지 검사값을 사용합니다. 마이페이지에서 수정할 수 있습니다.</p>
+                </section>
+                <button class="dashboard-text-button" type="button" data-open-dialog="soil">토양 자세히 보기 <span aria-hidden="true">→</span></button>
+              </section>
+            </aside>
+          </div>
+          <section id="smartfarm-reference-panel" aria-label="비활성 SmartFarm 참고자료" hidden></section>
         </section>
       </section>
+
+      <section class="view product-feature-view" id="view-crop-management" data-view-panel="crop-management" aria-labelledby="crop-management-title" hidden>
+        <header class="page-header feature-page-header">
+          <div>
+            <span class="feature-page-kicker">재배 현황과 관리 기준</span>
+            <h1 id="crop-management-title" tabindex="-1">작물 관리</h1>
+            <p class="muted">현재 분석에서 확인한 생육 단계, 재배 환경과 오늘의 관리 항목을 작물별로 정리합니다.</p>
+          </div>
+        </header>
+        <div class="feature-dashboard-grid">
+          <section class="feature-hero-card" id="crop-management-overview" aria-labelledby="crop-management-overview-title">
+            <div class="feature-card-heading">
+              <div>
+                <span class="feature-card-kicker">현재 선택 작물</span>
+                <h2 id="crop-management-overview-title">작물 정보를 불러오고 있습니다.</h2>
+              </div>
+              <span class="feature-status-chip" id="crop-management-state">확인 중</span>
+            </div>
+            <dl class="feature-metric-row" id="crop-management-metrics">
+              <div><dt>생육 단계</dt><dd id="crop-management-stage">—</dd></div>
+              <div><dt>재배 환경</dt><dd id="crop-management-environment">—</dd></div>
+              <div><dt>재배 시기</dt><dd id="crop-management-season">—</dd></div>
+            </dl>
+          </section>
+          <section class="feature-card feature-focus-card" aria-labelledby="crop-management-focus-title">
+            <span class="feature-card-kicker">오늘의 관리 핵심</span>
+            <h2 id="crop-management-focus-title">분석 결과를 기다리고 있습니다.</h2>
+            <p id="crop-management-focus-copy">현재 작물에 필요한 행동과 확인 시점을 표시합니다.</p>
+            <div class="feature-card-actions">
+              <button class="feature-primary-button" type="button" data-view="dashboard">오늘 할 일 보기</button>
+              <button class="feature-secondary-button" type="button" data-view="services" data-service-anchor="photo-journal-panel">사진 기록 열기</button>
+            </div>
+          </section>
+          <section class="feature-card feature-span-all" aria-labelledby="crop-management-checklist-title">
+            <div class="feature-card-heading">
+              <div><span class="feature-card-kicker">매일 확인할 기준</span><h2 id="crop-management-checklist-title">작물 관리 체크리스트</h2></div>
+            </div>
+            <div class="management-checklist" id="crop-management-checklist" aria-live="polite">
+              <p class="feature-empty">작물 분석을 완료하면 관리 기준을 표시합니다.</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view product-feature-view" id="view-pest-alerts" data-view-panel="pest-alerts" aria-labelledby="pest-alerts-title" hidden>
+        <header class="page-header feature-page-header">
+          <div>
+            <span class="feature-page-kicker">기상 연계 예방 점검</span>
+            <h1 id="pest-alerts-title" tabindex="-1">병해충 정보</h1>
+            <p class="muted">병명을 확정하지 않고, 현재 작물과 예보를 기준으로 현장에서 먼저 관찰할 신호를 안내합니다.</p>
+          </div>
+        </header>
+        <div class="feature-dashboard-grid pest-dashboard-grid">
+          <section class="feature-hero-card pest-status-card" id="pest-alert-overview" aria-labelledby="pest-alert-overview-title">
+            <div class="feature-card-heading">
+              <div>
+                <span class="feature-card-kicker">현재 예방 점검</span>
+                <h2 id="pest-alert-overview-title">병해충 위험 신호를 확인하고 있습니다.</h2>
+              </div>
+              <span class="feature-status-chip" id="pest-alert-state">확인 중</span>
+            </div>
+            <p id="pest-alert-summary">예보와 선택 작물의 관리 기준을 함께 확인합니다.</p>
+          </section>
+          <section class="feature-card feature-span-all" aria-labelledby="pest-weather-signals-title">
+            <div class="feature-card-heading">
+              <div><span class="feature-card-kicker">앞으로 7일</span><h2 id="pest-weather-signals-title">기상 위험 신호</h2></div>
+            </div>
+            <div class="pest-weather-signals" id="pest-weather-signals" aria-live="polite">
+              <p class="feature-empty">예보 분석을 완료하면 날짜별 신호를 표시합니다.</p>
+            </div>
+          </section>
+          <section class="feature-card feature-span-all" aria-labelledby="pest-observation-title">
+            <div class="feature-card-heading">
+              <div><span class="feature-card-kicker">현장 관찰 항목</span><h2 id="pest-observation-title">오늘 작물에서 확인할 곳</h2></div>
+              <span class="feature-safe-label">관찰 안내 · 진단 아님</span>
+            </div>
+            <div class="pest-observation-grid" id="pest-observation-list" aria-live="polite">
+              <p class="feature-empty">작물을 선택하면 잎·줄기·열매의 관찰 항목을 표시합니다.</p>
+            </div>
+            <div class="feature-card-actions">
+              <button class="feature-primary-button" id="pest-assistant-trigger" type="button">관찰 결과 상담하기</button>
+              <button class="feature-secondary-button" type="button" data-view="services" data-service-anchor="photo-journal-panel">사진 기록 남기기</button>
+            </div>
+            <div class="pest-source-row">
+              <span id="pest-source-note">검수된 작물 관찰 가이드를 불러오고 있습니다.</span>
+              <a id="pest-source-link" href="https://ncpms.rda.go.kr/npms/OpenApiInfo.np" target="_blank" rel="noopener noreferrer">NCPMS 출처 보기</a>
+            </div>
+          </section>
+        </div>
+      </section>
+
       <section class="view" id="view-services" data-view-panel="services" aria-labelledby="services-title" hidden>
         <header class="page-header">
           <div><h1 id="services-title" tabindex="-1">추가 서비스</h1><p class="muted">농장 기록과 추가 확인 서비스를 한곳에서 관리합니다.</p></div>
         </header>
 
         <div class="settings-surface">
+        <section class="panel" id="report-history-panel" aria-labelledby="report-history-title">
+          <div class="section-heading">
+            <div>
+              <span class="service-eyebrow">농장별 자동 기록</span>
+              <h2 id="report-history-title">분석 리포트</h2>
+              <p class="muted">분석 당시의 생육점수, 판단, 필요한 행동과 데이터 출처를 보관합니다.</p>
+            </div>
+            <button class="button button-secondary" id="report-history-refresh" type="button">기록 새로고침</button>
+          </div>
+          <div class="report-history-list" id="report-history-list">
+            <p class="backend-empty">농장 분석을 완료하면 저장된 리포트를 확인할 수 있습니다.</p>
+          </div>
+          <p class="location-search-status" id="report-history-status" role="status" aria-live="polite">새 분석이 끝나면 자동으로 기록합니다.</p>
+        </section>
+
         <section class="panel satellite-service" id="satellite-service-panel" aria-labelledby="satellite-service-title">
           <div class="section-heading">
             <div>
@@ -2830,7 +2861,7 @@
               </div>
               <div class="inline-check">
                 <input id="journal-consent" name="consent" type="checkbox" required>
-                <label for="journal-consent">사진을 이 기기에 비공개로 저장하는 데 동의합니다.</label>
+                <label for="journal-consent">사진을 비공개 농장 기록으로 저장하는 데 동의합니다. 서버 저장을 사용할 수 없으면 이 기기에만 보관합니다.</label>
               </div>
               <button class="button button-primary" id="journal-save" type="submit">사진 기록 저장</button>
               <p class="location-search-status" id="photo-journal-status" role="status" aria-live="polite">농장 분석을 완료하면 작물별 기록을 저장할 수 있습니다.</p>
@@ -3094,6 +3125,8 @@
 
     <nav class="bottom-nav" aria-label="모바일 주요 메뉴">
       <button class="nav-button" type="button" data-view="dashboard" aria-current="page">대시보드</button>
+      <button class="nav-button" type="button" data-view="crop-management">작물 관리</button>
+      <button class="nav-button" type="button" data-view="pest-alerts">병해충</button>
       <button class="nav-button" type="button" data-view="services">추가 서비스</button>
       <button class="nav-button" type="button" data-view="mypage">마이페이지</button>
     </nav>

@@ -19,6 +19,7 @@ const action = Object.freeze({
   recheckAt: "2026-08-01T03:00:00.000Z",
   evidenceRefs: [{ sourceKind: "PUBLIC_API", sourceId: "forecast" }],
   origin: "RULE",
+  snoozedUntil: null,
   completedAt: null,
   createdAt: "2026-07-31T10:00:00.000Z",
   updatedAt: "2026-07-31T10:00:00.000Z",
@@ -205,6 +206,45 @@ test("action repository moves the same OPEN risk rule to its latest forecast dat
     (await repo.listActions({ accountId: "account-1", farmId: "farm-1" })).length,
     1,
   );
+});
+
+test("action repository keeps a user snooze when the same forecast rule refreshes earlier", async () => {
+  const repo = repository();
+  const snoozed = {
+    ...action,
+    horizon: "UPCOMING",
+    dueAt: "2026-08-01T22:00:00.000Z",
+    recheckAt: "2026-08-01T22:00:00.000Z",
+    snoozedUntil: "2026-08-01T22:00:00.000Z",
+    updatedAt: "2026-07-31T11:00:00.000Z",
+  };
+  await repo.insertAction({
+    accountId: "account-1",
+    farmId: "farm-1",
+    action: snoozed,
+    idempotencyKey: "snoozed-1",
+    ruleDedupeKey: "stable-risk-rule",
+  });
+
+  const refreshed = await repo.insertAction({
+    accountId: "account-1",
+    farmId: "farm-1",
+    action: {
+      ...action,
+      actionId: "action-refresh",
+      title: "최신 예보로 갱신된 배수로 확인",
+      dueAt: "2026-08-01T09:00:00.000Z",
+      recheckAt: "2026-08-01T12:00:00.000Z",
+      updatedAt: "2026-07-31T12:00:00.000Z",
+    },
+    idempotencyKey: "snoozed-2",
+    ruleDedupeKey: "stable-risk-rule",
+  });
+
+  assert.equal(refreshed.action.actionId, action.actionId);
+  assert.equal(refreshed.action.title, "최신 예보로 갱신된 배수로 확인");
+  assert.equal(refreshed.action.dueAt, "2026-08-01T22:00:00.000Z");
+  assert.equal(refreshed.action.snoozedUntil, "2026-08-01T22:00:00.000Z");
 });
 
 test("action repository migrates legacy OPEN rule actions without duplicating them", async () => {

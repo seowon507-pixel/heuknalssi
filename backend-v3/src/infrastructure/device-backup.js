@@ -15,8 +15,25 @@ import { createSupabaseServerHeaders } from "./supabase-server-headers.js";
 const KEY_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const KEY_GROUPS = 3;
 const KEY_GROUP_SIZE = 4;
-const MAX_PAYLOAD_BYTES = 8 * 1024;
-const ALLOWED_PAYLOAD_KEYS = Object.freeze(["soilTest", "region", "savedAt"]);
+const MAX_PAYLOAD_BYTES = 128 * 1024;
+const MAX_FARMS = 12;
+const SUPPORTED_CROPS = new Set([
+  "APPLE",
+  "PEAR",
+  "CUCUMBER",
+  "POTATO",
+  "LETTUCE",
+]);
+const ALLOWED_PAYLOAD_KEYS = Object.freeze([
+  "version",
+  "soilTest",
+  "region",
+  "farms",
+  "activeFarmId",
+  "alarm",
+  "todo",
+  "savedAt",
+]);
 
 export class DeviceBackupError extends Error {
   constructor(code, message) {
@@ -82,11 +99,144 @@ export function assertStorablePayload(payload) {
       `payload contains unsupported fields: ${unknown.join(", ")}`,
     );
   }
+  if (payload.version !== undefined && payload.version !== 2) {
+    throw new DeviceBackupError(
+      "INVALID_PAYLOAD",
+      "payload version is unsupported",
+    );
+  }
+  if (payload.region !== undefined) {
+    requireBoundedText(payload.region, "region", 200);
+  }
+  if (payload.farms !== undefined) validateFarms(payload.farms);
+  if (payload.activeFarmId !== undefined) {
+    const activeFarmId = requireBoundedText(
+      payload.activeFarmId,
+      "activeFarmId",
+      160,
+    );
+    if (
+      !Array.isArray(payload.farms) ||
+      !payload.farms.some((farm) => farm.id === activeFarmId)
+    ) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        "activeFarmId must reference a stored farm",
+      );
+    }
+  }
+  for (const field of ["soilTest", "alarm", "todo"]) {
+    if (
+      payload[field] !== undefined &&
+      (payload[field] === null ||
+        typeof payload[field] !== "object" ||
+        Array.isArray(payload[field]))
+    ) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `${field} must be an object`,
+      );
+    }
+  }
   const encoded = JSON.stringify(payload);
   if (Buffer.byteLength(encoded, "utf8") > MAX_PAYLOAD_BYTES) {
     throw new DeviceBackupError("PAYLOAD_TOO_LARGE", "payload is too large");
   }
   return payload;
+}
+
+function validateFarms(farms) {
+  if (!Array.isArray(farms) || farms.length > MAX_FARMS) {
+    throw new DeviceBackupError(
+      "INVALID_PAYLOAD",
+      `farms must contain at most ${MAX_FARMS} items`,
+    );
+  }
+  const ids = new Set();
+  for (const [index, farm] of farms.entries()) {
+    if (farm === null || typeof farm !== "object" || Array.isArray(farm)) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `farms[${index}] must be an object`,
+      );
+    }
+    const allowed = new Set([
+      "id",
+      "name",
+      "updatedAt",
+      "situation",
+      "crops",
+      "cropSettings",
+      "region",
+    ]);
+    if (Object.keys(farm).some((key) => !allowed.has(key))) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `farms[${index}] contains unsupported fields`,
+      );
+    }
+    const id = requireBoundedText(farm.id, `farms[${index}].id`, 160);
+    if (ids.has(id)) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `farms[${index}].id is duplicated`,
+      );
+    }
+    ids.add(id);
+    requireBoundedText(farm.name, `farms[${index}].name`, 200);
+    requireBoundedText(farm.region, `farms[${index}].region`, 200);
+    if (farm.situation !== "growing") {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `farms[${index}].situation is unsupported`,
+      );
+    }
+    if (
+      !Array.isArray(farm.crops) ||
+      farm.crops.length === 0 ||
+      farm.crops.length > SUPPORTED_CROPS.size ||
+      farm.crops.some((crop) => !SUPPORTED_CROPS.has(crop)) ||
+      new Set(farm.crops).size !== farm.crops.length
+    ) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `farms[${index}].crops is invalid`,
+      );
+    }
+    if (
+      farm.cropSettings === null ||
+      typeof farm.cropSettings !== "object" ||
+      Array.isArray(farm.cropSettings)
+    ) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `farms[${index}].cropSettings must be an object`,
+      );
+    }
+    if (
+      typeof farm.updatedAt !== "string" ||
+      Number.isNaN(Date.parse(farm.updatedAt))
+    ) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `farms[${index}].updatedAt is invalid`,
+      );
+    }
+  }
+}
+
+function requireBoundedText(value, field, maximum) {
+  if (
+    typeof value !== "string" ||
+    value.trim() === "" ||
+    value.length > maximum
+  ) {
+    throw new DeviceBackupError(
+      "INVALID_PAYLOAD",
+      `${field} must be a non-empty string`,
+    );
+  }
+  return value;
 }
 
 export function createDeviceBackupStore({

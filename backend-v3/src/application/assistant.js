@@ -256,13 +256,35 @@ export function classifyAssistantPolicy(question, analysis) {
     if (rule.pattern.test(normalized)) return rule;
   }
 
+  if (/생육\s*점수/u.test(normalized)) {
+    const growthScore = analysis?.growthScore;
+    if (!Number.isFinite(growthScore?.score)) {
+      return {
+        outcome: "NEEDS_CLARIFICATION",
+        answer:
+          "현재는 생육점수를 계산할 환경자료가 부족합니다. 없는 값을 0점으로 채우지 않으므로 날씨·토양·예보 값이 더 확인된 뒤 표시합니다."
+      };
+    }
+    const components = Object.entries(growthScore.components ?? {})
+      .filter(([, component]) => Number.isFinite(component?.score))
+      .map(([key, component]) => `${growthScoreComponentLabel(key)} ${component.score}점`)
+      .join(", ");
+    return {
+      outcome: "ANSWERED",
+      answer:
+        `현재 생육점수는 ${growthScore.score}점(${growthScore.label})입니다. ` +
+        `${components || "확인된 환경조건"}을 작물 영향도·자료 신뢰도·자료 충족도에 따라 반영했습니다. ` +
+        "점수가 높아도 실제 작물의 안전을 확정하지는 않으며, 사진·센서·현장 확인을 더하면 정확도를 높일 수 있습니다."
+    };
+  }
+
   if (
-    /(?:생육|환경|적합도|종합|통합|안전)\s*점수|총\s*점/u.test(normalized)
+    /(?:환경|적합도|종합|통합|안전)\s*점수|총\s*점/u.test(normalized)
   ) {
     return {
       outcome: "NEEDS_CLARIFICATION",
       answer:
-        "이 서비스는 기후·토양·예보를 합친 종합점수를 사용하지 않습니다. 각 자료의 확인 상태와 오늘의 점검 행동을 따로 확인해 주세요."
+        "현재 제공하는 숫자는 기상·토양·예보를 작물 영향도와 자료 신뢰도에 따라 계산한 환경 기반 생육점수입니다. 실제 작물의 안전이나 수확량을 보증하는 점수는 아닙니다."
     };
   }
 
@@ -328,6 +350,10 @@ export function classifyAssistantPolicy(question, analysis) {
   }
 
   return null;
+}
+
+function growthScoreComponentLabel(key) {
+  return ({ climate: "기후", soil: "토양", forecast: "예보" })[key] ?? "환경";
 }
 
 function mentionedCropCodes(normalized) {

@@ -8,6 +8,8 @@ export const VERIFIED_KAKAO_ADDRESS_CONTRACT_VERSION =
   "fixture-kakao-address-v1";
 export const VERIFIED_KMA_SHORT_CONTRACT_VERSION =
   "fixture-kma-short-v1";
+export const VERIFIED_KMA_HISTORICAL_SHORT_CONTRACT_VERSION =
+  "kma-api-hub-historical-short-v1-2026-03-26";
 export const VERIFIED_KMA_MID_CONTRACT_VERSION =
   "fixture-kma-mid-dual-v1";
 export const VERIFIED_KMA_ASOS_CONTRACT_VERSION =

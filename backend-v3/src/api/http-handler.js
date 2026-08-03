@@ -19,6 +19,7 @@ import {
 } from "./errors.js";
 
 const DEFAULT_BODY_LIMIT_BYTES = 64 * 1_024;
+const DEFAULT_PHOTO_BODY_LIMIT_BYTES = 14 * 1_024 * 1_024;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 
 const DEFAULT_RATE_LIMITS = Object.freeze({
@@ -27,6 +28,7 @@ const DEFAULT_RATE_LIMITS = Object.freeze({
   "analyses.create": { limit: 10, windowMs: 60_000 },
   "analyses.report": { limit: 5, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
+  "analyses.pestGuidance": { limit: 30, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
   "actions.list": { limit: 60, windowMs: 60_000 },
   "actions.create": { limit: 20, windowMs: 60_000 },
@@ -36,6 +38,16 @@ const DEFAULT_RATE_LIMITS = Object.freeze({
   "parcel.put": { limit: 10, windowMs: 60_000 },
   "satellite.get": { limit: 30, windowMs: 60_000 },
   "satellite.refresh": { limit: 5, windowMs: 60_000 },
+  "photoUploads.create": { limit: 6, windowMs: 60_000 },
+  "photos.list": { limit: 30, windowMs: 60_000 },
+  "photos.create": { limit: 12, windowMs: 60_000 },
+  "photos.compare": { limit: 12, windowMs: 60_000 },
+  "photos.delete": { limit: 12, windowMs: 60_000 },
+  "seasons.timeline": { limit: 30, windowMs: 60_000 },
+  "seasons.complete": { limit: 6, windowMs: 60_000 },
+  "reports.list": { limit: 30, windowMs: 60_000 },
+  "reports.create": { limit: 12, windowMs: 60_000 },
+  "reports.get": { limit: 30, windowMs: 60_000 },
 });
 
 const DEFAULT_IP_RATE_LIMITS = Object.freeze({
@@ -46,6 +58,7 @@ const DEFAULT_IP_RATE_LIMITS = Object.freeze({
   "analyses.get": { limit: 60, windowMs: 60_000 },
   "analyses.report": { limit: 5, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
+  "analyses.pestGuidance": { limit: 30, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
   "actions.list": { limit: 60, windowMs: 60_000 },
   "actions.create": { limit: 20, windowMs: 60_000 },
@@ -55,6 +68,16 @@ const DEFAULT_IP_RATE_LIMITS = Object.freeze({
   "parcel.put": { limit: 10, windowMs: 60_000 },
   "satellite.get": { limit: 30, windowMs: 60_000 },
   "satellite.refresh": { limit: 5, windowMs: 60_000 },
+  "photoUploads.create": { limit: 6, windowMs: 60_000 },
+  "photos.list": { limit: 30, windowMs: 60_000 },
+  "photos.create": { limit: 12, windowMs: 60_000 },
+  "photos.compare": { limit: 12, windowMs: 60_000 },
+  "photos.delete": { limit: 12, windowMs: 60_000 },
+  "seasons.timeline": { limit: 30, windowMs: 60_000 },
+  "seasons.complete": { limit: 6, windowMs: 60_000 },
+  "reports.list": { limit: 30, windowMs: 60_000 },
+  "reports.create": { limit: 12, windowMs: 60_000 },
+  "reports.get": { limit: 30, windowMs: 60_000 },
 });
 
 const ROUTES = Object.freeze([
@@ -88,6 +111,12 @@ const ROUTES = Object.freeze([
     name: "analyses.assistant",
     pattern: /^\/api\/analyses\/([^/]+)\/assistant$/,
     methods: ["POST"],
+    parameter: "analysisId",
+  },
+  {
+    name: "analyses.pestGuidance",
+    pattern: /^\/api\/analyses\/([^/]+)\/pest-guidance$/,
+    methods: ["GET"],
     parameter: "analysisId",
   },
   {
@@ -129,6 +158,54 @@ const ROUTES = Object.freeze([
     pattern: /^\/api\/farms\/([^/]+)\/actions\/([^/]+)$/,
     methods: ["PATCH"],
     parameters: ["farmId", "actionId"],
+  },
+  {
+    name: "photoUploads.create",
+    pattern: /^\/api\/farms\/([^/]+)\/photo-uploads$/,
+    methods: ["POST"],
+    parameter: "farmId",
+  },
+  {
+    name: "photos.compare",
+    pattern: /^\/api\/farms\/([^/]+)\/photos\/compare$/,
+    methods: ["POST"],
+    parameter: "farmId",
+  },
+  {
+    name: "photos.delete",
+    pattern: /^\/api\/farms\/([^/]+)\/photos\/([^/]+)$/,
+    methods: ["DELETE"],
+    parameters: ["farmId", "photoId"],
+  },
+  {
+    name: "photos.list",
+    pattern: /^\/api\/farms\/([^/]+)\/photos$/,
+    methods: ["GET", "POST"],
+    parameter: "farmId",
+  },
+  {
+    name: "seasons.timeline",
+    pattern: /^\/api\/farms\/([^/]+)\/seasons\/([^/]+)\/timeline$/,
+    methods: ["GET"],
+    parameters: ["farmId", "seasonId"],
+  },
+  {
+    name: "seasons.complete",
+    pattern: /^\/api\/farms\/([^/]+)\/seasons\/([^/]+)\/complete$/,
+    methods: ["POST"],
+    parameters: ["farmId", "seasonId"],
+  },
+  {
+    name: "reports.get",
+    pattern: /^\/api\/farms\/([^/]+)\/reports\/([^/]+)$/,
+    methods: ["GET"],
+    parameters: ["farmId", "reportId"],
+  },
+  {
+    name: "reports.list",
+    pattern: /^\/api\/farms\/([^/]+)\/reports$/,
+    methods: ["GET", "POST"],
+    parameter: "farmId",
   },
   {
     name: "parcel.get",
@@ -209,6 +286,8 @@ function operationName(route, method) {
     "actions.list:POST": "actions.create",
     "parcel.get:PUT": "parcel.put",
     "satellite.get:POST": "satellite.refresh",
+    "photos.list:POST": "photos.create",
+    "reports.list:POST": "reports.create",
   };
   return mutationNames[`${route.name}:${method}`] ?? route.name;
 }
@@ -931,6 +1010,18 @@ export function createHttpHandler({
         return;
       }
 
+      if (route.name === "analyses.pestGuidance") {
+        const pestService = featureServices.pestGuidance;
+        if (!pestService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const result = await pestService.getGuidance({
+          ownerSessionId: session.id,
+          analysisId: route.parameters.analysisId,
+        });
+        if (!result) throw new ApiError("ANALYSIS_NOT_FOUND");
+        sendJson(res, 200, result);
+        return;
+      }
+
       if (route.name === "analyses.report") {
         const result = await invokeService(
           services.requestReport,
@@ -1110,14 +1201,25 @@ export function createHttpHandler({
         const actionService = featureServices.actionPlan;
         if (!actionService) throw new ApiError("FEATURE_NOT_CONFIGURED");
         const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
-        const result = await actionService.updateActionStatus({
+        if (body.status !== undefined && body.snoozedUntil !== undefined) {
+          throw new ApiError("INVALID_INPUT");
+        }
+        const common = {
           accountId: session.id,
           farmId: route.parameters.farmId,
           actionId: route.parameters.actionId,
-          status: body.status,
           confirmed: body.confirmed,
           idempotencyKey: requireIdempotencyHeader(req),
-        });
+        };
+        const result = body.snoozedUntil !== undefined
+          ? await actionService.snoozeAction({
+              ...common,
+              snoozedUntil: body.snoozedUntil,
+            })
+          : await actionService.updateActionStatus({
+              ...common,
+              status: body.status,
+            });
         sendJson(res, 200, result);
         return;
       }
@@ -1141,6 +1243,158 @@ export function createHttpHandler({
           geometry: body.geometry,
         });
         sendJson(res, 200, result);
+        return;
+      }
+
+      if (route.name === "photoUploads.create") {
+        const photoService = featureServices.photoSeason;
+        if (!photoService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const body = await readJsonBody(
+          req,
+          config.photoBodyLimitBytes ?? DEFAULT_PHOTO_BODY_LIMIT_BYTES,
+          abortContext.signal,
+        );
+        const result = await photoService.prepareUpload({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          cropId: body.cropId,
+          seasonId: body.seasonId,
+          mimeType: body.mimeType,
+          dataBase64: body.dataBase64,
+        });
+        sendJson(res, 201, result);
+        return;
+      }
+
+      if (route.name === "photos.list") {
+        const photoService = featureServices.photoSeason;
+        if (!photoService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        if (req.method === "GET") {
+          const cropId = url.searchParams.get("cropId");
+          const seasonId = url.searchParams.get("seasonId");
+          if (!cropId || !seasonId) throw new ApiError("INVALID_INPUT");
+          const result = await photoService.getSeasonTimeline({
+            ownerSessionId: session.id,
+            farmId: route.parameters.farmId,
+            cropId,
+            seasonId,
+          });
+          sendJson(res, 200, result);
+          return;
+        }
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        const result = await photoService.addPhoto({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          cropId: body.cropId,
+          seasonId: body.seasonId,
+          uploadToken: body.uploadToken,
+          observedAt: body.observedAt,
+          growthStage: body.growthStage ?? null,
+          note: body.note ?? null,
+          consentState: body.consentState,
+        });
+        sendJson(res, 201, result);
+        return;
+      }
+
+      if (route.name === "photos.compare") {
+        const photoService = featureServices.photoSeason;
+        if (!photoService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        const result = await photoService.comparePhotos({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          cropId: body.cropId,
+          seasonId: body.seasonId,
+          baselinePhotoId: body.baselinePhotoId,
+          currentPhotoId: body.currentPhotoId,
+          observations: body.observations,
+        });
+        sendJson(res, 201, result);
+        return;
+      }
+
+      if (route.name === "photos.delete") {
+        const photoService = featureServices.photoSeason;
+        if (!photoService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        const result = await photoService.deletePhoto({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          photoId: route.parameters.photoId,
+          confirmed: body.confirmed,
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (route.name === "seasons.timeline") {
+        const photoService = featureServices.photoSeason;
+        if (!photoService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const cropId = url.searchParams.get("cropId");
+        if (!cropId) throw new ApiError("INVALID_INPUT");
+        const result = await photoService.getSeasonTimeline({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          cropId,
+          seasonId: route.parameters.seasonId,
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (route.name === "seasons.complete") {
+        const photoService = featureServices.photoSeason;
+        if (!photoService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        const result = await photoService.completeSeason({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          cropId: body.cropId,
+          seasonId: route.parameters.seasonId,
+          confirmed: body.confirmed,
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (route.name === "reports.list") {
+        const reportService = featureServices.reportHistory;
+        if (!reportService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        if (req.method === "GET") {
+          const cropId = url.searchParams.get("cropId");
+          const reports = await reportService.listReports({
+            ownerSessionId: session.id,
+            farmId: route.parameters.farmId,
+            cropId: cropId || null,
+          });
+          sendJson(res, 200, { reports });
+          return;
+        }
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        const result = await reportService.saveReport({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          analysisId: body.analysisId,
+          cropId: body.cropId,
+          seasonId: body.seasonId,
+        });
+        if (!result) throw new ApiError("ANALYSIS_NOT_FOUND");
+        sendJson(res, 201, result);
+        return;
+      }
+
+      if (route.name === "reports.get") {
+        const reportService = featureServices.reportHistory;
+        if (!reportService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const report = await reportService.getReport({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          reportId: route.parameters.reportId,
+        });
+        if (!report) throw new ApiError("REPORT_NOT_FOUND");
+        sendJson(res, 200, report);
         return;
       }
 
@@ -1214,6 +1468,7 @@ function validateFeatureServices(featureServices) {
       "listActions",
       "createAction",
       "reconcileRuleActions",
+      "snoozeAction",
       "updateActionStatus",
     ]) {
       if (typeof featureServices.actionPlan?.[method] !== "function") {
@@ -1221,10 +1476,36 @@ function validateFeatureServices(featureServices) {
       }
     }
   }
+  if (featureServices.pestGuidance !== undefined) {
+    if (typeof featureServices.pestGuidance?.getGuidance !== "function") {
+      throw new TypeError("featureServices.pestGuidance.getGuidance must be a function");
+    }
+  }
   if (featureServices.satellite !== undefined) {
     for (const method of ["putParcel", "getParcel", "getLatest", "refresh"]) {
       if (typeof featureServices.satellite?.[method] !== "function") {
         throw new TypeError(`featureServices.satellite.${method} must be a function`);
+      }
+    }
+  }
+  if (featureServices.photoSeason !== undefined) {
+    for (const method of [
+      "prepareUpload",
+      "addPhoto",
+      "comparePhotos",
+      "deletePhoto",
+      "getSeasonTimeline",
+      "completeSeason",
+    ]) {
+      if (typeof featureServices.photoSeason?.[method] !== "function") {
+        throw new TypeError(`featureServices.photoSeason.${method} must be a function`);
+      }
+    }
+  }
+  if (featureServices.reportHistory !== undefined) {
+    for (const method of ["saveReport", "listReports", "getReport"]) {
+      if (typeof featureServices.reportHistory?.[method] !== "function") {
+        throw new TypeError(`featureServices.reportHistory.${method} must be a function`);
       }
     }
   }
@@ -1249,6 +1530,7 @@ function requireIdempotencyHeader(req) {
 
 export const httpDefaults = Object.freeze({
   bodyLimitBytes: DEFAULT_BODY_LIMIT_BYTES,
+  photoBodyLimitBytes: DEFAULT_PHOTO_BODY_LIMIT_BYTES,
   ipRateLimits: DEFAULT_IP_RATE_LIMITS,
   rateLimits: DEFAULT_RATE_LIMITS,
   requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,

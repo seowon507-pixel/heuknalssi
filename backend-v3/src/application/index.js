@@ -23,6 +23,15 @@ export {
   satelliteObservationDefaults,
 } from './satellite-observation.js';
 export {
+  PHOTO_SEASON_PORT_METHODS,
+  createPhotoSeasonService,
+} from './photo-season.js';
+export { createReportHistoryService } from './report-history.js';
+export {
+  createPestGuidanceService,
+  pestGuidanceDefaults,
+} from './pest-guidance.js';
+export {
   resolveLocationKeys,
   resolveOfficialCatalogMapping,
   toKmaGrid,

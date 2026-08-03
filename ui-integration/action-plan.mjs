@@ -18,50 +18,31 @@ const STATUS_LABELS = Object.freeze({
   SKIPPED: "건너뜀",
   CANCELLED: "자동 해제",
 });
+const CROP_LABELS = Object.freeze({
+  apple: "사과",
+  pear: "배",
+  cucumber: "오이",
+  potato: "감자",
+  lettuce: "상추",
+});
 
-export const ACTION_PLAN_STYLES = `
-.action-plan { color: #17251d; display: grid; gap: 20px; }
-.action-plan__first { background: #173f2b; border-radius: 20px; color: #fff; padding: 24px; }
-.action-plan__eyebrow { color: #bfe5c8; font-size: .82rem; font-weight: 800; letter-spacing: .04em; margin: 0 0 8px; }
-.action-plan__section { display: grid; gap: 12px; }
-.action-plan__section h2 { font-size: 1.2rem; margin: 0; }
-.action-plan__list { display: grid; gap: 12px; list-style: none; margin: 0; padding: 0; }
-.action-plan__card { background: #fff; border: 1px solid #dce6df; border-radius: 16px; padding: 18px; }
-.action-plan__first .action-plan__card { background: transparent; border: 0; padding: 0; }
-.action-plan__card h3 { font-size: 1.12rem; margin: 0 0 8px; }
-.action-plan__instruction { font-size: 1rem; font-weight: 750; line-height: 1.55; margin: 0 0 14px; }
-.action-plan__reason { line-height: 1.55; margin: 0 0 14px; }
-.action-plan__meta { display: grid; gap: 6px; margin: 0; }
-.action-plan__meta div { display: grid; gap: 2px; grid-template-columns: 68px 1fr; }
-.action-plan__meta dt { font-weight: 750; }
-.action-plan__meta dd { margin: 0; }
-.action-plan__evidence { margin: 14px 0 0; padding-left: 20px; }
-.action-plan__controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.action-plan__controls button { border: 1px solid currentColor; border-radius: 999px; cursor: pointer; font: inherit; font-weight: 750; min-height: 44px; padding: 8px 18px; }
-.action-plan__first .action-plan__controls button { background: #fff; color: #173f2b; }
-.action-plan__empty { color: #66756c; margin: 0; }
-@media (max-width: 620px) {
-  .action-plan { gap: 16px; }
-  .action-plan__first { border-radius: 16px; padding: 20px; }
-  .action-plan__controls button { flex: 1 1 120px; }
-}
-`;
+// 실제 스타일은 dashboard-workspace.css에서 관리한다. 런타임 <style> 삽입은
+// 대시보드 토큰과 접근성 규칙을 우회하므로 더 이상 사용하지 않는다.
+export const ACTION_PLAN_STYLES = ".action-plan__complete { min-height: 48px; }";
 
-export function buildActionPlanView(plan = {}) {
-  const today = toViewItems(plan.today, "TODAY");
-  const upcoming = toViewItems(plan.upcoming, "UPCOMING");
+export function buildActionPlanView(plan = {}, { now = new Date() } = {}) {
+  const today = toViewItems(plan.today, "TODAY", now);
+  const upcoming = toViewItems(plan.upcoming, "UPCOMING", now);
   const firstAction =
-    plan.firstAction?.status === "OPEN"
-      ? toViewItem(plan.firstAction, plan.firstAction.horizon)
+    plan.firstAction?.status === "OPEN" &&
+    plan.firstAction?.horizon === "TODAY"
+      ? toViewItem(plan.firstAction, plan.firstAction.horizon, now)
       : null;
   return {
     firstAction: firstAction
       ? {
           ...firstAction,
-          badge:
-            firstAction.horizon === "TODAY"
-              ? "가장 먼저 할 일"
-              : "가장 먼저 확인할 일",
+          badge: "우선",
         }
       : null,
     sections: [
@@ -71,8 +52,8 @@ export function buildActionPlanView(plan = {}) {
   };
 }
 
-export function renderActionPlanMarkup(plan = {}) {
-  const view = buildActionPlanView(plan);
+export function renderActionPlanMarkup(plan = {}, options = {}) {
+  const view = buildActionPlanView(plan, options);
   const firstId = view.firstAction?.actionId ?? null;
   const first = view.firstAction
     ? `<article class="action-plan__first" aria-label="${escapeHtml(view.firstAction.badge)}">
@@ -100,24 +81,53 @@ export function renderActionPlanMarkup(plan = {}) {
       </section>`;
     })
     .join("");
-  return `<style>${ACTION_PLAN_STYLES}</style><section class="action-plan" aria-label="농장 행동 계획">${first}${sections}</section>`;
+  return `<section class="action-plan" aria-label="농장 행동 계획">${first}${sections}</section>`;
 }
 
-export function mountActionPlan(root, plan, { onStatusChange } = {}) {
+export function mountActionPlan(
+  root,
+  plan,
+  { onStatusChange, onSnooze, onStatusError, now } = {},
+) {
   if (!root || typeof root.addEventListener !== "function") {
     throw new TypeError("action plan root element is required");
   }
-  root.innerHTML = renderActionPlanMarkup(plan);
+  root.innerHTML = renderActionPlanMarkup(plan, { now });
   const handleClick = async (event) => {
-    const button = event.target?.closest?.("button[data-action-status]");
+    const button = event.target?.closest?.(
+      "button[data-action-status], button[data-action-snooze]",
+    );
     if (!button || !root.contains(button)) return;
-    if (typeof onStatusChange !== "function") return;
+    const snooze = button.dataset.actionSnooze;
+    const operation = snooze ? "SNOOZE" : "STATUS";
+    if (
+      (operation === "SNOOZE" && typeof onSnooze !== "function") ||
+      (operation === "STATUS" && typeof onStatusChange !== "function")
+    ) return;
     button.disabled = true;
     try {
-      await onStatusChange({
-        actionId: button.dataset.actionId,
-        status: button.dataset.actionStatus,
-      });
+      if (operation === "SNOOZE") {
+        await onSnooze({
+          actionId: button.dataset.actionId,
+          snoozedUntil: nextSeoulMorning(now),
+        });
+      } else {
+        await onStatusChange({
+          actionId: button.dataset.actionId,
+          status: button.dataset.actionStatus,
+        });
+      }
+    } catch (error) {
+      if (typeof onStatusError === "function") {
+        await onStatusError({
+          actionId: button.dataset.actionId,
+          status: button.dataset.actionStatus,
+          operation,
+          error,
+        });
+      } else {
+        throw error;
+      }
     } finally {
       button.disabled = false;
     }
@@ -126,12 +136,178 @@ export function mountActionPlan(root, plan, { onStatusChange } = {}) {
   return () => root.removeEventListener("click", handleClick);
 }
 
-function toViewItems(values, horizon) {
-  if (!Array.isArray(values)) return [];
-  return values.map((item) => toViewItem(item, horizon));
+export function nextSeoulMorning(now = new Date()) {
+  const reference = new Date(now);
+  if (Number.isNaN(reference.getTime())) {
+    throw new TypeError("now must be a valid timestamp");
+  }
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+    })
+      .formatToParts(reference)
+      .filter(({ type }) => type !== "literal")
+      .map(({ type, value }) => [type, Number(value)]),
+  );
+  return new Date(
+    Date.UTC(parts.year, parts.month - 1, parts.day + 1, -2, 0, 0, 0),
+  ).toISOString();
 }
 
-function toViewItem(item, expectedHorizon) {
+export function filterWeeklyRisksForOpenAction(risks = [], plan = {}) {
+  if (!Array.isArray(risks)) return [];
+  const action = plan?.firstAction;
+  if (!action || action.status !== "OPEN") return [...risks];
+  const riskIds = new Set(
+    (Array.isArray(action.evidenceRefs) ? action.evidenceRefs : [])
+      .map((reference) => reference?.sourceId)
+      .filter((sourceId) => typeof sourceId === "string" && sourceId.trim()),
+  );
+  const ruleId = typeof action.ruleId === "string" ? action.ruleId : null;
+  return risks.filter(
+    (risk) =>
+      !riskIds.has(risk?.riskId) &&
+      !(ruleId && risk?.ruleId === ruleId),
+  );
+}
+
+export function compressWeeklyRisks(risks = []) {
+  if (!Array.isArray(risks)) return [];
+  const seen = new Set();
+  return risks.filter((risk, index) => {
+    const from = risk?.dateRange?.from;
+    const to = risk?.dateRange?.to ?? from;
+    const metric = risk?.trigger?.metric;
+    const key =
+      typeof from === "string" &&
+      typeof to === "string" &&
+      typeof metric === "string" &&
+      metric.trim()
+        ? `${from}\u0000${to}\u0000${metric}`
+        : `unclassified\u0000${risk?.riskId ?? risk?.ruleId ?? index}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function groupWeeklyRiskRanges(risks = []) {
+  const sorted = compressWeeklyRisks(risks).slice().sort((left, right) =>
+    String(left?.dateRange?.from ?? "").localeCompare(
+      String(right?.dateRange?.from ?? ""),
+    ),
+  );
+  const groups = [];
+  const latestByKey = new Map();
+  for (const risk of sorted) {
+    const metric = risk?.trigger?.metric;
+    const guide = risk?.guidance ?? {};
+    const key = [risk?.severity, metric, guide.headline, guide.reason].join("\u0000");
+    const current = latestByKey.get(key);
+    if (current && rangesTouch(current.risk.dateRange, risk.dateRange)) {
+      current.risk.dateRange.to = laterDate(
+        current.risk.dateRange.to,
+        risk.dateRange.to,
+      );
+      continue;
+    }
+    const entry = {
+      key,
+      risk: {
+        ...risk,
+        dateRange: { ...risk.dateRange },
+      },
+    };
+    groups.push(entry);
+    latestByKey.set(key, entry);
+  }
+  return groups.map(({ risk }) => risk);
+}
+
+function rangesTouch(left = {}, right = {}) {
+  const leftTo = Date.parse(`${left.to ?? left.from}T00:00:00Z`);
+  const rightFrom = Date.parse(`${right.from}T00:00:00Z`);
+  return Number.isFinite(leftTo) &&
+    Number.isFinite(rightFrom) &&
+    rightFrom <= leftTo + 86_400_000;
+}
+
+function laterDate(left, right) {
+  return String(left ?? "").localeCompare(String(right ?? "")) >= 0 ? left : right;
+}
+
+export function composeForecastActionReason(cause, reason) {
+  const sourceCause = String(cause ?? "").trim().replace(/[.!?]+$/u, "");
+  const sourceReason = String(reason ?? "").trim();
+  if (!sourceCause) return sourceReason;
+  const consequence = sourceReason
+    .replace(/^.+?(?:이면|하면|경우|때)\s*/u, "")
+    .trim();
+  return `${sourceCause}. ${consequence || sourceReason}`;
+}
+
+export function formatActionDueLabel(
+  value,
+  { status = "OPEN", now = new Date() } = {},
+) {
+  const due = new Date(value);
+  const reference = new Date(now);
+  if (Number.isNaN(due.getTime()) || Number.isNaN(reference.getTime())) {
+    throw new TypeError("action timestamp must be valid");
+  }
+  if (status === "OPEN" && due.getTime() < reference.getTime()) {
+    return "지연됨 · 지금 확인";
+  }
+  return formatKoreanTimestamp(value);
+}
+
+export function formatActionDueLabelForAction(
+  action,
+  { now = new Date() } = {},
+) {
+  if (!action || typeof action !== "object") {
+    throw new TypeError("action is required");
+  }
+  const reference = new Date(now);
+  const refreshedAt = new Date(action.updatedAt ?? action.createdAt);
+  const dueAt = new Date(action.dueAt);
+  const normalizedRuleId = String(action.ruleId ?? "")
+    .replaceAll(/[.-]+/g, "_")
+    .toUpperCase();
+  const immediateRule = [
+    "CONFIRM_SEASON",
+    "COLLECT_REQUIRED_DATA",
+    "REQUEST_FIELD_SOIL_TEST",
+  ].includes(normalizedRuleId);
+  const immediateFallback =
+    action.status === "OPEN" &&
+    immediateRule &&
+    Number.isFinite(refreshedAt.getTime()) &&
+    Number.isFinite(dueAt.getTime()) &&
+    dueAt.getTime() <= refreshedAt.getTime() &&
+    refreshedAt.getTime() - dueAt.getTime() <= 10 * 60 * 1_000;
+  if (
+    immediateFallback &&
+    Number.isFinite(reference.getTime()) &&
+    reference.getTime() <= refreshedAt.getTime() + 4 * 60 * 60 * 1_000
+  ) {
+    return "지금 확인";
+  }
+  return formatActionDueLabel(action.dueAt, {
+    status: action.status,
+    now: reference,
+  });
+}
+
+function toViewItems(values, horizon, now) {
+  if (!Array.isArray(values)) return [];
+  return values.map((item) => toViewItem(item, horizon, now));
+}
+
+function toViewItem(item, expectedHorizon, now) {
   if (!item || typeof item !== "object" || item.horizon !== expectedHorizon) {
     throw new TypeError("action item horizon does not match its section");
   }
@@ -151,13 +327,35 @@ function toViewItem(item, expectedHorizon) {
     title: item.title,
     instruction: item.instruction,
     reason: item.reason,
+    reasonParts: splitReason(item.reason),
     horizon: item.horizon,
     status: item.status,
     statusLabel: STATUS_LABELS[item.status],
-    dueLabel: formatKoreanTimestamp(item.dueAt),
+    dueLabel: formatActionDueLabelForAction(item, { now }),
     recheckLabel: formatKoreanTimestamp(item.recheckAt),
+    targetLabel: actionTargetLabel(item.cropId),
+    sourceLabel: actionSourceLabel(item.evidenceRefs),
     evidence: [...new Set(item.evidenceRefs.map(toEvidenceLabel))],
   };
+}
+
+function actionTargetLabel(cropId) {
+  const normalized = String(cropId ?? "")
+    .trim()
+    .replace(/^crop-/u, "")
+    .split("-")[0]
+    .toLowerCase();
+  const crop = CROP_LABELS[normalized];
+  return crop ? `${crop} 농장` : "현재 농장";
+}
+
+function actionSourceLabel(references) {
+  const labels = new Set(
+    references
+      .map((reference) => SOURCE_LABELS[reference?.sourceKind])
+      .filter(Boolean),
+  );
+  return labels.size > 0 ? `${labels.size}종 확인` : "분석 근거";
 }
 
 function toEvidenceLabel(reference) {
@@ -182,21 +380,59 @@ function renderCard(item) {
   const controls =
     item.status === "OPEN"
       ? `<div class="action-plan__controls" aria-label="행동 상태 변경">
-          <button type="button" data-action-id="${escapeHtml(item.actionId)}" data-action-status="DONE">완료</button>
-          <button type="button" data-action-id="${escapeHtml(item.actionId)}" data-action-status="SKIPPED">건너뜀</button>
+          <button class="action-plan__complete" type="button" data-action-id="${escapeHtml(item.actionId)}" data-action-status="DONE"><span class="action-plan__check" aria-hidden="true"></span><span class="action-plan__complete-label">완료 표시</span></button>
         </div>`
       : `<p class="action-plan__status">상태: ${escapeHtml(item.statusLabel)}</p>`;
+  const skip =
+    item.status === "OPEN"
+      ? `<button class="action-plan__skip" type="button" data-action-id="${escapeHtml(item.actionId)}" data-action-status="SKIPPED">이번에는 건너뛰기</button>`
+      : "";
+  const snooze =
+    item.status === "OPEN"
+      ? `<button class="action-plan__snooze" type="button" data-action-id="${escapeHtml(item.actionId)}" data-action-snooze="NEXT_MORNING">내일 다시 알림</button>`
+      : "";
+  const cause = item.reasonParts.cause
+    ? `<p><strong>원인</strong><span>${escapeHtml(item.reasonParts.cause)}</span></p>`
+    : "";
+  const dueTone = item.dueLabel.startsWith("지연됨")
+    ? "danger"
+    : item.horizon === "TODAY"
+      ? "today"
+      : "upcoming";
   return `<article class="action-plan__card" data-action-id="${escapeHtml(item.actionId)}">
-    <h3>${escapeHtml(item.title)}</h3>
-    <p class="action-plan__instruction">${escapeHtml(item.instruction)}</p>
-    <p class="action-plan__reason"><strong>이유</strong> ${escapeHtml(item.reason)}</p>
+    <div class="action-plan__copy">
+      <h3>${escapeHtml(item.title)}</h3>
+      <p class="action-plan__importance"><strong>왜 중요할까요?</strong><span>${escapeHtml(item.reasonParts.risk)}</span></p>
+      <dl class="action-plan__quick-meta" aria-label="작업 요약">
+        <div><dt>대상</dt><dd>${escapeHtml(item.targetLabel)}</dd></div>
+        <div><dt>근거</dt><dd>${escapeHtml(item.sourceLabel)}</dd></div>
+        <div><dt>재확인</dt><dd>${escapeHtml(item.recheckLabel)}</dd></div>
+      </dl>
+    </div>
     <dl class="action-plan__meta">
-      <div><dt>기한</dt><dd>${escapeHtml(item.dueLabel)}</dd></div>
-      <div><dt>재확인</dt><dd>${escapeHtml(item.recheckLabel)}</dd></div>
+      <div class="is-${dueTone}"><dt>기한</dt><dd>${escapeHtml(item.dueLabel)}</dd></div>
     </dl>
-    <ul class="action-plan__evidence" aria-label="행동 근거">${evidence}</ul>
+    <details class="action-plan__details">
+      <summary><span>행동 상세 보기</span></summary>
+      <div class="action-plan__facts">
+        ${cause}
+        <p><strong>위험</strong><span>${escapeHtml(item.reasonParts.risk)}</span></p>
+        <p><strong>할 일</strong><span>${escapeHtml(item.instruction)}</span></p>
+      </div>
+      <div class="action-plan__evidence"><strong>판단 근거 ${item.evidence.length}개</strong><ul aria-label="행동 근거">${evidence}</ul></div>
+      <div class="action-plan__secondary-controls">${snooze}${skip}</div>
+    </details>
     ${controls}
   </article>`;
+}
+
+function splitReason(value) {
+  const reason = String(value).trim();
+  const match = reason.match(/^(.+?(?:이면|하면|경우|때))\s+(.+)$/u);
+  if (match) return { cause: match[1], risk: match[2] };
+  const sentences = reason.match(/^(.+?[.!?])\s+(.+)$/u);
+  if (sentences) return { cause: sentences[1], risk: sentences[2] };
+  return { cause: null, risk: reason };
 }
 
 function emptySectionText(section, firstId) {

@@ -54,11 +54,14 @@ export function createLocalPhotoJournal({ indexedDBImpl = globalThis.indexedDB }
   }
 
   return Object.freeze({
-    async addPhoto({ scope, file, observedAt, growthStage = null, note = null, visualSignals = null }) {
+    async addPhoto({ scope, file, photoId = null, observedAt, growthStage = null, note = null, visualSignals = null }) {
       const normalized = normalizeScope(scope);
       assertLocalPhotoFile(file);
       const photo = {
-        photoId: globalThis.crypto?.randomUUID?.() ?? `photo-${Date.now()}`,
+        photoId:
+          typeof photoId === "string" && photoId.trim()
+            ? photoId.trim()
+            : globalThis.crypto?.randomUUID?.() ?? `photo-${Date.now()}`,
         ...normalized,
         scopeKey: scopeKey(normalized),
         observedAt: requireDate(observedAt),

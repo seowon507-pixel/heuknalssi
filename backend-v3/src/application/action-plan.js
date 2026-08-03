@@ -5,6 +5,7 @@ import {
   buildActionPlan,
   createActionItem,
   ruleActionDedupeKey,
+  snoozeActionUntil,
   transitionActionStatus,
 } from "../domain/action-plan.js";
 import { DomainError } from "../domain/errors.js";
@@ -64,6 +65,7 @@ export function createActionPlanService({
       return buildActionPlan(normalized, {
         farmId: scope.farmId,
         cropId: scope.cropId,
+        now: clock(),
       });
     },
 
@@ -245,6 +247,53 @@ export function createActionPlanService({
       assertStoredScope(saved, scope);
       if (saved.status !== updated.status) {
         throw repositoryContractError("updateAction returned the wrong status");
+      }
+      return saved;
+    },
+
+    async snoozeAction({
+      accountId,
+      farmId,
+      actionId,
+      snoozedUntil,
+      confirmed,
+      idempotencyKey,
+    } = {}) {
+      const scope = mutationScope({ accountId, farmId, idempotencyKey });
+      if (confirmed !== true) {
+        throw new DomainError(
+          "ACTION_CONFIRMATION_REQUIRED",
+          "explicit user confirmation is required",
+          { status: 409 },
+        );
+      }
+      const normalizedActionId = identifier(actionId, "actionId");
+      const existingValue = await repository.getAction({
+        accountId: scope.accountId,
+        farmId: scope.farmId,
+        actionId: normalizedActionId,
+      });
+      if (existingValue === null || existingValue === undefined) {
+        throw new DomainError("ACTION_NOT_FOUND", "action was not found", {
+          status: 404,
+        });
+      }
+      const existing = assertActionItem(existingValue);
+      assertStoredScope(existing, scope);
+      const updated = snoozeActionUntil(existing, snoozedUntil, {
+        now: clock(),
+      });
+      const savedValue = await repository.updateAction({
+        accountId: scope.accountId,
+        farmId: scope.farmId,
+        action: updated,
+        expectedUpdatedAt: existing.updatedAt,
+        idempotencyKey: scope.idempotencyKey,
+      });
+      const saved = assertActionItem(savedValue);
+      assertStoredScope(saved, scope);
+      if (saved.snoozedUntil !== updated.snoozedUntil) {
+        throw repositoryContractError("updateAction returned the wrong snooze time");
       }
       return saved;
     },

@@ -8,7 +8,13 @@ import {
 import { summarizeForecastEvaluation } from "./forecast-presentation.mjs";
 import { hasMissingSoilExamHistory } from "./soil-service-guidance.mjs";
 import { suggestAdministrativeAddresses } from "./address-suggestions.mjs";
-import { mountActionPlan } from "./action-plan.mjs";
+import {
+  composeForecastActionReason,
+  filterWeeklyRisksForOpenAction,
+  formatActionDueLabelForAction,
+  groupWeeklyRiskRanges,
+  mountActionPlan,
+} from "./action-plan.mjs";
 import {
   LOCAL_PHOTO_MAX_BYTES,
   analyzePhotoPixels,
@@ -163,6 +169,13 @@ const ERROR_MESSAGES = Object.freeze({
   ACTION_UPDATE_CONFLICT:
     "다른 화면에서 할 일이 변경되었습니다. 최신 목록을 다시 불러옵니다.",
   ACTION_NOT_FOUND: "변경할 할 일을 찾지 못했습니다. 목록을 새로 확인해 주세요.",
+  PHOTO_UPLOAD_INVALID: "JPEG, PNG 또는 WebP 사진을 다시 선택해 주세요.",
+  PHOTO_UPLOAD_TOO_LARGE: "사진은 10MB 이하 파일만 저장할 수 있습니다.",
+  PHOTO_UPLOAD_TOKEN_INVALID: "사진 저장 준비가 만료되었습니다. 다시 선택해 주세요.",
+  PHOTO_STORAGE_UNAVAILABLE: "사진 서버 저장소에 잠시 연결할 수 없습니다.",
+  PHOTO_STORAGE_REJECTED: "사진 서버 저장소가 요청을 거절했습니다.",
+  PHOTO_NOT_FOUND: "삭제할 사진 기록을 찾지 못했습니다.",
+  SEASON_NOT_ACTIVE: "이미 마무리한 시즌에는 사진을 추가할 수 없습니다.",
 });
 
 class ApiRequestError extends Error {
@@ -227,6 +240,27 @@ class BackendApi {
     );
   }
 
+  async saveReportHistory(farmId, payload) {
+    return this.request(`/api/farms/${encodeURIComponent(farmId)}/reports`, {
+      method: "POST",
+      body: payload,
+      csrf: true,
+    });
+  }
+
+  async listReportHistory(farmId, { cropId = null } = {}) {
+    const query = cropId ? `?cropId=${encodeURIComponent(cropId)}` : "";
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/reports${query}`,
+    );
+  }
+
+  async getSavedReport(farmId, reportId) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/reports/${encodeURIComponent(reportId)}`,
+    );
+  }
+
   async saveDeviceBackup(payload, accountKey) {
     return this.request("/api/device-backup", {
       method: "POST",
@@ -251,6 +285,12 @@ class BackendApi {
         body: { question },
         csrf: true,
       },
+    );
+  }
+
+  async getPestGuidance(analysisId) {
+    return this.request(
+      `/api/analyses/${encodeURIComponent(analysisId)}/pest-guidance`,
     );
   }
 
@@ -304,6 +344,18 @@ class BackendApi {
     );
   }
 
+  async snoozeAction(farmId, actionId, snoozedUntil, idempotencyKey) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/actions/${encodeURIComponent(actionId)}`,
+      {
+        method: "PATCH",
+        body: { snoozedUntil, confirmed: true },
+        csrf: true,
+        headers: { "Idempotency-Key": idempotencyKey },
+      },
+    );
+  }
+
   async getParcel(farmId) {
     return this.request(`/api/farms/${encodeURIComponent(farmId)}/parcel`);
   }
@@ -326,6 +378,53 @@ class BackendApi {
     return this.request(
       `/api/farms/${encodeURIComponent(farmId)}/satellite/observations`,
       { method: "POST", body: { confirmed: true }, csrf: true },
+    );
+  }
+
+  async preparePhotoUpload(farmId, payload) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/photo-uploads`,
+      { method: "POST", body: payload, csrf: true },
+    );
+  }
+
+  async addPhoto(farmId, payload) {
+    return this.request(`/api/farms/${encodeURIComponent(farmId)}/photos`, {
+      method: "POST",
+      body: payload,
+      csrf: true,
+    });
+  }
+
+  async getPhotoTimeline(farmId, { cropId, seasonId }) {
+    const query = new URLSearchParams({ cropId, seasonId });
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/photos?${query}`,
+    );
+  }
+
+  async comparePhotos(farmId, payload) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/photos/compare`,
+      { method: "POST", body: payload, csrf: true },
+    );
+  }
+
+  async deletePhoto(farmId, photoId) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/photos/${encodeURIComponent(photoId)}`,
+      { method: "DELETE", body: { confirmed: true }, csrf: true },
+    );
+  }
+
+  async completePhotoSeason(farmId, { cropId, seasonId }) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/seasons/${encodeURIComponent(seasonId)}/complete`,
+      {
+        method: "POST",
+        body: { cropId, confirmed: true },
+        csrf: true,
+      },
     );
   }
 
@@ -417,11 +516,14 @@ let selectedCandidate = null;
 let currentAnalysis = null;
 let currentAnalyses = new Map();
 let currentUiContexts = new Map();
+const pestGuidanceByAnalysis = new Map();
 let pendingAttempt = null;
 let connectionPromise = null;
 let assistantAnalysisId = null;
 let creatingNewFarm = false;
 let disposeActionPlan = null;
+let currentActionPlan = null;
+let actionPlanBusy = false;
 let pendingParcelGeometry = null;
 const photoJournal = createLocalPhotoJournal();
 let photoObjectUrls = [];
@@ -443,6 +545,43 @@ function wireInteractions() {
     void connectBackend(true);
   });
   assistantLauncher?.addEventListener("click", openAssistant);
+  document.querySelector("#sidebar-support-trigger")?.addEventListener("click", openAssistant);
+  document.querySelector("#sidebar-guide-trigger")?.addEventListener("click", openAssistant);
+  document.querySelector("#pest-assistant-trigger")?.addEventListener("click", openAssistant);
+  document.querySelector("#dashboard-refresh")?.addEventListener("click", () => {
+    window.location.reload();
+  });
+  document.querySelectorAll("[data-dashboard-anchor]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelector('[data-view="dashboard"]')?.click();
+      requestAnimationFrame(() => {
+        document
+          .querySelector(`#${button.dataset.dashboardAnchor}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+  });
+  document.querySelectorAll("[data-service-anchor]").forEach((button) => {
+    button.addEventListener("click", () => {
+      requestAnimationFrame(() => {
+        document
+          .querySelector(`#${button.dataset.serviceAnchor}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+  });
+  document.querySelector("#dashboard-photo-check")?.addEventListener("click", () => {
+    document.querySelector('[data-view="services"]')?.click();
+    requestAnimationFrame(() => {
+      document.querySelector("#photo-journal-panel")?.scrollIntoView({ block: "start" });
+    });
+  });
+  document.querySelector("#dashboard-complete-all")?.addEventListener("click", (event) => {
+    void completeAllOpenActions(event.currentTarget);
+  });
+  document.querySelector("#dashboard-all-actions")?.addEventListener("click", () => {
+    toggleFullActionPlan();
+  });
   assistantClose?.addEventListener("click", closeAssistant);
   assistantPanel?.addEventListener("keydown", trapAssistantFocus);
   assistantForm?.addEventListener("submit", (event) => {
@@ -991,7 +1130,7 @@ function selectLocationCandidate(candidate, button) {
   announce("농장 지역을 선택했습니다. 다음 단계로 진행할 수 있습니다.");
 }
 
-async function submitAnalysis() {
+async function submitAnalysis({ refreshExpiredLocation = true } = {}) {
   if (!connected) {
     showSubmitError("백엔드 연결을 먼저 복구해 주세요.");
     return false;
@@ -1091,8 +1230,15 @@ async function submitAnalysis() {
     }
     return true;
   } catch (error) {
+    if (
+      error?.code === "LOCATION_TOKEN_INVALID" &&
+      refreshExpiredLocation &&
+      await refreshConfirmedLocationCandidate()
+    ) {
+      return submitAnalysis({ refreshExpiredLocation: false });
+    }
     if (error?.code === "LOCATION_TOKEN_INVALID") {
-      clearSelectedCandidate("확인한 지역 정보가 만료되었습니다. 지역을 다시 확인해 주세요.");
+      clearSelectedCandidate("확인한 지역을 자동 갱신하지 못했습니다. 지역을 다시 확인해 주세요.");
       navigateToWizardStep(1);
     }
     showSubmitError(errorMessage(error));
@@ -1104,16 +1250,52 @@ async function submitAnalysis() {
   }
 }
 
+async function refreshConfirmedLocationCandidate() {
+  const confirmedName = selectedCandidate?.displayName;
+  if (typeof confirmedName !== "string" || confirmedName.trim() === "") {
+    return false;
+  }
+  try {
+    setLocationStatus("확인한 지역 정보를 갱신하고 있습니다.");
+    const response = await api.searchLocations(confirmedName);
+    const matches = Array.isArray(response?.candidates)
+      ? response.candidates
+        .filter(isLocationCandidate)
+        .filter((candidate) => candidate.displayName === confirmedName)
+      : [];
+    if (matches.length !== 1) return false;
+    selectedCandidate = matches[0];
+    regionInput.value = confirmedName;
+    regionInput.dataset.candidateVerified = "true";
+    pendingAttempt = null;
+    setLocationStatus(`${confirmedName} 지역 확인을 갱신했습니다.`, "success");
+    announce("확인한 농장 지역을 갱신하고 분석을 계속합니다.");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function renderAnalysis(analysis) {
   const summary = analysis?.inputSummary ?? {};
   const cropLabel = CROP_LABELS[summary.crop] ?? summary.crop ?? "작물";
   const regionLabel = summary.regionLabel ?? selectedCandidate?.displayName ?? "선택 지역";
-  const context = `${regionLabel} · ${cropLabel}`;
+  const compactRegion = compactDashboardRegionLabel(regionLabel);
+  const context = `${compactRegion} ${cropLabel} 농장`;
   renderSummaryPanel(analysis, regionLabel, cropLabel);
   document.querySelector("#sidebar-context-value").textContent = context;
   document.querySelector("#topbar-context-value").textContent = context;
   document.querySelector("#dashboard-title").textContent =
-    `${regionLabel} · ${cropLabel} 농장 분석`;
+    context;
+  const scopeLabel = document.querySelector("#dashboard-scope-label");
+  if (scopeLabel) {
+    scopeLabel.hidden = !isRegionalReferenceAnalysis(analysis);
+  }
+  const updatedAt = formatDashboardUpdate(analysis?.createdAt);
+  const topbarUpdatedAt = document.querySelector("#topbar-updated-at");
+  const sidebarUpdatedAt = document.querySelector("#sidebar-updated-at");
+  if (topbarUpdatedAt) topbarUpdatedAt.textContent = updatedAt;
+  if (sidebarUpdatedAt) sidebarUpdatedAt.textContent = updatedAt;
   document.querySelector("#dashboard-mode-copy").textContent =
     summary.usageMode === "ACTIVE_GROWING"
       ? "재배 중 생육 기준 날씨·토양·예보 분석"
@@ -1123,12 +1305,7 @@ function renderAnalysis(analysis) {
       ? "재배 중 생육 점검"
       : "재배 전 환경 분석";
 
-  renderLiveOutlook(analysis);
-  renderDecisionPanel(analysis);
-  renderStateOverview(analysis);
-  renderActionsAndReport(analysis);
-  renderSmartfarmReference(analysis);
-  renderExplanation(analysis);
+  renderDashboardWorkspace(analysis);
   renderEvidenceDialog(analysis);
   renderTechnicalSettings(analysis);
   syncAssistantContext(analysis);
@@ -1139,8 +1316,32 @@ function renderAnalysis(analysis) {
   setDashboardResultVisibility(true);
 }
 
+function compactDashboardRegionLabel(value) {
+  return String(value ?? "")
+    .replace(/^(대한민국|한국)\s*/u, "")
+    .replace(/^서울특별시/u, "서울")
+    .replace(/^부산광역시/u, "부산")
+    .replace(/^대구광역시/u, "대구")
+    .replace(/^인천광역시/u, "인천")
+    .replace(/^광주광역시/u, "광주")
+    .replace(/^대전광역시/u, "대전")
+    .replace(/^울산광역시/u, "울산")
+    .replace(/^세종특별자치시/u, "세종")
+    .replace(/^경기도/u, "경기")
+    .replace(/^강원특별자치도/u, "강원")
+    .replace(/^충청북도/u, "충북")
+    .replace(/^충청남도/u, "충남")
+    .replace(/^전북특별자치도/u, "전북")
+    .replace(/^전라남도/u, "전남")
+    .replace(/^경상북도/u, "경북")
+    .replace(/^경상남도/u, "경남")
+    .replace(/^제주특별자치도/u, "제주")
+    .trim();
+}
+
 async function refreshActionPlan(analysis, { ensureRules = true } = {}) {
-  const root = document.querySelector("#action-plan-panel");
+  const root = document.querySelector("#dashboard-action-list");
+  const fallback = document.querySelector("#dashboard-priority-action");
   const scope = currentFeatureScope(analysis);
   if (!root || !scope || !connected) return;
   root.hidden = false;
@@ -1174,14 +1375,52 @@ async function refreshActionPlan(analysis, { ensureRules = true } = {}) {
       }
       plan = await api.listActions(scope.farmId, scope);
     }
+    currentActionPlan = plan;
     disposeActionPlan?.();
     disposeActionPlan = mountActionPlan(root, plan, {
       onStatusChange: async ({ actionId, status }) => {
         await api.updateAction(scope.farmId, actionId, status, createIdempotencyKey());
         await refreshActionPlan(analysis, { ensureRules: false });
+        const message = document.querySelector("#dashboard-action-batch-status");
+        if (message) {
+          message.hidden = true;
+          message.classList.remove("is-error");
+          message.textContent = "";
+        }
+      },
+      onSnooze: async ({ actionId, snoozedUntil }) => {
+        await api.snoozeAction(
+          scope.farmId,
+          actionId,
+          snoozedUntil,
+          createIdempotencyKey(),
+        );
+        await refreshActionPlan(analysis, { ensureRules: false });
+        const message = document.querySelector("#dashboard-action-batch-status");
+        if (message) {
+          message.hidden = false;
+          message.classList.remove("is-error");
+          message.textContent = "내일 오전 7시에 다시 확인하도록 옮겼습니다.";
+        }
+        announce("할 일을 내일 오전 7시로 옮겼습니다.");
+      },
+      onStatusError: ({ error }) => {
+        const status = document.querySelector("#dashboard-action-batch-status");
+        if (status) {
+          status.hidden = false;
+          status.classList.add("is-error");
+          status.textContent = `작업 상태를 저장하지 못했습니다. ${errorMessage(error)}`;
+        }
+        announce(status?.textContent ?? "작업 상태를 저장하지 못했습니다.");
       },
     });
+    renderMobileActionPlanSummary(plan);
+    renderDashboardWeeklyRisks(analysis, plan);
+    writeStoredTodoFromPlan(plan, analysis);
+    if (fallback) fallback.hidden = true;
+    syncActionHeaderControls(plan);
   } catch (error) {
+    currentActionPlan = null;
     root.replaceChildren(
       element(
         "p",
@@ -1189,9 +1428,91 @@ async function refreshActionPlan(analysis, { ensureRules = true } = {}) {
         `할 일 기록을 불러오지 못했습니다. ${errorMessage(error)}`,
       ),
     );
+    if (fallback) fallback.hidden = false;
+    syncActionHeaderControls(null);
   } finally {
     root.removeAttribute("aria-busy");
   }
+}
+
+function planItems(plan) {
+  return [...(plan?.today ?? []), ...(plan?.upcoming ?? [])];
+}
+
+function syncActionHeaderControls(plan) {
+  const items = planItems(plan);
+  const openCount = (plan?.today ?? []).filter(
+    (item) => item?.status === "OPEN",
+  ).length;
+  const count = document.querySelector(".dashboard-actions .dashboard-count");
+  const completeAll = document.querySelector("#dashboard-complete-all");
+  const allActions = document.querySelector("#dashboard-all-actions");
+  if (count) {
+    count.textContent = `${openCount}개`;
+    count.setAttribute("aria-label", `남은 할 일 ${openCount}개`);
+  }
+  if (completeAll) {
+    completeAll.disabled = actionPlanBusy || openCount === 0;
+    if (!actionPlanBusy) completeAll.textContent = openCount ? "✓ 모두 완료 표시" : "모두 완료됨";
+  }
+  if (allActions) {
+    allActions.disabled = items.length === 0;
+    allActions.setAttribute("aria-label", `전체 작업 ${items.length}개 보기`);
+  }
+}
+
+async function completeAllOpenActions(button) {
+  if (actionPlanBusy || !currentAnalysis) return;
+  const scope = currentFeatureScope(currentAnalysis);
+  const openActions = (currentActionPlan?.today ?? [])
+    .filter((item) => item?.status === "OPEN" && typeof item.actionId === "string");
+  if (!scope || openActions.length === 0) {
+    announce("완료할 열린 작업이 없습니다.");
+    return;
+  }
+  const status = document.querySelector("#dashboard-action-batch-status");
+  actionPlanBusy = true;
+  syncActionHeaderControls(currentActionPlan);
+  if (button) button.textContent = `0 / ${openActions.length} 저장 중`;
+  if (status) {
+    status.hidden = false;
+    status.textContent = `${openActions.length}개 작업을 순서대로 저장하고 있습니다.`;
+  }
+  const failures = [];
+  let completed = 0;
+  for (const action of openActions) {
+    try {
+      await api.updateAction(scope.farmId, action.actionId, "DONE", createIdempotencyKey());
+      completed += 1;
+      if (button) button.textContent = `${completed} / ${openActions.length} 저장 중`;
+    } catch (error) {
+      failures.push({ action, error });
+    }
+  }
+  actionPlanBusy = false;
+  await refreshActionPlan(currentAnalysis, { ensureRules: false });
+  if (status) {
+    status.hidden = false;
+    status.classList.toggle("is-error", failures.length > 0);
+    status.textContent = failures.length
+      ? `${completed}개는 완료했습니다. 저장하지 못한 ${failures.length}개는 그대로 남겨 두었습니다.`
+      : `${completed}개 작업을 모두 완료했습니다.`;
+  }
+  announce(status?.textContent ?? "작업 상태를 갱신했습니다.");
+}
+
+function toggleFullActionPlan() {
+  const root = document.querySelector("#dashboard-action-list");
+  const button = document.querySelector("#dashboard-all-actions");
+  if (!root || !button || button.disabled) return;
+  const expanded = !root.classList.contains("is-expanded");
+  root.classList.toggle("is-expanded", expanded);
+  button.setAttribute("aria-expanded", String(expanded));
+  button.replaceChildren(
+    document.createTextNode(expanded ? "오늘 할 일만 보기 " : "전체 작업 목록 보기 "),
+    element("span", "", expanded ? "↑" : "→"),
+  );
+  announce(expanded ? "당분간 주의와 완료 기록까지 펼쳤습니다." : "오늘 할 일만 표시합니다.");
 }
 
 function currentFeatureScope(analysis) {
@@ -1208,17 +1529,26 @@ function currentFeatureScope(analysis) {
 }
 
 function actionDraftsFromAnalysis(analysis, scope) {
-  const actions = Array.isArray(analysis?.actions) ? analysis.actions : [];
+  const actions = Array.isArray(analysis?.actions)
+    ? analysis.actions.filter((action) => actionRelevantForDisplay(action, analysis))
+    : [];
+  const forecastGuide = forecastRiskGuide(analysis);
   return actions.slice(0, 5).flatMap((action, index) => {
     const title = userActionTitle(action, analysis);
     if (!title) return [];
     const projection = projectAnalysisAction(action, analysis);
+    const practicalInstruction =
+      action.actionId === "CHECK_CURRENT_FORECAST_RISK" &&
+      Array.isArray(forecastGuide.actions) &&
+      forecastGuide.actions.length > 0
+        ? forecastGuide.actions.slice(0, 2).join(" ")
+        : actionDetail(action.actionId, analysis) || title;
     return [{
       ruleId: projection.ruleId || `analysis-action-${index}`,
       draft: {
         ...scope,
         title,
-        instruction: actionDetail(action.actionId, analysis) || title,
+        instruction: practicalInstruction,
         reason: actionReason(action, analysis),
         horizon: projection.horizon,
         dueAt: projection.dueAt,
@@ -1231,165 +1561,831 @@ function actionDraftsFromAnalysis(analysis, scope) {
 }
 
 function actionReason(action, analysis) {
+  if (action?.actionId === "CONFIRM_SEASON") {
+    return "재배 시기와 생육 단계가 확인되지 않아 작물별 시기 기준을 정확히 적용할 수 없습니다.";
+  }
   const weather = forecastRiskGuide(analysis);
   const soil = soilConditionGuide(analysis);
-  if (weather.risk && action.triggerIds?.some((id) => String(id).includes("forecast"))) {
-    return weather.reason || weather.summary || "예보 위험 규칙에서 확인된 행동입니다.";
+  if (weather.risk && actionHasForecastRisk(action, analysis)) {
+    const reason =
+      weather.reason ??
+      weather.summary ??
+      "예보 위험 규칙에서 확인된 행동입니다.";
+    const cause = forecastRiskCause(analysis, action);
+    return cause ? composeForecastActionReason(cause, reason) : reason;
   }
   if (soil.risk) return soil.reason || soil.summary || "토양 조건 확인이 필요한 행동입니다.";
   return resolveDisplayAction(analysis).detail || "현재 분석 근거에서 우선 확인할 행동입니다.";
 }
 
-function renderLiveOutlook(analysis) {
-  const outlook = document.querySelector("#live-outlook");
-  if (!outlook) return;
-  const days = forecastDisplayDays(analysis).slice(0, 7);
-  const forecastCard = element("article", "live-outlook-card");
-  const header = element("div", "live-outlook-header");
-  const headerCopy = element("div");
-  headerCopy.append(
-    element("span", "live-outlook-kicker", "기상 전망"),
-    element(
-      "h2",
-      "",
-      days.length
-        ? `${days.length}일 기온·강수 예보`
-        : "이번 주 예보",
-    ),
+function actionHasForecastRisk(action, analysis) {
+  if (action?.actionId === "CHECK_CURRENT_FORECAST_RISK") return true;
+  const triggerIds = new Set(
+    (Array.isArray(action?.triggerIds) ? action.triggerIds : [])
+      .filter((value) => typeof value === "string"),
   );
-  header.append(
-    headerCopy,
-    element(
-      "span",
-      "forecast-source-badge",
-      "기상청 단기·중기 예보",
-    ),
-  );
-  forecastCard.append(header);
+  return activeForecastRisks(analysis).some((risk) => triggerIds.has(risk.riskId));
+}
 
-  if (days.length > 0) {
-    const activeRisks = activeForecastRisks(analysis);
-    const threshold = forecastTemperatureThreshold(
-      analysis,
-      activeRisks,
-      days,
+function projectedOpenActionPlan(analysis) {
+  const primary = primaryDisplayAction(analysis);
+  if (!primary) return { firstAction: null };
+  try {
+    const projection = projectAnalysisAction(primary, analysis);
+    return {
+      firstAction: {
+        status: "OPEN",
+        ruleId: projection.ruleId,
+        evidenceRefs: projection.evidenceRefs,
+      },
+    };
+  } catch {
+    return { firstAction: null };
+  }
+}
+
+function renderDashboardWorkspace(analysis) {
+  const workspace = document.querySelector("#dashboard-workspace");
+  if (!workspace) return;
+  renderDashboardStatus(analysis);
+  renderDashboardPriorityAction(analysis);
+  renderDashboardRiskTimeline(analysis);
+  renderDashboardWeeklyRisks(analysis, projectedOpenActionPlan(analysis));
+  renderDashboardSoil(analysis);
+  renderCropManagementView(analysis);
+  renderPestInformationView(analysis);
+  workspace.hidden = false;
+}
+
+function renderDashboardStatus(analysis) {
+  const root = document.querySelector("#dashboard-status-summary");
+  if (!root) return;
+  const status = farmStatusSummary(analysis);
+  const indicators = dashboardStatusIndicators(analysis);
+  const displayAction = resolveDisplayAction(analysis);
+  const summary = analysis?.inputSummary ?? {};
+  const cropLabel = CROP_LABELS[summary.crop] ?? summary.crop ?? "작물";
+  const badge = root.querySelector(".dashboard-state-badge");
+  if (badge) {
+    const badgeTone = status.label === "주의" ? "caution" : status.tone;
+    badge.className = `dashboard-state-badge is-${badgeTone}`;
+    badge.textContent = indicators.badge;
+  }
+  const growth = root.querySelector(".dashboard-growth-state");
+  const growthLabel = root.querySelector("#dashboard-growth-state");
+  const growthHelp = growth?.querySelector("p");
+  if (growth) growth.dataset.state = status.tone;
+  if (growthLabel) {
+    growthLabel.textContent = Number.isFinite(status.score)
+      ? `${status.score}점`
+      : status.label;
+    growthLabel.setAttribute(
+      "aria-label",
+      Number.isFinite(status.score)
+        ? `현재 작물 생육점수 ${status.score}점, ${status.label}`
+        : `현재 농장 상태 ${status.label}`,
     );
-    const chartShell = element("div", "forecast-chart-shell");
-    chartShell.append(
-      temperatureRangeChart(days, threshold),
-      forecastChartSummary(days),
-      forecastChartLegend(threshold),
+  }
+  if (growthHelp) {
+    growthHelp.textContent = ["danger", "caution"].includes(status.tone)
+      ? "예방 관리가 필요한 상태입니다."
+      : status.tone === "good"
+        ? "현재 큰 위험 신호가 없습니다."
+        : status.detail || indicators.summary;
+  }
+  indicators.axes.forEach(({ key, state, title, value: displayValue, help, tone }) => {
+    const item = root.querySelector(`[data-dashboard-axis="${key}"]`);
+    const titleNode = item?.querySelector("dt");
+    const valueNode = item?.querySelector("dd");
+    const helpNode = item?.querySelector("span");
+    if (!item || !titleNode || !valueNode || !helpNode) return;
+    item.className = `is-${tone}`;
+    titleNode.textContent = title;
+    valueNode.textContent = displayValue;
+    helpNode.textContent = help;
+    item.dataset.state = state ?? "UNKNOWN";
+  });
+  root.setAttribute("data-state", status.tone);
+  root.setAttribute("aria-label", `${cropLabel} ${indicators.badge}. ${displayAction.title}`);
+}
+
+function dashboardStatusIndicators(analysis) {
+  const days = forecastDisplayDays(analysis).slice(0, 7);
+  const risks = activeForecastRisks(analysis);
+  const soil = soilConditionGuide(analysis);
+  const today = days[0] ?? null;
+  const threshold = forecastTemperatureThreshold(analysis, risks, days);
+  const riskyDayCount = days.filter((day) =>
+    risks.some((risk) => riskCoversDate(risk, day.date))
+  ).length;
+  const firstRisk = risks[0] ?? null;
+  const riskName = dashboardRiskName(firstRisk?.trigger?.metric);
+  const todayTemperature = Number.isFinite(today?.maxTemperature)
+    ? `${formatNumber(today.maxTemperature)}℃`
+    : "자료 없음";
+  const thresholdCopy = Number.isFinite(threshold?.value)
+    ? `작물 기준 ${formatNumber(threshold.value)}℃`
+    : "오늘 예보 기준";
+  const todayHasRisk = Boolean(
+    today && risks.some((risk) => riskCoversDate(risk, today.date)),
+  );
+  const soilPresentation = dashboardSoilIndicator(analysis, soil);
+  const forecastState =
+    analysis?.forecast?.result?.riskState ?? analysis?.forecast?.state;
+  const forecastAvailable = ["READY", "COMPLETE", "PARTIAL"].includes(forecastState);
+  const growthScore = analysis?.growthScore;
+  const badge = Number.isFinite(growthScore?.score)
+    ? growthScore.label
+    : risks.length > 0
+      ? "주의"
+      : soil.tone === "caution"
+        ? "점검 필요"
+        : "양호";
+  const summary = risks.length > 0
+    ? `${riskyDayCount || 1}일간 ${riskName}에 주의하세요.`
+    : soil.tone === "caution"
+      ? "토양 상태를 점검하세요."
+      : "현재 큰 위험 신호가 없습니다.";
+  return {
+    badge,
+    summary,
+    axes: [
+      {
+        key: "climate",
+        state: analysis?.climate?.state,
+        title: "날씨",
+        value: todayTemperature,
+        help: thresholdCopy,
+        tone: todayHasRisk ? "caution" : Number.isFinite(today?.maxTemperature) ? "good" : "info",
+      },
+      soilPresentation,
+      {
+        key: "forecast",
+        state: forecastState,
+        title: "예보",
+        value: forecastAvailable ? `${riskyDayCount}일` : "자료 없음",
+        help: risks.length > 0 ? "주의가 예상되는 날짜" : "주의 날짜 없음",
+        tone: risks.length > 0 ? "caution" : forecastAvailable ? "good" : "info",
+      },
+    ],
+  };
+}
+
+function dashboardSoilIndicator(analysis, guide) {
+  const soil = analysis?.soil;
+  const basis = soil?.result?.measurementBasis;
+  const phMetric = Array.isArray(soil?.result?.metrics)
+    ? soil.result.metrics.find((metric) => metric?.metric === "PH")
+    : null;
+  if (["USER_SOIL_TEST", "PROVIDER_SOIL_TEST"].includes(basis)) {
+    const measuredPh = String(guide.condition ?? "").match(/pH\s+([0-9.]+)/u)?.[1];
+    return {
+      key: "soil",
+      state: soil?.state,
+      title: "토양",
+      value: measuredPh ? `pH ${measuredPh}` : "검사값",
+      help: guide.tone === "caution" ? "작물 기준 밖 항목 있음" : "작물 기준 안",
+      tone: guide.tone === "caution" ? "caution" : "good",
+    };
+  }
+  if (basis === "REGIONAL_STATISTICS" && Number.isFinite(phMetric?.outsideRatio)) {
+    return {
+      key: "soil",
+      state: soil?.state,
+      title: "토양",
+      value: formatPercent(phMetric.outsideRatio),
+      help: "작물 pH 기준 밖 면적",
+      tone: phMetric.outsideRatio > 0 ? "caution" : "good",
+    };
+  }
+  if (soil?.state === "NOT_APPLICABLE") {
+    return {
+      key: "soil",
+      state: soil.state,
+      title: "토양",
+      value: "양액",
+      help: "시설 pH·EC로 관리",
+      tone: "good",
+    };
+  }
+  return {
+    key: "soil",
+    state: soil?.state,
+    title: "토양",
+    value: "자료 없음",
+    help: "연결된 값 없음",
+    tone: "info",
+  };
+}
+
+function dashboardRiskName(metric) {
+  return ({
+    maxTemperature: "고온",
+    minTemperature: "저온",
+    precipitationProbability: "비",
+    precipitation: "강수",
+    precipitationAmount: "강수",
+  })[metric] ?? "예보";
+}
+
+function renderCropManagementView(analysis) {
+  const overview = document.querySelector("#crop-management-overview");
+  if (!overview) return;
+  const summary = analysis?.inputSummary ?? {};
+  const uiContext = currentUiContexts.get(summary.crop);
+  const cropLabel = CROP_LABELS[summary.crop] ?? summary.crop ?? "작물";
+  const regionLabel = summary.regionLabel?.trim() || "현재 농장";
+  const status = farmStatusSummary(analysis);
+  const displayAction = resolveDisplayAction(analysis);
+  const stateLabel = ({
+    danger: "집중 관리",
+    caution: "주의 관리",
+    good: "안정",
+    loading: "확인 중",
+    info: "참고",
+  })[status.tone] ?? "확인";
+  const title = overview.querySelector("#crop-management-overview-title");
+  const state = overview.querySelector("#crop-management-state");
+  if (title) title.textContent = `${regionLabel} · ${cropLabel}`;
+  if (state) {
+    state.className = `feature-status-chip is-${status.tone}`;
+    state.textContent = stateLabel;
+  }
+  const stage = overview.querySelector("#crop-management-stage");
+  const environment = overview.querySelector("#crop-management-environment");
+  const season = overview.querySelector("#crop-management-season");
+  if (stage) {
+    stage.textContent = uiContext?.growthLabel ??
+      GROWTH_LABELS[summary.growthStage] ??
+      "단계 공통 관리";
+  }
+  if (environment) {
+    environment.textContent = uiContext?.cultivationLabel ??
+      CULTIVATION_LABELS[summary.cultivationMode] ??
+      "재배 환경 확인";
+  }
+  if (season) {
+    season.textContent = uiContext?.growthRecommended
+      ? "날짜 기준 AI 예상"
+      : summary.seasonLabel
+        ? "선택한 재배 시기"
+        : "날짜 기준 AI 예상";
+  }
+  const focusTitle = document.querySelector("#crop-management-focus-title");
+  const focusCopy = document.querySelector("#crop-management-focus-copy");
+  if (focusTitle) focusTitle.textContent = displayAction.title;
+  if (focusCopy) focusCopy.textContent = displayAction.detail;
+  const checklist = document.querySelector("#crop-management-checklist");
+  if (!checklist) return;
+  checklist.replaceChildren(
+    ...managementChecklistItems(analysis).map((item, index) => {
+      const card = element("article", "management-check-item");
+      const number = element("span", "management-check-number", String(index + 1));
+      const copy = element("div", "");
+      copy.append(
+        element("span", "management-check-label", item.label),
+        element("strong", "", item.title),
+        element("p", "", item.detail),
+      );
+      card.append(number, copy);
+      return card;
+    }),
+  );
+}
+
+function managementChecklistItems(analysis) {
+  const indicators = dashboardStatusIndicators(analysis);
+  const climate = indicators.axes.find((axis) => axis.key === "climate");
+  const soil = indicators.axes.find((axis) => axis.key === "soil");
+  const pestGuidance = pestGuidanceByAnalysis.get(analysis?.analysisId);
+  const observation = pestGuidance?.observations?.[0] ?? {
+    part: "작물 관찰",
+    guidance: "병해충 관찰 기준을 불러오는 중입니다.",
+  };
+  return [
+    {
+      label: "날씨 대응",
+      title: `${climate?.value ?? "자료 없음"} · ${climate?.help ?? "예보 확인"}`,
+      detail: indicators.summary,
+    },
+    {
+      label: "토양·물 관리",
+      title: `${soil?.title ?? "토양"} ${soil?.value ?? "자료 없음"}`,
+      detail: soilConditionGuide(analysis).condition,
+    },
+    {
+      label: "작물 관찰",
+      title: observation.part,
+      detail: observation.guidance,
+    },
+  ];
+}
+
+function renderPestInformationView(analysis, { requestGuidance = true } = {}) {
+  const overview = document.querySelector("#pest-alert-overview");
+  if (!overview) return;
+  const crop = analysis?.inputSummary?.crop;
+  const cropLabel = CROP_LABELS[crop] ?? crop ?? "작물";
+  const groupedRisks = groupWeeklyRiskRanges(activeForecastRisks(analysis));
+  const alertCount = groupedRisks.length;
+  const state = overview.querySelector("#pest-alert-state");
+  const title = overview.querySelector("#pest-alert-overview-title");
+  const summary = overview.querySelector("#pest-alert-summary");
+  const navCount = document.querySelector("#pest-nav-count");
+  if (state) {
+    state.className = `feature-status-chip ${alertCount > 0 ? "is-caution" : "is-good"}`;
+    state.textContent = alertCount > 0 ? `예방 점검 ${alertCount}건` : "현재 경보 없음";
+  }
+  if (title) {
+    title.textContent = alertCount > 0
+      ? `${cropLabel}의 기상 연계 예방 점검`
+      : `${cropLabel}의 긴급 기상 신호는 없습니다.`;
+  }
+  if (summary) {
+    summary.textContent = alertCount > 0
+      ? "기상 위험이 병해충 발생을 뜻하지는 않습니다. 아래 날짜 전에 작물의 이상 징후를 먼저 확인하세요."
+      : "병해충이 없다고 확정한 결과는 아닙니다. 아래 관찰 항목으로 작물 변화를 꾸준히 확인하세요.";
+  }
+  if (navCount) {
+    navCount.textContent = String(Math.min(alertCount, 9));
+    navCount.hidden = alertCount === 0;
+  }
+  const signalRoot = document.querySelector("#pest-weather-signals");
+  if (signalRoot) {
+    signalRoot.replaceChildren(
+      ...(alertCount > 0
+        ? groupedRisks.map((risk) => {
+            const severity = risk.severity === "WARNING" ? "danger" : "caution";
+            const dateLabel = risk.dateRange.from === risk.dateRange.to
+              ? formatExplicitForecastDate(risk.dateRange.from)
+              : `${formatExplicitForecastDate(risk.dateRange.from)}–${formatExplicitForecastDate(risk.dateRange.to)}`;
+            const guide = risk.guidance ?? {};
+            const card = element("article", `pest-signal-card is-${severity}`);
+            card.append(
+              element("span", "pest-signal-date", dateLabel),
+              element("strong", "", guide.headline ?? riskTriggerSummary(risk)),
+              element("p", "", guide.reason ?? riskTriggerSummary(risk)),
+            );
+            return card;
+          })
+        : [
+            (() => {
+              const card = element("article", "pest-signal-card is-good");
+              card.append(
+                element("span", "pest-signal-date", "앞으로 7일"),
+                element("strong", "", "긴급 기상 위험 신호 없음"),
+                element("p", "", "정기 관찰은 계속하고 새 증상이 보이면 사진과 발생 위치를 기록하세요."),
+              );
+              return card;
+            })(),
+          ]),
     );
-    const dayList = element("div", "forecast-day-list");
-    dayList.setAttribute("role", "list");
-    dayList.setAttribute("aria-label", "날짜별 예보");
-    dayList.append(
-      ...days.map((day) =>
-        forecastDayCard(day, activeRisks.some((risk) => riskCoversDate(risk, day.date))),
+  }
+  const observationRoot = document.querySelector("#pest-observation-list");
+  if (!observationRoot) return;
+  const guidance = pestGuidanceByAnalysis.get(analysis?.analysisId);
+  const observations = guidance?.observations ?? [];
+  if (observations.length === 0) {
+    observationRoot.replaceChildren(
+      element("p", "feature-empty", "검수된 작물 관찰 기준을 불러오고 있습니다."),
+    );
+    if (requestGuidance) void refreshPestGuidance(analysis);
+    return;
+  }
+  observationRoot.replaceChildren(
+    ...observations.map(({ part, guidance: observationGuide }, index) => {
+      const card = element("article", "pest-observation-card");
+      const copy = element("div", "");
+      copy.append(
+        element("strong", "", part),
+        element("p", "", observationGuide),
+      );
+      card.append(
+        element("span", "pest-observation-icon", String(index + 1)),
+        copy,
+      );
+      return card;
+    }),
+  );
+  const sourceNote = document.querySelector("#pest-source-note");
+  const sourceLink = document.querySelector("#pest-source-link");
+  if (sourceNote) {
+    sourceNote.textContent = guidance.liveOccurrenceState === "NOT_CONNECTED"
+      ? "검수 가이드 적용 · 실시간 지역 발생정보는 아직 연결 전"
+      : "검수 가이드와 지역 발생정보 적용";
+  }
+  if (sourceLink && guidance.source?.sourceUrl) {
+    sourceLink.href = guidance.source.sourceUrl;
+    sourceLink.hidden = false;
+  }
+}
+
+async function refreshPestGuidance(analysis) {
+  const analysisId = analysis?.analysisId;
+  if (!analysisId || pestGuidanceByAnalysis.has(analysisId)) return;
+  try {
+    const guidance = await api.getPestGuidance(analysisId);
+    pestGuidanceByAnalysis.set(analysisId, guidance);
+    if (currentAnalysis?.analysisId === analysisId) {
+      renderPestInformationView(analysis, { requestGuidance: false });
+      renderCropManagementView(analysis);
+    }
+  } catch (error) {
+    const root = document.querySelector("#pest-observation-list");
+    if (root && currentAnalysis?.analysisId === analysisId) {
+      root.replaceChildren(
+        element("p", "feature-empty", `관찰 기준을 불러오지 못했습니다. ${errorMessage(error)}`),
+      );
+    }
+  }
+}
+
+function renderDashboardPriorityAction(analysis) {
+  const root = document.querySelector("#dashboard-priority-action");
+  const actionList = document.querySelector("#dashboard-action-list");
+  const mobileSummary = document.querySelector("#dashboard-mobile-action-summary");
+  if (!root) return;
+  currentActionPlan = null;
+  actionPlanBusy = false;
+  const batchStatus = document.querySelector("#dashboard-action-batch-status");
+  if (batchStatus) {
+    batchStatus.hidden = true;
+    batchStatus.classList.remove("is-error");
+    batchStatus.textContent = "";
+  }
+  const displayAction = resolveDisplayAction(analysis);
+  const primary = primaryDisplayAction(analysis);
+  let projection = null;
+  try {
+    projection = primary ? projectAnalysisAction(primary, analysis) : null;
+  } catch {
+    projection = null;
+  }
+  const copy = element("div", "dashboard-priority-copy");
+  copy.append(
+    element("span", "dashboard-priority-badge", displayAction.status),
+    element("h3", "", displayAction.title),
+    element("p", "", displayAction.detail),
+  );
+  if (Array.isArray(displayAction.actions) && displayAction.actions.length > 0) {
+    copy.append(actionStepList(displayAction.actions.slice(0, 3), "dashboard-priority-steps"));
+  }
+  const timing = element("dl", "dashboard-priority-timing");
+  const dueLabel = projection?.dueAt
+    ? formatActionDueLabelForAction({
+        status: "OPEN",
+        ruleId: projection.ruleId,
+        createdAt: analysis?.createdAt,
+        dueAt: projection.dueAt,
+      })
+    : null;
+  if (projection?.dueAt) {
+    appendDefinition(timing, "기한", dueLabel);
+  }
+  if (projection?.recheckAt) {
+    appendDefinition(timing, "재확인", formatDateTime(projection.recheckAt));
+  }
+  const evidenceButton = element(
+    "button",
+    "button button-secondary dashboard-priority-evidence",
+    "이유와 근거 보기",
+  );
+  evidenceButton.type = "button";
+  evidenceButton.addEventListener("click", () => openEvidenceDialog());
+  const row = element("div", "dashboard-action-row");
+  const check = element("span", "dashboard-action-check", "");
+  check.setAttribute("aria-hidden", "true");
+  row.append(check, copy);
+  copy.append(timing, evidenceButton);
+  root.replaceChildren(row);
+  root.hidden = false;
+  if (mobileSummary) {
+    mobileSummary.replaceChildren(
+      element(
+        "strong",
+        "",
+        dueLabel ? dueSummaryLabel(dueLabel) : "오늘 확인",
+      ),
+      element("span", "", displayAction.title),
+    );
+    mobileSummary.hidden = false;
+  }
+  const count = document.querySelector(".dashboard-actions .dashboard-count");
+  if (count) {
+    count.textContent = "준비 중";
+    count.setAttribute("aria-label", "할 일 준비 중");
+  }
+  if (actionList) {
+    actionList.replaceChildren(
+      element("p", "dashboard-action-loading", "오늘 할 일을 불러오고 있습니다."),
+    );
+  }
+}
+
+function renderMobileActionPlanSummary(plan) {
+  const root = document.querySelector("#dashboard-mobile-action-summary");
+  const firstAction = plan?.firstAction;
+  if (!root) return;
+  if (
+    firstAction?.status !== "OPEN" ||
+    firstAction?.horizon !== "TODAY"
+  ) {
+    root.replaceChildren();
+    root.hidden = true;
+    return;
+  }
+  const dueLabel = formatActionDueLabelForAction(firstAction);
+  root.replaceChildren(
+    element(
+      "strong",
+      "",
+      dueSummaryLabel(dueLabel),
+    ),
+    element("span", "", firstAction.title),
+  );
+  root.hidden = false;
+}
+
+function dueSummaryLabel(label) {
+  return label === "지금 확인" || label.startsWith("지연됨")
+    ? label
+    : `${label}까지`;
+}
+
+function renderDashboardRiskTimeline(analysis) {
+  const root = document.querySelector("#dashboard-forecast-chart");
+  const detailRoot = document.querySelector("#dashboard-forecast-detail-chart");
+  if (!root || !detailRoot) return;
+  const days = forecastDisplayDays(analysis).slice(0, 7);
+  const risks = activeForecastRisks(analysis);
+  if (days.length === 0) {
+    root.replaceChildren(
+      element("p", "dashboard-empty-state", "예보를 다시 확인해 주세요."),
+    );
+    detailRoot.replaceChildren(
+      element("p", "dashboard-empty-state", "표시할 예보 그래프가 없습니다."),
+    );
+    return;
+  }
+  const list = element("ol", "dashboard-risk-track");
+  list.setAttribute("aria-label", "7일 작물 위험 변화");
+  days.forEach((day) => {
+    const dayRisks = risks.filter((risk) => riskCoversDate(risk, day.date));
+    const outlook = forecastDailyOutlook(analysis, day, dayRisks);
+    const severity = outlook.className;
+    const item = element("li", `dashboard-risk-day is-${severity}`);
+    const dateParts = dashboardDateParts(day.date);
+    const time = element("time", "", "");
+    time.dateTime = day.date;
+    time.append(
+      element("span", "dashboard-risk-date", dateParts.date),
+      element(
+        "span",
+        `dashboard-risk-weekday${dateParts.isSunday ? " is-sunday" : ""}`,
+        dateParts.weekday,
       ),
     );
-    forecastCard.append(
-      chartShell,
-      dayList,
-      element("p", "forecast-scroll-hint", "옆으로 밀어 나머지 날짜 보기"),
-    );
-  } else {
-    const empty = element("div", "forecast-empty");
-    const retry = element("button", "button button-secondary", "예보 다시 불러오기");
-    retry.type = "button";
-    retry.addEventListener("click", () => {
-      void submitAnalysis();
-    });
-    empty.append(
-      element("div", "", ""),
-      element("strong", "", "현재 예보를 불러오지 못했습니다."),
+    item.append(
+      time,
+      element("i", "dashboard-risk-marker", ""),
+      element(
+        "strong",
+        "",
+        outlook.label,
+      ),
       element(
         "span",
         "",
-        "같은 농장 조건으로 예보만 다시 확인할 수 있습니다.",
+        Number.isFinite(day.maxTemperature)
+          ? `최고 ${formatNumber(day.maxTemperature)}℃`
+          : "기온 자료 없음",
       ),
-      retry,
     );
-    forecastCard.append(empty);
-  }
-
-  const actionCard = element("aside", "live-action-card");
-  const actionHeader = element("div", "live-action-header");
-  const actionHeaderCopy = element("div");
-  actionHeaderCopy.append(
-    element("span", "live-action-kicker", "우선 조치"),
-    element("h2", "", "오늘의 점검 항목"),
+    list.append(item);
+  });
+  const threshold = forecastTemperatureThreshold(analysis, risks, days);
+  root.replaceChildren(list);
+  detailRoot.replaceChildren(
+    forecastChartLegend(threshold),
+    temperatureRangeChart(days, threshold),
+    forecastRiskLevelRow(days, risks, analysis),
   );
-  const displayAction = resolveDisplayAction(analysis);
-  const weatherGuide = forecastRiskGuide(analysis);
-  const soilGuide = soilConditionGuide(analysis);
-  const conditionRow = element("div", "live-action-condition-row");
-  conditionRow.setAttribute("aria-label", "날씨와 토양 상태");
-  conditionRow.append(
-    actionConditionSummary("날씨", weatherGuide.condition),
-    actionConditionSummary("토양", soilGuide.condition),
-  );
-  actionHeader.append(
-    actionHeaderCopy,
-    element("span", "live-action-status", displayAction.status),
-  );
-  const visual = actionVisual(analysis, weatherGuide, soilGuide);
-  const meta = element("div", "live-action-meta");
-  meta.append(
-    element(
-      "span",
-      "",
-      `${formatKoreanDate(new Date())} · 오늘 예보 기준`,
-    ),
-    element(
-      "span",
-      "",
-      days.length
-        ? `예보 기간 ${days.length}일`
-        : "예보 다시 확인 필요",
-    ),
-    element(
-      "span",
-      "",
-      "농장별 안내",
-    ),
-  );
-  const actionButton = element(
-    "button",
-    "live-action-button",
-    "이유와 행동 보기",
-  );
-  actionButton.type = "button";
-  actionButton.addEventListener("click", () => openEvidenceDialog());
-  actionCard.append(
-    actionHeader,
-    conditionRow,
-    visual,
-    element("p", "live-action-title", displayAction.title),
-    element(
-      "p",
-      "live-action-context",
-      displayAction.detail,
-    ),
-    actionStepList(displayAction.actions, "live-action-steps"),
-    actionButton,
-    meta,
-  );
-  outlook.replaceChildren(
-    forecastCard,
-    actionCard,
-    renderFarmConditionGuide(analysis),
-  );
-  outlook.hidden = false;
 }
 
-function actionConditionSummary(label, condition) {
-  const item = element("div", "live-action-condition");
-  item.append(
-    element("span", "", label),
-    element("strong", "", condition || "확인 필요"),
+function forecastDailyOutlook(analysis, day, dayRisks) {
+  const outlooks = analysis?.forecast?.result?.dailyOutlooks;
+  const level = Array.isArray(outlooks)
+    ? outlooks.find((item) => item?.date === day.date)?.level
+    : null;
+  const byLevel = {
+    DANGER: { className: "danger", label: "위험" },
+    CAUTION: { className: "caution", label: "주의" },
+    NORMAL: { className: "normal", label: "보통" },
+    FAVORABLE: { className: "favorable", label: "양호" },
+    UNKNOWN: { className: "unknown", label: "정보 없음" },
+  };
+  if (byLevel[level]) return byLevel[level];
+  if (dayRisks.some((risk) => risk.severity === "WARNING")) {
+    return byLevel.DANGER;
+  }
+  if (dayRisks.length > 0) return byLevel.CAUTION;
+  return byLevel.NORMAL;
+}
+
+function dashboardDateParts(value) {
+  const parsed = new Date(`${String(value)}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return { date: String(value), weekday: "", isSunday: false };
+  }
+  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+  return {
+    date: `${parsed.getUTCMonth() + 1}.${parsed.getUTCDate()}`,
+    weekday: weekdays[parsed.getUTCDay()],
+    isSunday: parsed.getUTCDay() === 0,
+  };
+}
+
+function renderDashboardWeeklyRisks(analysis, actionPlan = null) {
+  const root = document.querySelector("#dashboard-weekly-risks");
+  if (!root) return;
+  const allRisks = activeForecastRisks(analysis);
+  const visibleRisks = filterWeeklyRisksForOpenAction(allRisks, actionPlan);
+  const risks = groupWeeklyRiskRanges(visibleRisks)
+    .map((risk) => {
+      const guide = risk?.guidance ?? {};
+      return {
+        severity: risk.severity,
+        headline: guide.headline ?? riskTriggerSummary(risk),
+        reason: guide.reason ?? riskTriggerSummary(risk),
+        from: risk.dateRange.from,
+        to: risk.dateRange.to,
+      };
+    });
+  if (risks.length === 0) {
+    root.querySelector(".dashboard-loading-copy")?.remove();
+    root.querySelector(".dashboard-weekly-list")?.remove();
+    root.append(
+      element(
+        "p",
+        "dashboard-loading-copy is-good",
+        allRisks.length > 0
+          ? "오늘 할 일 외 추가 주의 없음"
+          : "현재 예보 범위에서 확인된 주의 신호가 없습니다.",
+      ),
+    );
+    return;
+  }
+  const list = element("ol", "dashboard-weekly-list");
+  risks.forEach((risk) => {
+    const item = element(
+      "li",
+      `dashboard-weekly-item is-${risk.severity === "WARNING" ? "danger" : "caution"}`,
+    );
+    const copy = element("div", "");
+    const dateLabel = risk.from === risk.to
+      ? formatExplicitForecastDate(risk.from)
+      : `${formatExplicitForecastDate(risk.from)}–${formatExplicitForecastDate(risk.to)}`;
+    copy.append(
+      element("span", "", dateLabel),
+      element("strong", "", risk.headline),
+      element("p", "", risk.reason),
+    );
+    const guideButton = element(
+      "button",
+      "dashboard-risk-guide-button",
+      "대응 가이드",
+    );
+    guideButton.type = "button";
+    guideButton.setAttribute(
+      "aria-label",
+      `${dateLabel} ${risk.headline} 대응 가이드 보기`,
+    );
+    guideButton.addEventListener("click", () => openEvidenceDialog("weather"));
+    item.append(copy, guideButton);
+    list.append(item);
+  });
+  root.querySelector(".dashboard-loading-copy")?.remove();
+  root.querySelector(".dashboard-weekly-list")?.remove();
+  root.append(list);
+}
+
+function renderDashboardSoil(analysis) {
+  const root = document.querySelector("#dashboard-soil-summary");
+  if (!root) return;
+  const placeholder = root.querySelector(".dashboard-soil-placeholder");
+  const badge = root.querySelector(".dashboard-data-badge");
+  const measurementBasis = analysis?.soil?.result?.measurementBasis;
+  const title = root.querySelector("#dashboard-soil-summary-title");
+  if (title) title.textContent = "토양 상태";
+  if (badge) {
+    badge.textContent = ["USER_SOIL_TEST", "PROVIDER_SOIL_TEST"].includes(measurementBasis)
+      ? "내 밭 검사값"
+      : "내 밭 검사값 아님";
+    badge.hidden = true;
+  }
+  if (placeholder) {
+    placeholder.className = "dashboard-soil-placeholder is-metric-grid";
+    placeholder.replaceChildren(
+      ...dashboardSoilMetricItems(analysis).map((item) => {
+        const metric = element(
+          "div",
+          `dashboard-soil-metric${item.available ? "" : " is-muted"}`,
+        );
+        metric.setAttribute(
+          "aria-label",
+          `${item.label} ${item.value}, ${item.help}`,
+        );
+        metric.append(
+          element("span", "", item.label),
+          element("strong", "", item.value),
+          element("small", "", item.help),
+        );
+        return metric;
+      }),
+    );
+  }
+  root.querySelector(".dashboard-soil-test-link")?.remove();
+  if (hasMissingSoilExamHistory(analysis)) {
+    const serviceButton = element(
+      "button",
+      "button button-secondary dashboard-soil-test-link",
+      "무료 토양검정 받기",
+    );
+    serviceButton.type = "button";
+    serviceButton.addEventListener("click", () => {
+      document.dispatchEvent(
+        new CustomEvent("heuknalssi:show-services", {
+          detail: { targetId: "soil-exam-title" },
+        }),
+      );
+    });
+    serviceButton.classList.add("dashboard-soil-test-link");
+    const details = root.querySelector(".dashboard-text-button");
+    root.insertBefore(serviceButton, details ?? null);
+  }
+}
+
+function dashboardSoilMetricItems(analysis) {
+  const soil = analysis?.soil;
+  const result = soil?.result ?? {};
+  const basis = result.measurementBasis;
+  const userMeasured = result.userSoilTest ?? {};
+  const providerMeasurements = new Map(
+    (result.providerSoilTest?.measurements ?? []).map((item) => [
+      item.metric,
+      item.value,
+    ]),
   );
-  return item;
+  const measuredValue = (metric) => {
+    if (basis === "USER_SOIL_TEST") {
+      return userMeasured[SOIL_METRIC_FIELDS[metric]];
+    }
+    if (basis === "PROVIDER_SOIL_TEST") {
+      return providerMeasurements.get(metric);
+    }
+    return null;
+  };
+  const phMetric = Array.isArray(result.metrics)
+    ? result.metrics.find((metric) => metric?.metric === "PH")
+    : null;
+  const measuredPh = measuredValue("PH");
+  const measuredEc = measuredValue("EC");
+  const regionalPh = basis === "REGIONAL_STATISTICS" &&
+    Number.isFinite(phMetric?.outsideRatio)
+    ? formatPercent(phMetric.outsideRatio)
+    : null;
+  const actualBasis = ["USER_SOIL_TEST", "PROVIDER_SOIL_TEST"].includes(basis);
+
+  return [
+    {
+      label: "수분",
+      value: "—",
+      help: "미측정",
+      available: false,
+    },
+    {
+      label: "EC",
+      value: Number.isFinite(measuredEc) ? `${formatNumber(measuredEc)} dS/m` : "—",
+      help: Number.isFinite(measuredEc) ? "검사값" : actualBasis ? "검사값 없음" : "검사 필요",
+      available: Number.isFinite(measuredEc),
+    },
+    {
+      label: "pH",
+      value: Number.isFinite(measuredPh) ? formatNumber(measuredPh) : regionalPh ?? "—",
+      help: Number.isFinite(measuredPh)
+        ? "검사값"
+        : regionalPh
+          ? "지역 기준 밖 면적"
+          : "검사 필요",
+      available: Number.isFinite(measuredPh) || Boolean(regionalPh),
+    },
+    {
+      label: "온도",
+      value: "—",
+      help: "미측정",
+      available: false,
+    },
+  ];
 }
 
 function renderFarmConditionGuide(analysis, idSuffix = "dashboard") {
@@ -1399,6 +2395,7 @@ function renderFarmConditionGuide(analysis, idSuffix = "dashboard") {
   guide.setAttribute("aria-labelledby", titleId);
   const weather = forecastRiskGuide(analysis);
   const soil = soilConditionGuide(analysis);
+  const regional = isRegionalReferenceAnalysis(analysis);
   const header = element("div", "farm-condition-guide-header");
   const headerCopy = element("div");
   const title = element("h2", "", "토양·날씨 종합 가이드");
@@ -1417,20 +2414,25 @@ function renderFarmConditionGuide(analysis, idSuffix = "dashboard") {
     element(
       "span",
       `farm-condition-status ${weather.risk ? "is-caution" : ""}`.trim(),
-      weather.risk ? "주의 항목 있음" : "확인 항목",
+      weather.risk
+        ? "주의 항목 있음"
+        : regional
+          ? "지역 분석 완료"
+          : "분석 완료",
     ),
   );
 
   const facts = element("div", "farm-condition-facts");
   facts.append(
-    conditionFactCard("날씨", weather),
-    conditionFactCard("농장 토양", soil),
+    conditionFactCard("날씨", weather, "weather", { hideCaveat: regional }),
+    conditionFactCard("농장 토양", soil, "soil", { hideCaveat: regional }),
   );
 
   const actionBox = element(
     "section",
     "farm-condition-actions action-priority-card",
   );
+  actionBox.dataset.guideSection = "summary";
   const combinedActions = uniqueText([
     ...weather.actions,
     ...soil.actions,
@@ -1502,7 +2504,7 @@ function renderFarmConditionGuide(analysis, idSuffix = "dashboard") {
   return guide;
 }
 
-function conditionFactCard(label, guide) {
+function conditionFactCard(label, guide, section, { hideCaveat = false } = {}) {
   const fullReason =
     typeof guide.reason === "string" ? guide.reason.trim() : "";
   const summaryReason = conditionFactSummary(fullReason);
@@ -1510,6 +2512,7 @@ function conditionFactCard(label, guide) {
     "article",
     `condition-fact-card ${guide.tone ? `is-${guide.tone}` : ""}`.trim(),
   );
+  if (section) card.dataset.guideSection = section;
   card.append(
     element("span", "condition-fact-label", label),
     element("strong", "condition-fact-title", guide.condition),
@@ -1517,9 +2520,9 @@ function conditionFactCard(label, guide) {
       "h3",
       "",
       guide.tone === "good"
-        ? "무엇을 알 수 있나요"
+        ? "분석 결과"
         : guide.tone === "unknown"
-          ? "왜 확인이 필요한가요"
+          ? "현재 분석 범위"
           : "왜 주의해야 하나요",
     ),
     element("p", "condition-fact-summary", summaryReason),
@@ -1531,7 +2534,7 @@ function conditionFactCard(label, guide) {
       element("p", "condition-fact-full-reason", fullReason),
     );
   }
-  if (guide.caveat) {
+  if (guide.caveat && !hideCaveat) {
     detailsBody.append(element("p", "condition-fact-caveat", guide.caveat));
   }
   if (isSafeHttpUrl(guide.sourceUrl)) {
@@ -1571,6 +2574,11 @@ function actionStepList(actions, className) {
 }
 
 function combinedGuideSummary(weather, soil) {
+  if (weather.regional && soil.ready) {
+    return weather.risk
+      ? "지역 예보와 지역 토양 통계를 함께 분석해 우선 행동을 정리했습니다."
+      : "지역 예보와 지역 토양 통계를 기준으로 현재 적용할 주의 신호와 행동을 분석했습니다.";
+  }
   const forecastScope = weather.regional
     ? "시·군 대표 예보와 "
     : "농장 위치 예보와 ";
@@ -1602,7 +2610,7 @@ function temperatureRangeChart(days, threshold = null) {
   const svgNamespace = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNamespace, "svg");
   svg.setAttribute("class", "forecast-temperature-chart");
-  svg.setAttribute("viewBox", "0 0 560 150");
+  svg.setAttribute("viewBox", "0 0 640 138");
   svg.setAttribute("role", "img");
   const highs = days.map((day) =>
     Number.isFinite(day.maxTemperature) ? day.maxTemperature : null,
@@ -1610,13 +2618,24 @@ function temperatureRangeChart(days, threshold = null) {
   const lows = days.map((day) =>
     Number.isFinite(day.minTemperature) ? day.minTemperature : null,
   );
-  const available = [...highs, ...lows, threshold?.value].filter(Number.isFinite);
+  const precipitation = days.map((day) =>
+    Number.isFinite(day.precipitationProbability)
+      ? day.precipitationProbability
+      : null,
+  );
+  const available = [...highs, threshold?.value].filter(Number.isFinite);
   svg.setAttribute(
     "aria-label",
     available.length
-      ? `최고·최저기온과 강수확률 흐름. 최고기온 ${highs
+      ? `최고기온과 강수확률 흐름. 최고기온 ${highs
           .filter(Number.isFinite)
           .map((value) => `${formatNumber(value)}도`)
+          .join(", ")}, 최저기온 ${lows
+          .filter(Number.isFinite)
+          .map((value) => `${formatNumber(value)}도`)
+          .join(", ")}, 강수확률 ${precipitation
+          .filter(Number.isFinite)
+          .map((value) => `${formatNumber(value)}퍼센트`)
           .join(", ")}${
             Number.isFinite(threshold?.value)
               ? `, 작물 주의 기준 ${formatNumber(threshold.value)}도`
@@ -1624,42 +2643,49 @@ function temperatureRangeChart(days, threshold = null) {
           }`
       : "기온 자료 없음",
   );
-  [22, 52, 82, 118].forEach((y) => {
-    const line = document.createElementNS(svgNamespace, "line");
-    line.setAttribute("class", "grid-line");
-    line.setAttribute("x1", "8");
-    line.setAttribute("x2", "552");
-    line.setAttribute("y1", String(y));
-    line.setAttribute("y2", String(y));
-    svg.append(line);
-  });
   if (available.length === 0) return svg;
   const minimum = Math.min(...available);
   const maximum = Math.max(...available);
   const span = Math.max(maximum - minimum, 4);
-  const pointFor = (value, index) => {
+  const xFor = (index) =>
+    days.length === 1 ? 320 : 28 + (index * 584) / (days.length - 1);
+  const temperaturePointFor = (value, index) => {
     if (!Number.isFinite(value)) return null;
-    const x = days.length === 1 ? 280 : 18 + (index * 524) / (days.length - 1);
-    const y = 82 - ((value - minimum) / span) * 58;
+    const x = xFor(index);
+    const y = 72 - ((value - minimum) / span) * 38;
     return { x, y, value, index };
   };
-  const highPoints = highs.map(pointFor);
-  const lowPoints = lows.map(pointFor);
-  const paired = highPoints
-    .map((high, index) => ({ high, low: lowPoints[index] }))
-    .filter(({ high, low }) => high && low);
+  const precipitationPointFor = (value, index) => {
+    if (!Number.isFinite(value)) return null;
+    return {
+      x: xFor(index),
+      y: 121 - (Math.min(Math.max(value, 0), 100) / 100) * 43,
+      value,
+      index,
+    };
+  };
+  const highPoints = highs.map(temperaturePointFor);
+  const precipitationPoints = precipitation.map(precipitationPointFor);
+
+  const baseline = document.createElementNS(svgNamespace, "line");
+  baseline.setAttribute("class", "forecast-chart-baseline");
+  baseline.setAttribute("x1", "12");
+  baseline.setAttribute("x2", "628");
+  baseline.setAttribute("y1", "126");
+  baseline.setAttribute("y2", "126");
+  svg.append(baseline);
 
   if (Number.isFinite(threshold?.value)) {
-    const thresholdY = 82 - ((threshold.value - minimum) / span) * 58;
+    const thresholdY = 72 - ((threshold.value - minimum) / span) * 38;
     const thresholdLine = document.createElementNS(svgNamespace, "line");
     thresholdLine.setAttribute("class", "risk-threshold-line");
-    thresholdLine.setAttribute("x1", "8");
-    thresholdLine.setAttribute("x2", "552");
+    thresholdLine.setAttribute("x1", "12");
+    thresholdLine.setAttribute("x2", "628");
     thresholdLine.setAttribute("y1", String(thresholdY));
     thresholdLine.setAttribute("y2", String(thresholdY));
     const thresholdLabel = document.createElementNS(svgNamespace, "text");
     thresholdLabel.setAttribute("class", "risk-threshold-label");
-    thresholdLabel.setAttribute("x", "548");
+    thresholdLabel.setAttribute("x", "626");
     thresholdLabel.setAttribute("y", String(Math.max(thresholdY - 5, 12)));
     thresholdLabel.setAttribute("text-anchor", "end");
     thresholdLabel.textContent =
@@ -1667,41 +2693,9 @@ function temperatureRangeChart(days, threshold = null) {
     svg.append(thresholdLine, thresholdLabel);
   }
 
-  if (paired.length > 1) {
-    const band = document.createElementNS(svgNamespace, "polygon");
-    band.setAttribute("class", "temperature-band");
-    band.setAttribute(
-      "points",
-      [
-        ...paired.map(({ high }) => `${high.x},${high.y}`),
-        ...[...paired]
-          .reverse()
-          .map(({ low }) => `${low.x},${low.y}`),
-      ].join(" "),
-    );
-    svg.append(band);
-  }
-
-  days.forEach((day, index) => {
-    if (!Number.isFinite(day.precipitationProbability)) return;
-    const x = days.length === 1 ? 280 : 18 + (index * 524) / (days.length - 1);
-    const height = Math.max(
-      day.precipitationProbability > 0 ? 3 : 0,
-      Math.min(26, (day.precipitationProbability / 100) * 26),
-    );
-    const bar = document.createElementNS(svgNamespace, "rect");
-    bar.setAttribute("class", "precipitation-bar");
-    bar.setAttribute("x", String(x - 9));
-    bar.setAttribute("y", String(118 - height));
-    bar.setAttribute("width", "18");
-    bar.setAttribute("height", String(height));
-    bar.setAttribute("rx", "5");
-    svg.append(bar);
-  });
-
   [
     ["temperature-line is-high", highPoints],
-    ["temperature-line is-low", lowPoints],
+    ["precipitation-probability-line", precipitationPoints],
   ].forEach(([className, points]) => {
     const visible = points.filter(Boolean);
     if (visible.length === 0) return;
@@ -1726,42 +2720,67 @@ function temperatureRangeChart(days, threshold = null) {
     valueLabel.setAttribute("y", String(Math.max(y - 9, 12)));
     valueLabel.setAttribute("text-anchor", "middle");
     valueLabel.textContent = `${formatNumber(value)}°`;
-    const dateLabel = document.createElementNS(svgNamespace, "text");
-    dateLabel.setAttribute("class", "temperature-date-label");
-    dateLabel.setAttribute("x", String(x));
-    dateLabel.setAttribute("y", "144");
-    dateLabel.setAttribute("text-anchor", "middle");
-    dateLabel.textContent = formatForecastDate(days[index].date);
-    svg.append(point, valueLabel, dateLabel);
+    const title = document.createElementNS(svgNamespace, "title");
+    title.textContent = `${formatForecastDate(days[index].date)} 최고 ${formatNumber(value)}℃${
+      Number.isFinite(lows[index])
+        ? `, 최저 ${formatNumber(lows[index])}℃`
+        : ""
+    }`;
+    point.append(title);
+    svg.append(point, valueLabel);
   });
 
-  lowPoints.filter(Boolean).forEach(({ x, y }) => {
+  precipitationPoints.filter(Boolean).forEach(({ x, y, value }) => {
     const point = document.createElementNS(svgNamespace, "circle");
-    point.setAttribute("class", "temperature-point is-low");
+    point.setAttribute("class", "precipitation-probability-point");
     point.setAttribute("cx", String(x));
     point.setAttribute("cy", String(y));
     point.setAttribute("r", "3.2");
-    svg.append(point);
+    const valueLabel = document.createElementNS(svgNamespace, "text");
+    valueLabel.setAttribute("class", "precipitation-value-label");
+    valueLabel.setAttribute("x", String(x));
+    valueLabel.setAttribute("y", String(Math.min(y + 17, 134)));
+    valueLabel.setAttribute("text-anchor", "middle");
+    valueLabel.textContent = `${formatNumber(value)}%`;
+    svg.append(point, valueLabel);
   });
   return svg;
 }
 
-function forecastChartLegend(threshold = null) {
+function forecastChartLegend() {
   const legend = element("div", "forecast-chart-legend");
   legend.setAttribute("aria-label", "예보 그래프 범례");
   [
-    ["is-high", "최고기온"],
-    ["is-low", "최저기온"],
-    ["is-rain", "강수확률"],
-    ...(Number.isFinite(threshold?.value)
-      ? [["is-threshold", "작물 주의 기준"]]
-      : []),
+    ["is-high", "최고기온(℃)"],
+    ["is-rain", "강수확률(%)"],
   ].forEach(([className, label]) => {
     const item = element("span", className, label);
     item.prepend(element("i", ""));
     legend.append(item);
   });
   return legend;
+}
+
+function forecastRiskLevelRow(days, risks, analysis) {
+  const root = element("div", "forecast-risk-level-row");
+  root.append(element("strong", "forecast-risk-level-label", "위험 수준"));
+  const list = element("ol", "forecast-risk-level-list");
+  list.setAttribute("aria-label", "날짜별 작물 위험 수준");
+  days.forEach((day) => {
+    const dayRisks = risks.filter((risk) => riskCoversDate(risk, day.date));
+    const outlook = forecastDailyOutlook(analysis, day, dayRisks);
+    const severity = outlook.className;
+    const label = outlook.label;
+    const item = element("li", `is-${severity}`);
+    const dateParts = dashboardDateParts(day.date);
+    item.append(
+      element("span", "forecast-risk-chip", label),
+      element("time", "", `${dateParts.date} (${dateParts.weekday})`),
+    );
+    list.append(item);
+  });
+  root.append(list);
+  return root;
 }
 
 function forecastTemperatureThreshold(analysis, risks, days) {
@@ -2000,6 +3019,20 @@ function formatForecastDate(value) {
   }).format(date);
 }
 
+function formatCompactForecastDate(value) {
+  return formatForecastDate(value).replace(/\.\s+/gu, ".");
+}
+
+function formatExplicitForecastDate(value) {
+  const date = new Date(`${value}T00:00:00`);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  }).format(date);
+}
+
 function localDateKey(date) {
   return [
     date.getFullYear(),
@@ -2023,8 +3056,18 @@ function renderCropResultSwitcher() {
   const switcher = document.querySelector("#crop-result-switcher");
   if (!switcher) return;
   const analyses = [...currentAnalyses.values()];
-  switcher.replaceChildren(
-    ...analyses.map((analysis) => {
+  const activate = (analysis) => {
+    currentAnalysis = analysis;
+    renderAnalysis(analysis);
+    renderCropResultSwitcher();
+    if ((analysis?.report?.state ?? "NOT_REQUESTED") === "NOT_REQUESTED") {
+      const reportButton = document.querySelector("#backend-report-button");
+      if (reportButton) {
+        void requestAndPollReport(reportButton, { automatic: true });
+      }
+    }
+  };
+  const cropButton = (analysis) => {
       const crop = analysis?.inputSummary?.crop;
       const button = element(
         "button",
@@ -2036,25 +3079,38 @@ function renderCropResultSwitcher() {
         "aria-pressed",
         String(analysis?.analysisId === currentAnalysis?.analysisId),
       );
-      button.addEventListener("click", () => {
-        currentAnalysis = analysis;
-        renderAnalysis(analysis);
-        renderCropResultSwitcher();
-        if ((analysis?.report?.state ?? "NOT_REQUESTED") === "NOT_REQUESTED") {
-          const reportButton = document.querySelector("#backend-report-button");
-          if (reportButton) {
-            void requestAndPollReport(reportButton, { automatic: true });
-          }
-        }
-      });
+      button.addEventListener("click", () => activate(analysis));
       return button;
-    }),
-  );
-  switcher.hidden = analyses.length < 2;
+  };
+  if (analyses.length <= 2) {
+    switcher.replaceChildren(...analyses.map(cropButton));
+  } else {
+    const active = analyses.find(
+      (analysis) => analysis?.analysisId === currentAnalysis?.analysisId,
+    ) ?? analyses[0];
+    const others = analyses.filter((analysis) => analysis !== active);
+    const select = element("select", "crop-result-more");
+    select.setAttribute("aria-label", "다른 작물 분석 선택");
+    select.append(element("option", "", `다른 작물 ${others.length}`));
+    select.options[0].value = "";
+    others.forEach((analysis, index) => {
+      const crop = analysis?.inputSummary?.crop;
+      const option = element("option", "", CROP_LABELS[crop] ?? crop ?? "작물");
+      option.value = String(index);
+      select.append(option);
+    });
+    select.addEventListener("change", () => {
+      const analysis = others[Number(select.value)];
+      if (analysis) activate(analysis);
+    });
+    switcher.replaceChildren(cropButton(active), select);
+  }
+  switcher.hidden = analyses.length === 0;
 }
 
 function renderSummaryPanel(analysis, regionLabel, cropLabel) {
   const panel = document.querySelector(".summary-panel");
+  if (!panel) return;
   const summary = analysis?.inputSummary ?? {};
   const uiContext = currentUiContexts.get(summary.crop);
   const meta = element("div", "summary-meta");
@@ -2077,7 +3133,7 @@ function renderSummaryPanel(analysis, regionLabel, cropLabel) {
       `재배 환경 · ${
         uiContext?.cultivationLabel ??
         CULTIVATION_LABELS[summary.cultivationMode] ??
-        "확인 필요"
+        "미설정"
       }`,
     ),
     element(
@@ -2156,25 +3212,26 @@ function renderStateOverview(analysis) {
   const axes = element("div", "axis-status-list");
   [
     {
+      key: "climate",
       label: "기후 조건",
       state: analysis?.climate?.state,
-      valueLabel: stateLabel(analysis?.climate?.state),
       help: "선택한 작기와 장기 기후 비교",
     },
     {
+      key: "soil",
       label: "토양 조건",
       state: analysis?.soil?.state,
-      valueLabel: stateLabel(analysis?.soil?.state),
       help: soilConditionHelp(analysis),
     },
     {
+      key: "forecast",
       label: "가까운 예보",
       state: analysis?.forecast?.result?.riskState ?? analysis?.forecast?.state,
-      valueLabel: stateLabel(analysis?.forecast?.result?.riskState ?? analysis?.forecast?.state),
       help: forecastConditionHelp(analysis),
     },
-  ].forEach(({ label, state, valueLabel, help }) => {
-    const tone = toneForState(state);
+  ].forEach(({ key, label, state, help }) => {
+    const presentation = analysisAxisPresentation(analysis, key, state);
+    const tone = presentation.tone;
     const card = element(
       "article",
       `axis-status ${tone === "good" ? "" : "is-caution"}`.trim(),
@@ -2183,7 +3240,7 @@ function renderStateOverview(analysis) {
       "strong",
       `axis-score-value${tone === "good" ? "" : " is-unavailable"}`,
     );
-    scoreValue.append(element("b", "", valueLabel ?? "확인 필요"));
+    scoreValue.append(element("b", "", presentation.label));
     card.append(
       element("span", "", label),
       scoreValue,
@@ -2194,9 +3251,11 @@ function renderStateOverview(analysis) {
   const overall = element(
     "p",
     "score-state",
-    "서로 다른 자료를 하나의 점수로 합치지 않습니다. 확인된 축만 행동 판단에 사용합니다.",
+    isRegionalReferenceAnalysis(analysis)
+      ? "지역 예보와 지역 토양 통계를 같은 범위 안에서 분석했습니다."
+      : "서로 다른 자료를 하나의 점수로 합치지 않습니다. 확인된 축만 행동 판단에 사용합니다.",
   );
-  const sourceStatus = renderOverviewSourceStatus(analysis?.dataSources);
+  const sourceStatus = renderOverviewSourceStatus(analysis);
   inner.append(heading, stateVisual, axes, sourceStatus, overall);
 
   const button = element(
@@ -2209,20 +3268,32 @@ function renderStateOverview(analysis) {
   overview.replaceChildren(inner, button);
 }
 
-function renderOverviewSourceStatus(sources) {
+function renderOverviewSourceStatus(analysis) {
   const section = element("section", "overview-source-status");
   section.setAttribute("aria-label", "사용한 자료 상태");
-  section.append(element("strong", "", "사용한 자료"));
+  section.append(
+    element(
+      "strong",
+      "",
+      isRegionalReferenceAnalysis(analysis)
+        ? "분석에 사용한 지역자료"
+        : "사용한 자료",
+    ),
+  );
   const list = element("div", "overview-source-chips");
-  const safeSources = Array.isArray(sources) ? sources : [];
+  const safeSources = Array.isArray(analysis?.dataSources)
+    ? analysis.dataSources.filter(sourceUsedInAnalysis)
+    : [];
   if (safeSources.length === 0) {
-    list.append(element("span", "source-status-chip is-warning", "자료 확인 필요"));
+    list.append(
+      element("span", "source-status-chip is-warning", "사용 가능한 공공자료 없음"),
+    );
   } else {
     safeSources.forEach((source) => {
       const chip = element(
         "span",
-        `source-status-chip is-${sourceTone(source)}`,
-        `${source.sourceName ?? "공공자료"} · ${sourceStateLabel(source)}`,
+        "source-status-chip is-good",
+        `${source.sourceName ?? "공공자료"} · 적용됨`,
       );
       chip.title = `기준 시각 ${formatSourceTime(source)}`;
       list.append(chip);
@@ -2260,14 +3331,63 @@ function soilConditionHelp(analysis) {
 }
 
 function farmStatusSummary(analysis) {
+  const growthScore = analysis?.growthScore;
+  if (Number.isFinite(growthScore?.score)) {
+    const tone = growthScore.score < 50
+      ? "danger"
+      : growthScore.score < 85
+        ? "caution"
+        : "good";
+    return {
+      label: growthScore.label,
+      score: growthScore.score,
+      tone,
+      detail:
+        growthScore.state === "READY"
+          ? "기상·토양·예보의 영향도와 자료 신뢰도를 반영한 생육점수입니다."
+          : "현재 확인된 환경자료로 계산했으며, 사진을 더하면 정확도를 높일 수 있습니다.",
+    };
+  }
   const weather = forecastRiskGuide(analysis);
   const soil = soilConditionGuide(analysis);
-  const detail = resolveDisplayAction(analysis).title;
+  const primary = primaryDisplayAction(analysis);
   if (weather.risk && weather.severity === "WARNING") {
-    return { label: "주의", tone: "danger", detail };
+    return {
+      label: "주의",
+      tone: "danger",
+      detail: "작물 주의 기준을 넘는 가까운 예보가 있습니다.",
+    };
   }
-  if (weather.risk || soil.tone === "caution") {
-    return { label: "점검 필요", tone: "caution", detail };
+  if (weather.risk) {
+    return {
+      label: "점검 필요",
+      tone: "caution",
+      detail: "가까운 예보에서 작물별 주의 신호가 확인됐습니다.",
+    };
+  }
+  if (soil.tone === "caution") {
+    return {
+      label: "점검 필요",
+      tone: "caution",
+      detail: "주변 토양 참고값에 작물 기준 밖 구간이 있습니다.",
+    };
+  }
+  if (hasRegionalReferenceCoverage(analysis)) {
+    return {
+      label: "지역 기준 양호",
+      tone: "good",
+      detail: `${forecastDisplayDays(analysis).length}일 지역 예보와 지역 토양 통계에서 현재 적용할 주의 신호가 없습니다.`,
+    };
+  }
+  if (primary) {
+    return {
+      label: primary.actionId === "CONFIRM_SEASON" ? "확인 필요" : "점검 필요",
+      tone: primary.actionId === "CONFIRM_SEASON" ? "hold" : "caution",
+      detail:
+        primary.actionId === "CONFIRM_SEASON"
+          ? "분석을 끝내려면 재배 시기를 확인해야 합니다."
+          : "현장에서 확인할 재배환경 항목이 남아 있습니다.",
+    };
   }
   if (weather.bounded && soil.ready) {
     return {
@@ -2292,27 +3412,39 @@ function farmStatusSummary(analysis) {
 
 function renderMetricStrip(analysis) {
   const strip = document.querySelector(".metric-strip");
+  const regionalCoverage = hasRegionalReferenceCoverage(analysis);
   const metrics = [
-    ["기후 조건", analysis?.climate?.state, "작물·작기 기준과 비교"],
-    ["토양 조건", analysis?.soil?.state, "필지 실측 여부를 함께 확인"],
+    ["climate", "기후 조건", analysis?.climate?.state, "작물·작기 기준과 비교"],
+    ["soil", "토양 조건", analysis?.soil?.state, "지역 토양 통계와 작물 기준 비교"],
     [
+      "forecast",
       "가까운 예보",
       analysis?.forecast?.result?.riskState ?? analysis?.forecast?.state,
       "날짜·지속기간이 있는 작물별 신호",
     ],
-    ["자료 전체", analysis?.state, "결측과 출처 한계를 포함한 상태"],
+    ["overall", "자료 전체", analysis?.state, "현재 분석에 적용한 자료 범위"],
   ];
   strip.replaceChildren(
-    ...metrics.map(([label, value, help]) => {
+    ...metrics.map(([key, label, value, help]) => {
       const cell = element("div", "metric-cell");
+      const presentation =
+        key === "overall" && regionalCoverage
+          ? { label: "지역 기준 완료", help: "상단에 표시된 지역 참고 범위" }
+          : analysisAxisPresentation(analysis, key, value);
       cell.append(
         element("span", "metric-label", label),
         element(
           "div",
           "metric-value backend-metric",
-          stateLabel(value),
+          presentation.label,
         ),
-        element("p", "backend-state-caption", `${help} · ${stateHelp(value)}`),
+        element(
+          "p",
+          "backend-state-caption",
+          regionalCoverage
+            ? `${help} · ${presentation.help ?? "분석 완료"}`
+            : `${help} · ${stateHelp(value)}`,
+        ),
       );
       return cell;
     }),
@@ -2698,6 +3830,7 @@ async function requestAndPollReport(button, { automatic = false } = {}) {
       if (isCurrentAnalysis(targetAnalysisId)) {
         renderActionsAndReport(targetAnalysis);
       }
+      await persistReadyReport(targetAnalysis);
       announce("판단 보고서가 준비되었습니다.");
       return;
     }
@@ -2713,6 +3846,7 @@ async function requestAndPollReport(button, { automatic = false } = {}) {
           renderMetricStrip(targetAnalysis);
           renderActionsAndReport(targetAnalysis);
         }
+        await persistReadyReport(targetAnalysis);
         announce("판단 보고서가 준비되었습니다.");
         return;
       }
@@ -2726,6 +3860,28 @@ async function requestAndPollReport(button, { automatic = false } = {}) {
     button.textContent = "설명 다시 시도";
   } finally {
     setBusy(button, false, button.textContent);
+  }
+}
+
+async function persistReadyReport(analysis) {
+  const scope = currentFeatureScope(analysis);
+  if (!connected || !scope || !["READY", "FALLBACK"].includes(analysis?.report?.state)) {
+    return false;
+  }
+  try {
+    await api.saveReportHistory(scope.farmId, {
+      analysisId: analysis.analysisId,
+      cropId: scope.cropId,
+      seasonId: scope.seasonId,
+    });
+    await refreshReportHistory(analysis);
+    return true;
+  } catch (error) {
+    if (error?.code !== "FEATURE_NOT_CONFIGURED") {
+      const status = document.querySelector("#report-history-status");
+      if (status) status.textContent = "이번 분석 리포트는 화면에서 볼 수 있지만 기록에는 저장하지 못했습니다.";
+    }
+    return false;
   }
 }
 
@@ -2896,7 +4052,11 @@ function reportSections(report) {
 
 function primaryDisplayAction(analysis) {
   const actions = Array.isArray(analysis?.actions)
-    ? analysis.actions.filter(isPrimaryUserAction)
+    ? analysis.actions.filter(
+        (action) =>
+          isPrimaryUserAction(action) &&
+          actionRelevantForDisplay(action, analysis),
+      )
     : [];
   const primaryActionId = analysis?.primaryAction?.actionId;
   if (primaryActionId) {
@@ -2906,6 +4066,15 @@ function primaryDisplayAction(analysis) {
     if (matching) return matching;
   }
   return actions[0] ?? null;
+}
+
+function actionRelevantForDisplay(action, analysis) {
+  if (action?.actionId !== "REVIEW_CONDITION_EVIDENCE") return true;
+  if (!hasRegionalReferenceCoverage(analysis)) return true;
+  return (
+    activeForecastRisks(analysis).length > 0 ||
+    soilConditionGuide(analysis).tone === "caution"
+  );
 }
 
 function isPrimaryUserAction(action) {
@@ -2987,6 +4156,21 @@ function forecastRiskGuide(analysis) {
     sourceUrl: guidance.sourceUrl ?? null,
     severity: risk.severity,
   };
+}
+
+function forecastRiskCause(analysis, action = null) {
+  const risks = activeForecastRisks(analysis);
+  const triggerIds = new Set(
+    (Array.isArray(action?.triggerIds) ? action.triggerIds : [])
+      .filter((value) => typeof value === "string"),
+  );
+  const risk =
+    risks.find((item) => triggerIds.has(item.riskId)) ?? risks[0];
+  const reading = Array.isArray(risk?.trigger?.readings)
+    ? risk.trigger.readings.find((item) => Number.isFinite(item?.value))
+    : null;
+  if (!risk || !reading) return null;
+  return riskTriggerSummary(risk);
 }
 
 function soilConditionGuide(analysis) {
@@ -3223,7 +4407,9 @@ function soilSourceUrl(analysis) {
 
 function riskTriggerSummary(risk) {
   const trigger = risk?.trigger ?? {};
-  const reading = Array.isArray(trigger.readings) ? trigger.readings[0] : null;
+  const readings = Array.isArray(trigger.readings) ? trigger.readings : [];
+  const reading =
+    readings.find((item) => Number.isFinite(item?.value)) ?? readings[0] ?? null;
   const metricLabels = {
     minTemperature: "최저기온",
     maxTemperature: "최고기온",
@@ -3234,11 +4420,11 @@ function riskTriggerSummary(risk) {
   const metric = metricLabels[trigger.metric] ?? "예보값";
   const value = Number.isFinite(reading?.value)
     ? `${formatNumber(reading.value)}${displayUnit(trigger.unit)}`
-    : "값 확인 필요";
+    : "예보값 없음";
   const threshold = comparisonSummary(trigger.comparison, trigger.unit);
   const date = reading?.date
-    ? formatForecastDate(reading.date)
-    : formatForecastDate(risk?.dateRange?.from);
+    ? formatExplicitForecastDate(reading.date)
+    : formatExplicitForecastDate(risk?.dateRange?.from);
   return [date, `${metric} ${value}`, threshold].filter(Boolean).join(" · ");
 }
 
@@ -3278,7 +4464,7 @@ function displayUnit(unit) {
 function formatPercent(ratio) {
   return Number.isFinite(ratio)
     ? `${Math.round(ratio * 100)}%`
-    : "확인 필요";
+    : "자료 없음";
 }
 
 function uniqueText(values) {
@@ -3364,6 +4550,9 @@ function userActionTitle(action, analysis = null) {
 function actionDetail(actionId, analysis) {
   const days = forecastDisplayDays(analysis).slice(0, 7);
   const period = days.length ? `${days.length}일 기상청 예보` : "현재 자료";
+  if (actionId === "CONFIRM_SEASON") {
+    return "재배 시기와 현재 생육 단계를 확인한 뒤 다시 분석해 작물별 시기 기준을 적용합니다.";
+  }
   if (actionId === "CHECK_CURRENT_FORECAST_RISK") {
     return `${period}에서 검토된 작물 기준의 주의 신호가 확인됐습니다. 해당 날짜의 작물 상태를 먼저 확인해 주세요.`;
   }
@@ -3392,10 +4581,10 @@ function forecastUserSummary(analysis) {
     .filter(Number.isFinite);
   const temperatureCopy = highs.length
     ? `최고기온 ${formatNumber(Math.min(...highs))}~${formatNumber(Math.max(...highs))}℃`
-    : "기온 확인 필요";
+    : "기온 자료 없음";
   const rainCopy = rain.length
     ? `최대 강수확률 ${formatNumber(Math.max(...rain))}%`
-    : "강수확률 확인 필요";
+    : "강수확률 자료 없음";
   return `앞으로 ${days.length}일 ${temperatureCopy}, ${rainCopy}입니다.`;
 }
 
@@ -3530,6 +4719,7 @@ function initializeDashboardSurfaces() {
   setupSoilTestPanel();
   setupAccountKeyPanel();
   setupNotificationPanel();
+  setupReportHistory();
   setupSatelliteService();
   setupPhotoJournal();
   renderDashboardSoilTest();
@@ -3547,6 +4737,119 @@ function initializeDashboardSurfaces() {
   if (legacyScoreNotice) legacyScoreNotice.hidden = true;
 }
 
+function setupReportHistory() {
+  document.querySelector("#report-history-refresh")?.addEventListener("click", () => {
+    void refreshReportHistory(currentAnalysis);
+  });
+}
+
+async function refreshReportHistory(analysis) {
+  const root = document.querySelector("#report-history-list");
+  const status = document.querySelector("#report-history-status");
+  const scope = currentFeatureScope(analysis);
+  if (!root) return;
+  if (!scope || !connected) {
+    root.replaceChildren(
+      element("p", "backend-empty", "농장 분석을 완료하면 저장된 리포트를 확인할 수 있습니다."),
+    );
+    return;
+  }
+  if (status) status.textContent = "저장된 리포트를 불러오는 중입니다.";
+  try {
+    const result = await api.listReportHistory(scope.farmId, {
+      cropId: scope.cropId,
+    });
+    const reports = Array.isArray(result?.reports) ? result.reports : [];
+    if (reports.length === 0) {
+      root.replaceChildren(
+        element("p", "backend-empty", "아직 저장된 리포트가 없습니다. 새 분석이 끝나면 자동으로 기록합니다."),
+      );
+    } else {
+      root.replaceChildren(...reports.map((report) => reportHistoryCard(report, scope)));
+    }
+    if (status) status.textContent = `${reports.length}개 리포트를 농장별로 보관 중입니다.`;
+  } catch (error) {
+    root.replaceChildren(
+      element(
+        "p",
+        "backend-empty",
+        error?.code === "FEATURE_NOT_CONFIGURED"
+          ? "리포트 기록 저장소가 아직 설정되지 않았습니다. 현재 분석 화면은 그대로 사용할 수 있습니다."
+          : "저장된 리포트를 불러오지 못했습니다.",
+      ),
+    );
+    if (status) status.textContent = "리포트 기록을 확인하지 못했습니다.";
+  }
+}
+
+function reportHistoryCard(report, scope) {
+  const card = element("article", "report-history-card");
+  const copy = element("div", "report-history-copy");
+  copy.append(
+    element("span", "service-eyebrow", formatDateTime(report.createdAt)),
+    element("h3", "", report.headline ?? "농장 분석 리포트"),
+    element(
+      "p",
+      "muted no-margin",
+      Number.isFinite(report.score)
+        ? `생육점수 ${report.score}점 · ${report.scoreLabel ?? "상태 기록"}`
+        : "점수 없이 근거와 행동만 저장된 분석",
+    ),
+  );
+  const download = element("button", "button button-secondary", "리포트 저장");
+  download.type = "button";
+  download.addEventListener("click", () => void downloadSavedReport(scope, report, download));
+  card.append(copy, download);
+  return card;
+}
+
+async function downloadSavedReport(scope, summary, button) {
+  setBusy(button, true, "준비 중…");
+  try {
+    const report = await api.getSavedReport(scope.farmId, summary.reportId);
+    const html = printableReportHtml(report);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `흙날씨-${safeFilenamePart(report?.inputSummary?.regionLabel)}-${safeFilenamePart(report?.cropCode)}-${String(report?.createdAt ?? "").slice(0, 10)}.html`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    announce("리포트를 저장했습니다.");
+  } catch (error) {
+    const status = document.querySelector("#report-history-status");
+    if (status) status.textContent = errorMessage(error);
+  } finally {
+    setBusy(button, false, "리포트 저장");
+  }
+}
+
+function printableReportHtml(report) {
+  const score = Number.isFinite(report?.growthScore?.score)
+    ? `${report.growthScore.score}점 · ${report.growthScore.label ?? ""}`
+    : "산정되지 않음";
+  const actions = (report?.actions ?? [])
+    .map((action) => `<li>${escapeHtml(action?.title ?? "확인 항목")}</li>`)
+    .join("");
+  const sources = (report?.dataSources ?? [])
+    .map((source) => `<li>${escapeHtml(source?.sourceName ?? source?.sourceId ?? "출처")}</li>`)
+    .join("");
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>흙날씨 농장 리포트</title><style>body{font-family:system-ui,sans-serif;max-width:820px;margin:48px auto;padding:0 24px;color:#14251b;line-height:1.65}header{border-bottom:2px solid #174c2d;padding-bottom:20px}h1{font-size:2rem}.score{font-size:2.5rem;font-weight:800;color:#174c2d}.card{margin:24px 0;padding:20px;border:1px solid #dce6df;border-radius:16px}small{color:#5b6b61}@media print{body{margin:0}.card{break-inside:avoid}}</style></head><body><header><small>흙날씨 농지 진단 AI</small><h1>${escapeHtml(report?.inputSummary?.regionLabel ?? "농장")} · ${escapeHtml(CROP_LABELS[report?.cropCode] ?? report?.cropCode ?? "작물")}</h1><p>${escapeHtml(formatDateTime(report?.createdAt))}</p><div class="score">${escapeHtml(score)}</div></header><section class="card"><h2>현재 판단</h2><p>${escapeHtml(report?.decision?.headline ?? report?.report?.value?.summary?.text ?? "분석 기록")}</p></section><section class="card"><h2>필요한 행동</h2><ol>${actions || "<li>저장된 행동 없음</li>"}</ol></section><section class="card"><h2>사용한 자료</h2><ul>${sources || "<li>저장된 출처 없음</li>"}</ul></section><p><small>이 리포트는 저장 당시의 공공데이터와 검수 규칙을 기준으로 생성되었습니다. 규칙 버전: ${escapeHtml(report?.ruleVersion ?? "미표시")}</small></p></body></html>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function safeFilenamePart(value) {
+  return String(value ?? "기록").replace(/[^0-9A-Za-z가-힣_-]+/gu, "-").slice(0, 40);
+}
+
 function setupSatelliteService() {
   const useLocation = document.querySelector("#parcel-use-location");
   const save = document.querySelector("#parcel-save");
@@ -3558,7 +4861,9 @@ function setupSatelliteService() {
 }
 
 function satelliteIsAvailable() {
-  return preflight?.capabilities?.satellite === "READY";
+  return ["READY", "CONFIGURED_UNVERIFIED"].includes(
+    preflight?.capabilities?.satellite,
+  );
 }
 
 function applySatelliteAvailability() {
@@ -3758,9 +5063,33 @@ async function savePhotoJournalEntry(event) {
       setPhotoJournalStatus(photoQuality.message, "error");
       return;
     }
+    let serverPhoto = null;
+    let serverSyncError = null;
+    if (connected) {
+      try {
+        const prepared = await api.preparePhotoUpload(scope.farmId, {
+          cropId: scope.cropId,
+          seasonId: scope.seasonId,
+          mimeType: file.type,
+          dataBase64: await fileToBase64(file),
+        });
+        serverPhoto = await api.addPhoto(scope.farmId, {
+          cropId: scope.cropId,
+          seasonId: scope.seasonId,
+          uploadToken: prepared.uploadToken,
+          observedAt: observedDateToIso(form.elements.observedAt?.value),
+          growthStage: form.elements.growthStage?.value || null,
+          note: form.elements.note?.value || null,
+          consentState: "GRANTED",
+        });
+      } catch (error) {
+        if (error?.code !== "FEATURE_NOT_CONFIGURED") serverSyncError = error;
+      }
+    }
     await photoJournal.addPhoto({
       scope,
       file,
+      photoId: serverPhoto?.photoId ?? null,
       observedAt: form.elements.observedAt?.value,
       growthStage: form.elements.growthStage?.value,
       note: form.elements.note?.value,
@@ -3768,7 +5097,17 @@ async function savePhotoJournalEntry(event) {
     });
     form.reset();
     form.elements.observedAt.value = new Date().toISOString().slice(0, 10);
-    setPhotoJournalStatus("사진을 이 기기에 비공개로 저장했습니다.", "success");
+    if (serverPhoto) {
+      await syncLatestPhotoComparison(scope).catch(() => {});
+      setPhotoJournalStatus("사진을 비공개로 저장하고 시즌 기록에 반영했습니다.", "success");
+    } else if (serverSyncError) {
+      setPhotoJournalStatus(
+        "서버 동기화는 되지 않았지만 사진은 이 기기에 안전하게 저장했습니다.",
+        "error",
+      );
+    } else {
+      setPhotoJournalStatus("사진을 이 기기에 비공개로 저장했습니다.", "success");
+    }
     await refreshPhotoJournal(currentAnalysis);
   } catch {
     setPhotoJournalStatus(
@@ -3796,6 +5135,13 @@ async function completeCurrentSeason() {
       const actions = [...(plan?.today ?? []), ...(plan?.upcoming ?? [])];
       completedActionCount = actions.filter((action) => action.status === "DONE").length;
     }
+    if (connected) {
+      try {
+        await api.completePhotoSeason(scope.farmId, scope);
+      } catch (error) {
+        if (error?.code !== "FEATURE_NOT_CONFIGURED") throw error;
+      }
+    }
     await photoJournal.completeSeason(scope, { completedActionCount });
     setPhotoJournalStatus("이번 시즌의 사진과 완료 기록을 정리했습니다.", "success");
     await refreshPhotoJournal(currentAnalysis);
@@ -3812,10 +5158,21 @@ async function refreshPhotoJournal(analysis) {
   if (!scope || !gallery || !photoJournal) return;
   revokePhotoObjectUrls();
   try {
-    const [photos, season] = await Promise.all([
+    const [localPhotos, season] = await Promise.all([
       photoJournal.listPhotos(scope),
       photoJournal.getSeason(scope),
     ]);
+    let serverSummary = null;
+    if (connected) {
+      try {
+        serverSummary = await api.getPhotoTimeline(scope.farmId, scope);
+      } catch (error) {
+        if (error?.code !== "FEATURE_NOT_CONFIGURED" && error?.code !== "INVALID_INPUT") {
+          setPhotoJournalStatus("서버 시즌 기록을 불러오지 못해 이 기기 기록만 표시합니다.", "error");
+        }
+      }
+    }
+    const photos = mergePhotoRecords(localPhotos, serverSummary?.photoTimeline);
     const state = document.querySelector("#photo-journal-state");
     if (state) state.textContent = photos.length ? `${photos.length}장 기록` : "기록 없음";
     const status = document.querySelector("#photo-journal-status");
@@ -3823,14 +5180,15 @@ async function refreshPhotoJournal(analysis) {
       setPhotoJournalStatus("사진과 저장 동의를 확인한 뒤 기록해 주세요.");
     }
     renderPhotoJournalGallery(gallery, photos, scope);
-    const completed = season?.status === "COMPLETED";
+    const completed =
+      season?.status === "COMPLETED" || serverSummary?.status === "COMPLETED";
     document.querySelector("#season-complete").disabled = completed;
     document.querySelector("#journal-save").disabled = completed;
     document.querySelector("#season-summary-title").textContent = completed
       ? "이번 재배 시즌 마무리됨"
       : "이번 재배 시즌 진행 중";
     document.querySelector("#season-summary-copy").textContent = completed
-      ? `${photos.length}장 사진 · 완료한 할 일 ${season.completedActionCount ?? 0}건 · ${formatPhotoDate(season.completedAt)} 정리`
+      ? `${photos.length}장 사진 · 완료한 할 일 ${serverSummary?.completedActionCount ?? season?.completedActionCount ?? 0}건 · ${formatPhotoDate(serverSummary?.endedAt ?? season?.completedAt)} 정리`
       : `${photos.length}장 사진을 촬영일 순서로 보관 중입니다.`;
   } catch {
     gallery.replaceChildren(
@@ -3880,18 +5238,33 @@ function renderPhotoJournalGallery(root, photos, scope) {
 
 function photoJournalItem(photo, scope) {
   const item = element("li", "photo-journal-item");
-  const url = URL.createObjectURL(photo.blob);
-  photoObjectUrls.push(url);
-  const image = document.createElement("img");
-  image.src = url;
-  image.alt = `${formatPhotoDate(photo.observedAt)}에 기록한 작물 사진`;
+  let preview;
+  if (photo.blob instanceof Blob) {
+    const url = URL.createObjectURL(photo.blob);
+    photoObjectUrls.push(url);
+    preview = document.createElement("img");
+    preview.src = url;
+    preview.alt = `${formatPhotoDate(photo.observedAt)}에 기록한 작물 사진`;
+  } else {
+    preview = element("div", "photo-journal-empty", "다른 기기에서 저장한 비공개 사진 기록");
+  }
   const body = element("div", "photo-journal-item-body");
   const actions = element("div", "photo-journal-item-actions");
   const remove = element("button", "button button-quiet", "삭제");
   remove.type = "button";
   remove.addEventListener("click", async () => {
-    if (!window.confirm("이 기기에 저장한 사진을 삭제할까요?")) return;
-    await photoJournal.deletePhoto(scope, photo.photoId);
+    if (!window.confirm("저장한 사진 기록을 삭제할까요?")) return;
+    if (connected && photo.serverStored !== false) {
+      try {
+        await api.deletePhoto(scope.farmId, photo.photoId);
+      } catch (error) {
+        if (!["FEATURE_NOT_CONFIGURED", "PHOTO_NOT_FOUND"].includes(error?.code)) {
+          setPhotoJournalStatus(errorMessage(error), "error");
+          return;
+        }
+      }
+    }
+    await photoJournal.deletePhoto(scope, photo.photoId).catch(() => false);
     await refreshPhotoJournal(currentAnalysis);
   });
   actions.append(
@@ -3902,8 +5275,99 @@ function photoJournalItem(photo, scope) {
     actions,
     element("p", "", [photo.growthStage, photo.note].filter(Boolean).join(" · ") || "현장 메모 없음"),
   );
-  item.append(image, body);
+  item.append(preview, body);
   return item;
+}
+
+async function syncLatestPhotoComparison(scope) {
+  const photos = await photoJournal.listPhotos(scope);
+  if (photos.length < 2) return;
+  const baseline = photos.at(-2);
+  const current = photos.at(-1);
+  const review = reviewPhotoComparison(
+    baseline.visualSignals,
+    current.visualSignals,
+  );
+  if (!review.ready) return;
+  const observations = review.changes.map(photoChangeObservation).filter(Boolean);
+  if (observations.length === 0) return;
+  await api.comparePhotos(scope.farmId, {
+    cropId: scope.cropId,
+    seasonId: scope.seasonId,
+    baselinePhotoId: baseline.photoId,
+    currentPhotoId: current.photoId,
+    observations,
+  });
+}
+
+function photoChangeObservation(change) {
+  if (change.label === "평균 밝기") {
+    return {
+      aspect: "COLOR",
+      change:
+        change.direction === "INCREASED"
+          ? "LIGHTER"
+          : change.direction === "DECREASED"
+            ? "DARKER"
+            : "NO_VISIBLE_CHANGE",
+    };
+  }
+  if (change.label === "노란색 비율") {
+    return {
+      aspect: "COLOR",
+      change:
+        change.direction === "INCREASED"
+          ? "MORE_YELLOW"
+          : change.direction === "DECREASED"
+            ? "LESS_YELLOW"
+            : "NO_VISIBLE_CHANGE",
+    };
+  }
+  if (change.label === "초록색 비율") {
+    return {
+      aspect: "AREA",
+      change:
+        change.direction === "INCREASED"
+          ? "INCREASED"
+          : change.direction === "DECREASED"
+            ? "DECREASED"
+            : "NO_VISIBLE_CHANGE",
+    };
+  }
+  return null;
+}
+
+function mergePhotoRecords(localPhotos, serverPhotos) {
+  const merged = new Map();
+  for (const photo of Array.isArray(serverPhotos) ? serverPhotos : []) {
+    merged.set(photo.photoId, { ...photo, serverStored: true });
+  }
+  for (const photo of Array.isArray(localPhotos) ? localPhotos : []) {
+    merged.set(photo.photoId, {
+      ...(merged.get(photo.photoId) ?? { serverStored: false }),
+      ...photo,
+    });
+  }
+  return [...merged.values()].sort((left, right) =>
+    String(left.observedAt).localeCompare(String(right.observedAt)),
+  );
+}
+
+async function fileToBase64(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function observedDateToIso(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
+    throw new TypeError("촬영일을 확인해 주세요.");
+  }
+  return new Date(`${value}T12:00:00+09:00`).toISOString();
 }
 
 async function analyzePhotoSignals(file) {
@@ -4061,16 +5525,18 @@ function satelliteChartText(x, y, value, className) {
 
 function setDashboardResultVisibility(visible) {
   [
-    "#live-outlook",
-    ".decision-flow",
-    ".risk-panel",
-    ".action-workspace",
-    ".overview-score",
+    "#dashboard-workspace",
   ].forEach((selector) => {
     const target = document.querySelector(selector);
     if (target) target.hidden = !visible;
   });
   [
+    "#live-outlook",
+    "#action-plan-panel",
+    ".decision-flow",
+    ".risk-panel",
+    ".action-workspace",
+    ".overview-score",
     ".metric-strip",
     ".insight-grid",
     ".evidence-workspace",
@@ -4772,8 +6238,38 @@ function writeStoredTodo(analysis) {
       TODO_STORAGE_KEY,
       JSON.stringify({ headline, decision, crop, region }),
     );
+    void syncStoredWorkspaceBackup();
   } catch {
     /* 저장소가 막혀 있으면 알림 본문만 일반 문구가 된다. */
+  }
+}
+
+function writeStoredTodoFromPlan(plan, analysis) {
+  const storage = safeStorage();
+  const saveConsent = document.querySelector("#save-consent");
+  if (!storage || saveConsent?.checked !== true) return;
+  const action = plan?.firstAction;
+  try {
+    if (!action || action.status !== "OPEN") {
+      storage.removeItem(TODO_STORAGE_KEY);
+      void syncStoredWorkspaceBackup();
+      return;
+    }
+    const crop = analysis?.inputSummary?.cropLabel ?? null;
+    const region = analysis?.inputSummary?.regionLabel ?? readStoredRegion();
+    storage.setItem(
+      TODO_STORAGE_KEY,
+      JSON.stringify({
+        headline: action.title,
+        decision: action.instruction,
+        dueAt: action.dueAt,
+        crop,
+        region,
+      }),
+    );
+    void syncStoredWorkspaceBackup();
+  } catch {
+    /* 저장소가 막혀 있어도 실제 행동 계획 조회와 저장은 계속 사용할 수 있다. */
   }
 }
 
@@ -4796,10 +6292,22 @@ function todoNotificationCopy() {
     };
   }
   const where = [todo.region, todo.crop].filter(Boolean).join(" · ");
+  const dueToday = todo.dueAt
+    ? seoulDateKey(todo.dueAt) <= seoulDateKey(new Date())
+    : true;
   return {
-    title: `오늘 먼저 할 일 — ${todo.headline}`,
+    title: `${dueToday ? "오늘 먼저 할 일" : "다음 할 일"} — ${todo.headline}`,
     body: [where, todo.decision].filter(Boolean).join(" | ") || "흙날씨 농지 진단",
   };
+}
+
+function seoulDateKey(value) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
 }
 
 async function showNotificationNow(copy) {
@@ -4950,7 +6458,7 @@ function setupNotificationPanel() {
     }
   });
 
-  document.querySelector("#notification-save")?.addEventListener("click", () => {
+  document.querySelector("#notification-save")?.addEventListener("click", async () => {
     if (!notificationsSupported()) {
       if (status) status.textContent = "이 브라우저는 알림을 지원하지 않습니다.";
       return;
@@ -4965,6 +6473,7 @@ function setupNotificationPanel() {
       return;
     }
     writeStoredAlarm({ time, lastSentOn: null });
+    await syncStoredWorkspaceBackup();
     scheduleAlarm();
     renderNotificationState();
   });
@@ -5247,19 +6756,10 @@ function setupAccountKeyPanel() {
   };
   showKey(storage?.getItem(ACCOUNT_KEY_STORAGE_KEY) ?? null);
 
-  const backupPayload = () => {
-    const soilTest = readStoredSoilTest();
-    const region = readStoredRegion();
-    const payload = {};
-    if (soilTest) payload.soilTest = soilTest;
-    if (region) payload.region = region;
-    return payload;
-  };
-
   createButton?.addEventListener("click", async () => {
     if (status) status.textContent = "열쇠를 만드는 중입니다…";
-    const payload = backupPayload();
-    if (Object.keys(payload).length === 0) {
+    const payload = buildDeviceBackupPayload(storage);
+    if (Object.keys(payload).every((key) => ["version", "savedAt"].includes(key))) {
       if (status) {
         status.textContent =
           "먼저 검사 결과를 등록하거나 분석할 지역을 선택해 주세요.";
@@ -5314,11 +6814,21 @@ function setupAccountKeyPanel() {
       const payload = result.payload ?? {};
       if (payload.soilTest) writeStoredSoilTest(payload.soilTest);
       if (payload.region) rememberRegion(payload.region);
+      restoreFarmWorkspace(payload, storage);
+      if (payload.alarm) {
+        storage?.setItem(ALARM_STORAGE_KEY, JSON.stringify(payload.alarm));
+      }
+      if (payload.todo) {
+        storage?.setItem(TODO_STORAGE_KEY, JSON.stringify(payload.todo));
+      }
       storage?.setItem(ACCOUNT_KEY_STORAGE_KEY, typed.toUpperCase());
       showKey(typed.toUpperCase());
       renderSoilTestState();
       renderRegionLabels();
       renderDashboardSoilTest();
+      renderFarmLists();
+      renderNotificationState();
+      scheduleAlarm();
       if (status) status.textContent = "불러왔습니다. 이 기기에도 저장했습니다.";
     } catch (error) {
       showError(
@@ -5330,6 +6840,70 @@ function setupAccountKeyPanel() {
       );
     }
   });
+}
+
+function buildDeviceBackupPayload(storage = safeStorage()) {
+  const soilTest = readStoredSoilTest();
+  const region = readStoredRegion();
+  const farms = readStoredFarms();
+  const activeFarmId = storage?.getItem(ACTIVE_FARM_STORAGE_KEY) ?? null;
+  const alarm = readStoredJson(ALARM_STORAGE_KEY);
+  const todo = readStoredJson(TODO_STORAGE_KEY);
+  const payload = { version: 2, savedAt: new Date().toISOString() };
+  if (soilTest) payload.soilTest = soilTest;
+  if (region) payload.region = region;
+  if (farms.length) {
+    payload.farms = farms;
+    payload.activeFarmId = farms.some(({ id }) => id === activeFarmId)
+      ? activeFarmId
+      : farms[0].id;
+  }
+  if (alarm) payload.alarm = alarm;
+  if (todo) payload.todo = todo;
+  return payload;
+}
+
+async function syncStoredWorkspaceBackup() {
+  const storage = safeStorage();
+  const accountKey = storage?.getItem(ACCOUNT_KEY_STORAGE_KEY) ?? null;
+  if (!connected || !accountKey) return false;
+  try {
+    await api.saveDeviceBackup(buildDeviceBackupPayload(storage), accountKey);
+    return true;
+  } catch {
+    // 로컬 알림·할 일은 유지한다. 다음 명시적 백업이나 설정 변경 때 재시도한다.
+    return false;
+  }
+}
+
+function readStoredJson(key) {
+  const raw = safeStorage()?.getItem(key);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function restoreFarmWorkspace(payload, storage) {
+  if (!storage || !Array.isArray(payload?.farms) || payload.farms.length === 0) {
+    return;
+  }
+  const farms = payload.farms.filter(
+    (farm) => typeof farm?.id === "string" && isStoredFarmProfile(farm),
+  );
+  if (farms.length === 0) return;
+  const active =
+    farms.find(({ id }) => id === payload.activeFarmId) ?? farms[0];
+  const { id, name, updatedAt, ...profile } = active;
+  storage.setItem(FARMS_STORAGE_KEY, JSON.stringify(farms));
+  storage.setItem(ACTIVE_FARM_STORAGE_KEY, id);
+  storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(profile));
+  storage.setItem(REGION_STORAGE_KEY, profile.region);
 }
 
 function readFormValues() {
@@ -5437,9 +7011,65 @@ function stateLabel(state) {
   return STATE_LABELS[state] ?? state.replaceAll("_", " ");
 }
 
+function isRegionalReferenceAnalysis(analysis) {
+  return analysis?.inputSummary?.locationPrecision === "ADMIN_AREA_BROAD";
+}
+
+function stateHasUsableValues(state) {
+  return ["READY", "COMPLETE", "PARTIAL"].includes(state);
+}
+
+function hasRegionalReferenceCoverage(analysis) {
+  return (
+    isRegionalReferenceAnalysis(analysis) &&
+    stateHasUsableValues(analysis?.climate?.state) &&
+    stateHasUsableValues(analysis?.soil?.state) &&
+    forecastDisplayDays(analysis).length > 0
+  );
+}
+
+function analysisAxisPresentation(analysis, key, state) {
+  if (hasRegionalReferenceCoverage(analysis)) {
+    if (key === "forecast") {
+      const days = forecastDisplayDays(analysis).length;
+      const risks = activeForecastRisks(analysis);
+      return risks.length > 0
+        ? {
+            label: `${risks.length}건 주의`,
+            tone: "warning",
+            help: "작물별 위험 기준 적용",
+          }
+        : {
+            label: `${days}일 분석`,
+            tone: "good",
+            help: "지역 예보 기준 분석 완료",
+          };
+    }
+    if (["climate", "soil"].includes(key)) {
+      return {
+        label: "분석 완료",
+        tone: "good",
+        help: "지역자료 기준 분석 완료",
+      };
+    }
+  }
+  return {
+    label: stateLabel(state),
+    tone: toneForState(state),
+    help: stateHelp(state),
+  };
+}
+
+function sourceUsedInAnalysis(source) {
+  return (
+    ["LIVE", "CACHE"].includes(source?.deliveryState) &&
+    source?.adapterState !== "UNSUPPORTED"
+  );
+}
+
 function stateHelp(state) {
   if (state === "READY" || state === "COMPLETE") return "필요한 자료 흐름 완료";
-  if (state === "PARTIAL") return "일부 자료의 추가 확인 필요";
+  if (state === "PARTIAL") return "사용 가능한 자료 범위만 반영";
   if (state === "HOLD") return "핵심 자료 확보 전 판단 보류";
   if (state === "NOT_APPLICABLE") return "현재 조건에는 적용하지 않음";
   if (state === "PENDING") return "백엔드 처리 중";
@@ -5533,6 +7163,23 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function formatDashboardUpdate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const valueOf = (type) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${valueOf("month")}.${valueOf("day")} (${valueOf("weekday")}) ${valueOf("hour")}:${valueOf("minute")}`;
 }
 
 function formatEvidenceValue(value, unit) {
@@ -5636,10 +7283,17 @@ function textOf(value) {
   return "";
 }
 
-function openEvidenceDialog() {
+function openEvidenceDialog(section = "summary") {
   const dialog = document.querySelector("#evidence-dialog");
   if (!dialog.open) dialog.showModal();
-  dialog.querySelector("[data-close-dialog]")?.focus();
+  const target = dialog.querySelector(`[data-guide-section="${section}"]`);
+  if (target) {
+    target.setAttribute("tabindex", "-1");
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "start" });
+  } else {
+    dialog.querySelector("[data-close-dialog]")?.focus();
+  }
 }
 
 function announce(message) {

@@ -299,6 +299,7 @@ test("reviewed setup SQL keeps shared tables server-only with explicit grants an
   for (const table of [
     "heuknalssi_shared_state",
     "heuknalssi_rate_limits",
+    "heuknalssi_device_backups",
   ]) {
     assert.match(sql, new RegExp(`alter table public\\.${table} enable row level security`, "i"));
     assert.match(sql, new RegExp(`revoke all on table public\\.${table} from public, anon, authenticated`, "i"));
@@ -308,4 +309,9 @@ test("reviewed setup SQL keeps shared tables server-only with explicit grants an
   assert.match(sql, /security invoker/iu);
   assert.match(sql, /revoke all on function public\.heuknalssi_shared_state_probe/iu);
   assert.match(sql, /grant execute on function public\.heuknalssi_shared_state_probe/iu);
+  assert.match(sql, /revoke all on function public\.save_device_backup/iu);
+  assert.match(sql, /grant execute on function public\.load_device_backup/iu);
+  assert.match(sql, /insert into storage\.buckets/iu);
+  assert.match(sql, /'farm-photos'[\s\S]*false[\s\S]*10485760/iu);
+  assert.match(sql, /array\['image\/jpeg', 'image\/png', 'image\/webp'\]/iu);
 });
