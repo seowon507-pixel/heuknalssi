@@ -135,8 +135,10 @@ export class FarmGame {
   // ── 1) 작물 선택 ─────────────────────────────
   /**
    * 키울 작물을 하나 추가합니다. (여러 종류 동시 재배 가능, 같은 종류는 1개씩)
+   * @param {string|null} startStageKey - 시작 단계 key (예: 'sprout').
+   *   이미 자라 있는 작물을 등록할 때 그 단계부터 시작합니다. 없으면 첫 단계부터.
    */
-  selectCrop(cropId, when = new Date()) {
+  selectCrop(cropId, when = new Date(), startStageKey = null) {
     const crop = CROPS[cropId];
     if (!crop) {
       return { ok: false, message: `없는 작물입니다: ${cropId}` };
@@ -150,11 +152,24 @@ export class FarmGame {
 
     const cropState = createCropState(cropId);
     cropState.startedKey = typeof when === 'string' ? when : toDateKey(when);
+
+    // 시작 단계 지정: 해당 단계의 요구 성장치에서 시작
+    if (startStageKey) {
+      const idx = crop.stages.findIndex((s) => s.key === startStageKey);
+      if (idx > 0) {
+        cropState.growth = crop.stages[idx].daysRequired;
+        cropState.stageIndex = idx;
+        cropState.matured = idx === crop.stages.length - 1;
+      }
+    }
     this.state.crops.push(cropState);
 
+    const stageName = crop.stages[cropState.stageIndex].name;
     return {
       ok: true,
-      message: `${crop.emoji} ${crop.name} 씨앗을 심었어요! 매일 돌봐주세요.`,
+      message: cropState.stageIndex > 0
+        ? `${crop.emoji} ${stageName} 상태로 등록했어요! 매일 돌봐주세요.`
+        : `${crop.emoji} ${crop.name} 씨앗을 심었어요! 매일 돌봐주세요.`,
       progress: getGrowthProgress(cropState),
     };
   }

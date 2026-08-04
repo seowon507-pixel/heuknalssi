@@ -235,6 +235,43 @@ body::before {
   box-shadow: inset 0 0 0 1.5px var(--green-soft);
 }
 
+/* 작물 상태(성장 단계) 선택 */
+.stage-grid .crop-card:nth-child(5) {
+  grid-column: auto;
+  justify-self: stretch;
+  width: auto;
+}
+.stage-grid .crop-card svg { width: 72px; height: 82px; }
+
+.stage-row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  background: var(--card);
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1.5px var(--line-soft), var(--shadow);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.stage-row .sr-crop { font-size: 14.5px; }
+.stage-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.stage-chip {
+  font: inherit;
+  font-size: 12.5px;
+  border: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  box-shadow: inset 0 0 0 1.5px var(--line-soft);
+}
+.stage-chip.active {
+  color: var(--green-deep);
+  background: var(--green-pale);
+  box-shadow: inset 0 0 0 1.5px var(--green-soft);
+}
+
 /* 적합성 추천 지역 / 작물 적합도 행 */
 .wiz-recos { display: flex; flex-direction: column; gap: 8px; }
 .wiz-reco {
@@ -312,7 +349,6 @@ body::before {
 }
 .crop-card svg { width: 84px; height: 96px; }
 .crop-card .crop-name { font-size: 15px; color: var(--ink); }
-.crop-card .crop-days { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
 .crop-card.selected {
   box-shadow: inset 0 0 0 2px var(--green), var(--shadow);
   transform: translateY(-2px);
@@ -808,6 +844,88 @@ body::before {
 .diary-item .d-date { font-size: 12px; color: var(--ink-soft); margin-bottom: 2px; }
 .diary-item .d-text { font-size: 14px; white-space: pre-wrap; word-break: break-all; }
 
+/* ── 흙톡 (챗봇) ──────────────────────────── */
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 200px;
+  margin-bottom: 12px;
+}
+.chat-msg { display: flex; align-items: flex-end; gap: 7px; }
+.chat-msg.user { justify-content: flex-end; }
+.chat-avatar {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--green-pale);
+  box-shadow: inset 0 0 0 1.5px var(--green-soft);
+  display: grid;
+  place-items: center;
+  color: var(--green-deep);
+}
+.chat-avatar svg { width: 17px; height: 17px; }
+.chat-bubble {
+  max-width: 76%;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  border-radius: 16px;
+  white-space: pre-wrap;
+  word-break: keep-all;
+}
+.chat-msg.bot .chat-bubble {
+  background: var(--card);
+  box-shadow: inset 0 0 0 1.5px var(--line-soft), var(--shadow);
+  border-bottom-left-radius: 5px;
+}
+.chat-msg.user .chat-bubble {
+  background: var(--green-pale);
+  box-shadow: inset 0 0 0 1.5px var(--green-soft);
+  color: var(--green-deep);
+  border-bottom-right-radius: 5px;
+}
+
+/* 입력 중 표시 (점 세 개) */
+.chat-typing { display: flex; gap: 4px; align-items: center; padding: 13px 16px; }
+.chat-typing i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  animation: typing-dot 1.1s ease-in-out infinite;
+}
+.chat-typing i:nth-child(2) { animation-delay: 0.18s; }
+.chat-typing i:nth-child(3) { animation-delay: 0.36s; }
+@keyframes typing-dot {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50%      { opacity: 1; transform: translateY(-3px); }
+}
+
+.chat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+.chat-form { display: flex; gap: 8px; }
+.chat-form input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 14px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: none;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  color: var(--ink);
+  outline: none;
+}
+.chat-form input:focus { box-shadow: inset 0 0 0 1.5px var(--green-soft); }
+
 /* ── 기록 ─────────────────────────────────── */
 
 .stat-row {
@@ -907,7 +1025,7 @@ body::before {
   width: 100%;
   max-width: 430px;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   background: color-mix(in srgb, var(--paper-2) 92%, transparent);
   backdrop-filter: blur(6px);
   border-top: 1.5px solid var(--line-soft);

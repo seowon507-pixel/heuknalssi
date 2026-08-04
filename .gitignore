@@ -1,6 +1,9 @@
 # 런타임 유저 데이터 (출석/작물/일기 저장 파일)
 data/
 
+# 비밀 키 (Gemini 등)
+.env
+
 # 의존성 · 로그
 node_modules/
 *.log

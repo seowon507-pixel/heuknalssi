@@ -805,6 +805,12 @@ const TAB_ICONS = {
     <path d="M8.5 4.5 Q11 2.2 13.5 4.5"/>
     <path d="M7.8 12.2 l2.3 2.3 l4.2 -4.8"/>
   </svg>`,
+  chat: `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 6 Q4 4 6 4 H16 Q18 4 18 6 V12.5 Q18 14.5 16 14.5 H9.5 L5.5 18 V14.5 Q4 14.5 4 12.5 Z"/>
+    <path d="M11 11.5 V9.6"/>
+    <path d="M11 9.6 Q8.8 9.4 8.5 7.2 Q10.7 7.4 11 9.6 Z"/>
+    <path d="M11 9.6 Q13.2 9.4 13.5 7.2 Q11.3 7.4 11 9.6 Z"/>
+  </svg>`,
   records: `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
     <path d="M4 5 Q4 3.5 5.5 3.5 H16.5 Q18 3.5 18 5 V17 Q18 18.5 16.5 18.5 H5.5 Q4 18.5 4 17 Z"/>
     <path d="M7.5 3.5 V18.5"/>
@@ -840,8 +846,8 @@ async function api(path, options = {}) {
 ════════════════════════════════════════════ */
 
 const $ = (sel) => document.querySelector(sel);
-const views = ['wizard', 'home', 'todos', 'rewards', 'records', 'settings'];
-const TAB_LABELS = { home: '대시보드', todos: 'TO-DO', records: '기록', settings: '설정' };
+const views = ['wizard', 'home', 'todos', 'chat', 'rewards', 'records', 'settings'];
+const TAB_LABELS = { home: '대시보드', todos: 'TO-DO', chat: '흙톡', records: '기록', settings: '설정' };
 
 function show(name, { tabbar = true } = {}) {
   for (const v of views) $(`#view-${v}`).hidden = v !== name;
@@ -896,6 +902,16 @@ const STEP_LABELS = {
 const CROP_STEP_LABELS = {
   potato: { seed: '씨감자', sprout: '싹' },
 };
+// 작물별 성장 단계 key (config.js와 동일한 순서 — 시작 상태 질문에 사용)
+const CROP_STAGE_KEYS = {
+  lettuce:  ['seed', 'sprout', 'growing', 'mature'],
+  cucumber: ['seed', 'sprout', 'seedling', 'flower', 'fruit', 'mature'],
+  potato:   ['seed', 'sprout', 'leafing', 'bulking', 'mature'],
+  apple:    ['sapling', 'young', 'grown', 'blossom', 'fruit', 'mature'],
+  pear:     ['sapling', 'young', 'grown', 'blossom', 'fruit', 'mature'],
+};
+// 시작 상태로 고를 수 있는 단계 (마지막 '수확'은 제외)
+const startableStages = (cropId) => (CROP_STAGE_KEYS[cropId] || []).slice(0, -1);
 function stepLabel(cropId, key) {
   return (CROP_STEP_LABELS[cropId] && CROP_STEP_LABELS[cropId][key]) || STEP_LABELS[key] || key;
 }
@@ -1268,7 +1284,6 @@ function cropCardsHTML(list) {
     <button type="button" class="crop-card" data-crop="${c.id}">
       ${cropPortrait(c.id)}
       <div class="crop-name">${c.name}</div>
-      <div class="crop-days">매일 오면 7일 완성</div>
     </button>`).join('');
 }
 
@@ -1288,20 +1303,22 @@ function bindCropToggle(root, confirmBtn, baseLabel) {
   return picked;
 }
 
-// 선택한 씨앗들을 순서대로 심고 성공 개수를 돌려줌
-async function plantSeeds(cropIds) {
+// 선택한 작물들을 순서대로 등록하고 성공 개수를 돌려줌
+// entries: 작물 id 문자열 또는 { id, stage }(시작 단계 포함) 배열
+async function plantSeeds(entries) {
   let planted = 0;
   let lastMessage = '';
-  for (const id of cropIds) {
+  for (const entry of entries) {
+    const { id, stage } = typeof entry === 'string' ? { id: entry, stage: null } : entry;
     const res = await api('/api/me/character', {
       method: 'POST',
-      body: JSON.stringify({ characterId: id }),
+      body: JSON.stringify({ characterId: id, startStage: stage || null }),
     });
     if (res.ok) { planted += 1; lastMessage = res.message; }
     else toast(res.message || '씨앗을 심지 못했어요.');
   }
   if (planted === 1) toast(lastMessage);
-  else if (planted > 1) toast(`씨앗 ${planted}개를 심었어요! 매일 돌봐주세요.`);
+  else if (planted > 1) toast(`작물 ${planted}개를 등록했어요! 매일 돌봐주세요.`);
   return planted;
 }
 
@@ -1376,7 +1393,25 @@ async function startWizard({ skipName = false, settingsOnly = false } = {}) {
 
 function goWiz(step) { wiz.history.push(step); renderWiz(); }
 function backWiz() {
+  // 작물별 상태 질문 도중이면 이전 작물로
+  const cur = wiz.history[wiz.history.length - 1];
+  if (cur === 'crops-state' && (wiz.answers.stateIdx || 0) > 0) {
+    wiz.answers.stateIdx -= 1;
+    renderWiz();
+    return;
+  }
   if (wiz.history.length > 1) { wiz.history.pop(); renderWiz(); }
+}
+
+// 작물 상태(성장 단계) 선택 카드 — 단계별 그림으로 보여줌
+function stageOptionsHTML(cropId) {
+  return `<div class="crop-grid stage-grid">
+    ${startableStages(cropId).map((k) => `
+      <button type="button" class="crop-card stage-pick" data-stage="${k}">
+        ${cropPortrait(cropId, k)}
+        <div class="crop-name">${stepLabel(cropId, k)}</div>
+      </button>`).join('')}
+  </div>`;
 }
 
 function wizFrame(title, sub, inner, eyebrow = '시작하기') {
@@ -1422,7 +1457,7 @@ function renderWiz() {
           <span>밭과 작물이 있어요 — 위치와 작물을 바로 등록해요.</span>
         </button>
         <button class="option-card" data-v="preparing">
-          <b>재배를 준비하고 있어요</b>
+          <b>재배를 시작하려고 해요</b>
           <span>생각해 둔 지역과 작물이 잘 맞는지 확인해 드려요.</span>
         </button>
       </div>`);
@@ -1437,7 +1472,7 @@ function renderWiz() {
     const title = a.mode === 'preparing' ? '밭을 생각해 둔 곳이 어디인가요?' : '밭이 어디에 있나요?';
     body.innerHTML = wizFrame(title, '현재 위치를 쓰거나 주소를 입력하면, 그 지역 기후·토양 기준으로 분석해요.',
       `<button class="option-card" id="wiz-geo">
-        <b>📍 현재 위치로 찾기</b>
+        <b>현재 위치로 찾기</b>
         <span>브라우저 위치 권한을 한 번 허용해 주세요.</span>
       </button>
       <form id="wiz-addr-form" class="addr-form">
@@ -1510,45 +1545,56 @@ function renderWiz() {
     return;
   }
 
-  // ── (준비 중) 작물 질문 ──
+  // ── (준비 중) 작물 질문 — 여러 개 선택 가능 ──
   if (step === 'crop-prep') {
-    body.innerHTML = wizFrame('어떤 작물을 키워보고 싶나요?', '골라주시면 지역과 잘 맞는지 확인해 드릴게요.',
-      `<div class="crop-grid">${cropCardsHTML(selectableCrops)}</div>`, '작물 확인');
-    body.querySelectorAll('.crop-card').forEach((card) => {
-      card.onclick = () => { a.cropId = card.dataset.crop; goWiz('check'); };
-    });
+    body.innerHTML = wizFrame('어떤 작물을 키워보고 싶나요?', '여러 개를 골라도 좋아요. 지역과 잘 맞는지 확인해 드릴게요.',
+      `<div class="crop-grid">${cropCardsHTML(selectableCrops)}</div>
+      <button class="btn btn-primary btn-wide" id="wiz-crops-next" disabled>다음</button>`, '작물 확인');
+    const confirm = $('#wiz-crops-next');
+    const picked = bindCropToggle(body, confirm, '다음');
+    confirm.onclick = () => {
+      if (!picked.size) return;
+      a.cropIds = [...picked];
+      goWiz('check');
+    };
     return;
   }
 
-  // ── (준비 중) 적합성 확인 + 추천 지역 ──
+  // ── (준비 중) 적합성 확인 + 추천 지역 — 고른 작물 전부 확인 ──
   if (step === 'check') {
     const region = regionOf(a.regionId);
-    const suit = assessSuitability(a.cropId, region.env);
-    const cropName = CROP_NAMES[a.cropId] || a.cropId;
-    const good = suit.score >= 60;
+    const suits = a.cropIds.map((id) => ({ id, name: CROP_NAMES[id] || id, ...assessSuitability(id, region.env) }));
+    const avg = Math.round(suits.reduce((s, x) => s + x.score, 0) / suits.length);
+    const good = avg >= 60;
+    const avgVerdict = avg >= 75 ? '적합' : avg >= 50 ? '조건부 적합' : '부적합';
 
-    // 다른 지역 점수를 계산해 더 좋은 곳 추천
+    // 다른 지역의 평균 점수를 계산해 더 좋은 곳 추천
     const better = REGIONS
       .filter((r) => r.id !== a.regionId)
-      .map((r) => ({ ...r, score: assessSuitability(a.cropId, r.env).score }))
-      .filter((r) => r.score > suit.score)
+      .map((r) => ({
+        ...r,
+        score: Math.round(a.cropIds.reduce((s, id) => s + assessSuitability(id, r.env).score, 0) / a.cropIds.length),
+      }))
+      .filter((r) => r.score > avg)
       .sort((x, y) => y.score - x.score)
       .slice(0, 3);
 
-    const devLines = suit.deviations.map((d) => {
-      const nameMap = { temp: '기온', moisture: '토양 수분', ph: '산도(pH)' };
-      return `${nameMap[d.factor]}이(가) 적정(${d.optimal.min}~${d.optimal.max}${d.unit})보다 ${d.status === 'high' ? '높아요' : '낮아요'}`;
-    });
-
-    body.innerHTML = wizFrame(`${region.name}에서 ${cropName}, 어떨까요?`, '',
+    body.innerHTML = wizFrame(`${region.name}, 고른 작물과 어울릴까요?`, '',
       `<div class="score-hero">
-        ${ringGauge(suit.score)}
+        ${ringGauge(avg)}
         <div class="score-hero-text">
-          <div class="score-grade">${suit.verdict}</div>
-          <div class="score-name">${cropName} 재배 적합도</div>
+          <div class="score-grade">${avgVerdict}</div>
+          <div class="score-name">종합 재배 적합도</div>
         </div>
       </div>
-      ${devLines.length ? `<p class="wiz-sub" style="text-align:center">${devLines.join(' · ')}</p>` : `<p class="wiz-sub" style="text-align:center">기온·수분·산도 모두 ${cropName}에게 알맞아요.</p>`}
+      <div class="wiz-recos" style="margin-bottom:4px">
+        ${suits.map((s) => `
+          <div class="wiz-reco">
+            <span class="wr-name">${s.name}</span>
+            <span class="wr-score">${s.score}점</span>
+            <span class="wf-flag ${s.score >= 60 ? 'ok' : 'warn'}">${s.verdict}</span>
+          </div>`).join('')}
+      </div>
       ${!good && better.length ? `
         <h3 class="section-label">주변 추천 지역</h3>
         <div class="wiz-recos">
@@ -1568,21 +1614,46 @@ function renderWiz() {
     body.querySelectorAll('.wr-move').forEach((btn) => {
       btn.onclick = () => { a.regionId = btn.dataset.r; renderWiz(); };
     });
-    $('#wiz-check-go').onclick = finishWiz;
+    // 적합 여부와 상관없이, 시작 전 작물 상태를 물어봄
+    $('#wiz-check-go').onclick = () => { a.stateIdx = 0; goWiz('crops-state'); };
+    return;
+  }
+
+  // ── 작물별 상태 질문 — 고른 작물을 하나씩 물어봄 (두 경로 공통) ──
+  if (step === 'crops-state') {
+    const idx = a.stateIdx || 0;
+    const cropId = a.cropIds[idx];
+    const cropName = CROP_NAMES[cropId] || cropId;
+    const title = a.mode === 'preparing'
+      ? `${cropName}, 어떤 상태로 시작하나요?`
+      : `${cropName}는 지금 어떤 상태인가요?`;
+    const sub = a.mode === 'preparing'
+      ? `씨앗부터 심어도 되고, 모종을 사 왔다면 그 단계부터 시작해요. (${idx + 1}/${a.cropIds.length})`
+      : `해당하는 모습을 골라주세요. (${idx + 1}/${a.cropIds.length})`;
+    body.innerHTML = wizFrame(title, sub, stageOptionsHTML(cropId), '작물 상태');
+    body.querySelectorAll('.stage-pick').forEach((card) => {
+      card.onclick = () => {
+        a.stageMap = a.stageMap || {};
+        a.stageMap[cropId] = card.dataset.stage;
+        if (idx + 1 < a.cropIds.length) { a.stateIdx = idx + 1; renderWiz(); }
+        else finishWiz();
+      };
+    });
     return;
   }
 
   // ── (이미 재배 중) 키우는 작물 등록 ──
   if (step === 'crops-grow') {
-    body.innerHTML = wizFrame('어떤 작물을 키우고 있나요?', '여러 개를 골라도 좋아요.',
+    body.innerHTML = wizFrame('어떤 작물을 키우고 있나요?', '여러 개를 골라도 좋아요. 다음 단계에서 작물 상태를 물어볼게요.',
       `<div class="crop-grid">${cropCardsHTML(selectableCrops)}</div>
-      <button class="btn btn-primary btn-wide" id="wiz-crops-done" disabled>등록하기</button>`, '작물 등록');
+      <button class="btn btn-primary btn-wide" id="wiz-crops-done" disabled>다음</button>`, '작물 등록');
     const confirm = $('#wiz-crops-done');
-    const picked = bindCropToggle(body, confirm, '등록하기');
+    const picked = bindCropToggle(body, confirm, '다음');
     confirm.onclick = () => {
       if (!picked.size) return;
       a.cropIds = [...picked];
-      finishWiz();
+      a.stateIdx = 0;
+      goWiz('crops-state');
     };
     return;
   }
@@ -1605,7 +1676,8 @@ async function finishWiz() {
   }
 
   const ids = a.cropIds && a.cropIds.length ? a.cropIds : a.cropId ? [a.cropId] : [];
-  if (ids.length) await plantSeeds(ids);
+  const entries = ids.map((id) => ({ id, stage: (a.stageMap || {})[id] || null }));
+  if (entries.length) await plantSeeds(entries);
   await refreshStatus();
   activeCropId = ids[0] || null;
   renderHome();
@@ -1650,23 +1722,52 @@ function openSeedOverlay() {
       </div>`;
     }).join('');
     panel.innerHTML = `
-      <p class="eyebrow">새 씨앗 · 2/2</p>
+      <p class="eyebrow">새 씨앗 · 2/3</p>
       <h2 style="font-size:20px;font-weight:400;margin-bottom:4px">${region ? `${region.name} 기준 적합도예요` : '적합도 확인'}</h2>
       <p style="color:var(--ink-soft);font-size:13.5px;margin-bottom:16px">
         ${region ? '점수가 낮아도 심을 수는 있어요. 더 자주 돌봐주면 돼요.' : '설정에서 재배지를 등록하면 적합도를 확인할 수 있어요.'}
       </p>
       <div class="wiz-recos" style="margin-bottom:16px">${rows}</div>
-      <button class="btn btn-primary btn-wide" id="overlay-plant">씨앗 심기 (${ids.length}개)</button>`;
-    panel.querySelector('#overlay-plant').onclick = async () => {
-      panel.querySelector('#overlay-plant').disabled = true;
-      const planted = await plantSeeds(ids);
-      overlay.hidden = true;
-      if (planted > 0) {
-        await refreshStatus();
-        activeCropId = ids[0];
-        renderHome();
-        popVignette();
-      }
+      <button class="btn btn-primary btn-wide" id="overlay-next">다음</button>`;
+
+    // ③ 작물 상태 선택 후 등록
+    panel.querySelector('#overlay-next').onclick = () => {
+      const stageMap = {};
+      panel.innerHTML = `
+        <p class="eyebrow">새 씨앗 · 3/3</p>
+        <h2 style="font-size:20px;font-weight:400;margin-bottom:4px">지금 어떤 상태인가요?</h2>
+        <p style="color:var(--ink-soft);font-size:13.5px;margin-bottom:16px">씨앗부터 심어도 되고, 이미 자라 있다면 그 단계를 골라주세요.</p>
+        ${ids.map((id) => `
+          <div class="stage-row">
+            <span class="sr-crop">${CROP_NAMES[id] || id}</span>
+            <div class="stage-chips" data-crop="${id}">
+              ${startableStages(id).map((k, i) => `
+                <button type="button" class="stage-chip ${i === 0 ? 'active' : ''}" data-stage="${k}">${stepLabel(id, k)}</button>`).join('')}
+            </div>
+          </div>`).join('')}
+        <button class="btn btn-primary btn-wide" id="overlay-plant" style="margin-top:16px">등록하기 (${ids.length}개)</button>`;
+
+      ids.forEach((id) => { stageMap[id] = startableStages(id)[0]; });
+      panel.querySelectorAll('.stage-chips').forEach((chips) => {
+        chips.querySelectorAll('.stage-chip').forEach((chip) => {
+          chip.onclick = () => {
+            stageMap[chips.dataset.crop] = chip.dataset.stage;
+            chips.querySelectorAll('.stage-chip').forEach((c) => c.classList.toggle('active', c === chip));
+          };
+        });
+      });
+
+      panel.querySelector('#overlay-plant').onclick = async () => {
+        panel.querySelector('#overlay-plant').disabled = true;
+        const planted = await plantSeeds(ids.map((id) => ({ id, stage: stageMap[id] })));
+        overlay.hidden = true;
+        if (planted > 0) {
+          await refreshStatus();
+          activeCropId = ids[0];
+          renderHome();
+          popVignette();
+        }
+      };
     };
   };
   overlay.onclick = (e) => { if (e.target === overlay) overlay.hidden = true; };
@@ -1740,6 +1841,238 @@ function renderTodoList(todos) {
 async function renderTodos() {
   const data = await api('/api/me/todos');
   renderTodoList(data.todos || []);
+}
+
+/* ════════════════════════════════════════════
+   5-3. 흙톡 — 재배 지식 챗봇 (규칙 기반)
+   작물 5종 × 주제 7개 지식 베이스 + 키워드 매칭.
+   나중에 LLM/백엔드 챗 API가 붙으면 botReply()만 교체하면 됩니다.
+════════════════════════════════════════════ */
+
+const TOPIC_LABELS = {
+  plant: '심는 시기', water: '물 주기', temp: '온도', pest: '병해충',
+  harvest: '수확', soil: '흙·거름', tip: '초보 팁',
+};
+
+const CROP_KB = {
+  lettuce: {
+    plant: '상추는 서늘할 때 잘 자라서 봄(3~4월)과 가을(8~9월)에 심어요. 씨앗은 흙을 아주 얇게 덮고, 모종은 20cm 간격이면 충분해요.',
+    water: '잎채소라 물을 좋아해요. 겉흙이 마르면 아침에 흠뻑 주세요. 다만 물이 고이면 뿌리가 상하니 배수는 꼭 챙겨요.',
+    temp: '15~20℃의 서늘한 날씨를 가장 좋아해요. 25℃를 넘으면 쓴맛이 나고 꽃대가 올라와요(추대). 한여름엔 반그늘이 좋아요.',
+    pest: '진딧물과 민달팽이를 조심하세요. 통풍을 좋게 하고, 보이는 즉시 잡아주는 게 최고예요. 진딧물엔 물을 세게 뿌려 떨어뜨리는 것도 도움돼요.',
+    harvest: '심은 지 30~40일이면 겉잎부터 딸 수 있어요. 속잎을 남기고 겉잎만 따면 한 포기로 오래오래 수확할 수 있어요.',
+    soil: '물 빠짐 좋은 흙에 심기 2주 전 퇴비를 섞어두세요. pH 6.0~6.8이 적당해요.',
+    tip: '핵심은 "겉잎 수확"이에요. 한 번에 다 뽑지 말고 겉잎부터 따면 계속 자라요. 여름 직사광선은 피해주세요.',
+  },
+  cucumber: {
+    plant: '오이는 추위에 약해서 늦서리가 지난 5월 초에 모종으로 심는 게 일반적이에요. 덩굴이 타고 오를 지주대를 꼭 세우고, 포기 사이는 40~50cm 띄워요.',
+    water: '오이는 90%가 수분이라 물을 정말 많이 먹어요. 2~3일에 한 번 흠뻑, 한여름엔 매일 아침 주세요. 잎에 물이 닿으면 병이 생기기 쉬우니 뿌리 쪽에 주세요.',
+    temp: '22~28℃가 최적이에요. 10℃ 아래로 내려가면 냉해를 입으니 초봄 밤 기온을 조심하세요.',
+    pest: '잎에 노균병·흰가루병이 잘 와요. 아랫잎을 정리해 통풍시키고, 잎이 얼룩지면 그 잎은 바로 떼어내세요. 진딧물·응애도 잎 뒷면을 종종 확인해요.',
+    harvest: '꽃 핀 지 7~10일, 20cm쯤 됐을 때 어린 오이를 따는 게 가장 맛있어요. 자주 딸수록 새 오이가 계속 열려요.',
+    soil: '거름을 많이 먹는 작물이에요. 밑거름을 넉넉히 하고 자라는 동안 웃거름을 2~3번 더 줘요. pH 5.8~6.8.',
+    tip: '지주대에 덩굴을 감아 유인해주고, 아래쪽 곁순(아들줄기)은 정리해주면 열매가 실해져요. 물 부족하면 오이가 쓴맛이 나요.',
+  },
+  potato: {
+    plant: '봄감자는 3월 중하순에 씨감자를 심어요. 씨감자는 눈이 1~2개씩 붙게 잘라 2~3일 말린 뒤, 깊이 5~10cm·간격 25~30cm로 심어요.',
+    water: '감자는 과습에 아주 약해요. 물 빠짐이 최우선이고, 물은 심하게 가물 때만 주면 돼요. 장마철 물 고임을 꼭 피해주세요.',
+    temp: '14~23℃의 서늘한 기후를 좋아해요. 날이 너무 더우면 알이 굵어지지 않아요.',
+    pest: '역병(잎이 검게 마름)과 진딧물, 땅속 굼벵이를 조심하세요. 같은 자리에 해마다 심으면(연작) 병이 심해지니 자리를 바꿔주세요.',
+    harvest: '심은 지 90~100일, 잎과 줄기가 누렇게 마르면 캘 때예요. 맑은 날 캐서 그늘에서 말려 보관하세요.',
+    soil: '물 빠짐 좋은 모래참흙이 최고예요. pH 5.0~6.5로 산성 흙에도 강해요. 자라는 동안 흙을 두 번쯤 북돋아주면(북주기) 감자가 초록으로 변하는 걸 막아요.',
+    tip: '꽃이 피면 땅속에서 알이 굵고 있다는 신호예요. 초록빛으로 변한 감자는 독 성분(솔라닌)이 있으니 빛을 꼭 가려 보관하세요.',
+  },
+  apple: {
+    plant: '사과 묘목은 봄(3~4월)에 해가 잘 들고 물 빠짐 좋은 곳에 심어요. 심고 2~4년쯤 지나야 첫 열매를 봐요 — 조급해하지 않아도 돼요.',
+    water: '어린 나무는 일주일에 1~2번 흠뻑, 자리 잡은 나무는 가물 때만 주면 돼요. 물이 고이면 뿌리가 썩으니 주의하세요.',
+    temp: '서늘한 기후를 좋아하고 추위에 강해요. 오히려 겨울 추위를 겪어야 봄에 꽃이 잘 펴요(휴면). 다만 꽃 필 무렵 늦서리는 조심.',
+    pest: '탄저병·갈색무늬병, 진딧물·응애, 열매 속을 파는 심식나방이 대표적이에요. 열매에 봉지를 씌우면 병해충을 크게 줄일 수 있어요.',
+    harvest: '품종에 따라 9~11월에 수확해요. 열매를 위로 들어 올리듯 살짝 돌리면 꼭지가 상하지 않게 따져요.',
+    soil: '깊고 물 빠짐 좋은 흙, pH 5.5~6.5가 좋아요. 겨울 가지치기(전정)가 이듬해 열매 품질을 좌우해요.',
+    tip: '열매가 너무 많이 달리면 다 작아져요. 한 자리에 1개만 남기고 솎아주면(적과) 크고 단 사과가 열려요.',
+  },
+  pear: {
+    plant: '배 묘목도 봄에 심는데, 배는 혼자서는 열매를 잘 못 맺어요. 꽃가루를 주고받을 다른 품종 나무를 근처에 함께 심어야 해요(타가수분).',
+    water: '물을 좋아하지만 고이는 건 싫어해요. 열매가 굵어지는 7~8월에 가물면 열매가 작아지니 이때는 챙겨서 주세요.',
+    temp: '온화한 기후를 좋아해요. 4월 꽃 필 때 늦서리를 맞으면 그해 농사를 망칠 수 있으니 개화기 날씨를 잘 보세요.',
+    pest: '검은별무늬병(흑성병)과 배나무이가 대표 병해충이에요. 어린 열매에 봉지를 씌우면 병도 막고 껍질도 고와져요.',
+    harvest: '8월 말~10월, 봉지째 만져봐서 묵직하게 익은 것부터 따요.',
+    soil: '뿌리가 깊게 뻗도록 깊고 비옥한 흙이 좋아요. pH 5.5~7.0.',
+    tip: '배는 강풍에 열매가 잘 떨어져요(낙과). 지주를 세우고 태풍 예보가 있으면 익은 것부터 미리 수확하세요. 열매 솎기도 잊지 마세요.',
+  },
+};
+
+// 작물을 안 정했을 때의 일반 답변
+const GENERAL_KB = {
+  plant: '작물마다 심는 시기가 달라요. 어떤 작물이 궁금하세요? 상추·오이·감자는 채소라 그해 수확하고, 사과·배는 나무라 몇 년을 함께해요.',
+  water: '물 주기 기본 원칙: 겉흙이 말랐을 때, 아침에, 뿌리 쪽에 흠뻑! 잎에 물을 뿌리면 병이 생기기 쉬워요. 작물별로 물 먹는 양이 꽤 달라요 — 어떤 작물인가요?',
+  temp: '작물마다 좋아하는 온도가 달라요. 상추·감자는 서늘한 걸(15~23℃), 오이는 따뜻한 걸(22~28℃) 좋아해요. 어떤 작물이 궁금하세요?',
+  pest: '병해충의 기본 대응은 ①통풍 좋게 ②병든 잎 바로 제거 ③같은 자리 연작 피하기예요. 작물 이름을 알려주시면 대표 병해충을 짚어드릴게요.',
+  harvest: '수확 시기는 작물마다 달라요. 상추 30~40일, 오이는 꽃 피고 일주일, 감자 90~100일, 사과·배는 가을이에요. 어떤 작물인가요?',
+  soil: '좋은 흙의 기본은 물 빠짐이에요. 심기 2주 전 퇴비를 섞어 밑거름을 하고, 자라는 중엔 웃거름을 나눠 줘요. 작물별 적정 pH도 알려드릴 수 있어요.',
+  tip: '초보라면 상추부터 시작하는 걸 추천해요 — 빨리 자라고 실패가 적거든요. 특정 작물 팁이 궁금하면 이름을 불러주세요!',
+};
+
+const CHAT_FAQ = [
+  '오이는 언제 심어요?',
+  '상추 물은 얼마나 줘요?',
+  '감자는 언제 수확해요?',
+  '사과 병해충 알려줘',
+  '배 키우기 팁',
+];
+
+let chatStarted = false;
+let chatLastCrop = null; // 직전 대화의 작물 기억 (예: "물은?" 만 물어도 이어짐)
+
+function detectCrop(t) {
+  if (t.includes('상추')) return 'lettuce';
+  if (t.includes('오이')) return 'cucumber';
+  if (t.includes('감자')) return 'potato';
+  if (t.includes('사과')) return 'apple';
+  if (/(?<!재)배(?!수|추|달|송)/.test(t)) return 'pear';
+  return null;
+}
+
+function detectTopic(t) {
+  if (/(수확|언제 따|따나|따요|따면|캐)/.test(t)) return 'harvest';
+  if (/물/.test(t)) return 'water';
+  if (/(병|벌레|해충|진딧물|응애|나방)/.test(t)) return 'pest';
+  if (/(온도|기온|추위|더위|폭염|서리|냉해)/.test(t)) return 'temp';
+  if (/(흙|토양|거름|비료|ph|산도|퇴비)/i.test(t)) return 'soil';
+  if (/(팁|조언|잘 키|주의|초보|비결)/.test(t)) return 'tip';
+  if (/(심|파종|모종|씨앗|시작|언제)/.test(t)) return 'plant';
+  return null;
+}
+
+// 답변 생성 — LLM/백엔드 연동 시 이 함수만 교체
+function botReply(text) {
+  const t = text.trim();
+  if (/(안녕|하이|반가)/.test(t)) {
+    return { text: `안녕하세요, ${userName}님! 흙톡이에요. 사과·배·오이·감자·상추 키우기라면 뭐든 물어보세요.`, chips: CHAT_FAQ };
+  }
+  if (/(고마|감사|땡큐)/.test(t)) {
+    return { text: '도움이 됐다니 기뻐요! 또 궁금한 게 생기면 언제든 불러주세요.', chips: CHAT_FAQ.slice(0, 3) };
+  }
+
+  const crop = detectCrop(t) || chatLastCrop;
+  const topic = detectTopic(t);
+  if (detectCrop(t)) chatLastCrop = detectCrop(t);
+
+  // 작물 + 주제 → 정답
+  if (crop && topic) {
+    const name = CROP_NAMES[crop];
+    const others = Object.keys(TOPIC_LABELS).filter((k) => k !== topic).slice(0, 3);
+    return {
+      text: CROP_KB[crop][topic],
+      chips: others.map((k) => `${name} ${TOPIC_LABELS[k]}`),
+    };
+  }
+  // 작물만 → 작물 개요 + 주제 선택
+  if (crop) {
+    const name = CROP_NAMES[crop];
+    return {
+      text: `${name}에 대해 뭐가 궁금하세요? 아래에서 골라도 되고, 편하게 물어봐도 돼요.`,
+      chips: Object.keys(TOPIC_LABELS).slice(0, 5).map((k) => `${name} ${TOPIC_LABELS[k]}`),
+    };
+  }
+  // 주제만 → 일반 답변 + 작물 유도
+  if (topic) {
+    return {
+      text: GENERAL_KB[topic],
+      chips: ['상추', '오이', '감자', '사과', '배'].map((n) => `${n} ${TOPIC_LABELS[topic]}`),
+    };
+  }
+  // 못 알아들음
+  return {
+    text: '아직 배우는 중이라 그건 잘 모르겠어요. 사과·배·오이·감자·상추의 심는 시기, 물 주기, 병해충, 수확 같은 걸 물어봐 주세요!',
+    chips: CHAT_FAQ,
+  };
+}
+
+function chatBubble(who, text) {
+  const log = $('#chat-log');
+  const el = document.createElement('div');
+  el.className = `chat-msg ${who}`;
+  if (who === 'bot') {
+    el.innerHTML = `<span class="chat-avatar">${TAB_ICONS.chat}</span><div class="chat-bubble"></div>`;
+    el.querySelector('.chat-bubble').textContent = text;
+  } else {
+    el.innerHTML = `<div class="chat-bubble"></div>`;
+    el.querySelector('.chat-bubble').textContent = text;
+  }
+  log.appendChild(el);
+  el.scrollIntoView({ block: 'end', behavior: 'smooth' });
+}
+
+function chatChips(chips) {
+  $('#chat-chips').innerHTML = (chips || [])
+    .map((c) => `<button class="suggest-chip"></button>`).join('');
+  const btns = document.querySelectorAll('#chat-chips .suggest-chip');
+  btns.forEach((btn, i) => {
+    btn.textContent = chips[i];
+    btn.onclick = () => sendChat(chips[i]);
+  });
+}
+
+const chatHistory = [];   // LLM에 넘길 대화 기록 {role:'user'|'bot', text}
+let llmAvailable = null;  // null=모름, false=키 없음(규칙 기반만 사용)
+
+function showTyping() {
+  const log = $('#chat-log');
+  const el = document.createElement('div');
+  el.className = 'chat-msg bot';
+  el.id = 'chat-typing';
+  el.innerHTML = `<span class="chat-avatar">${TAB_ICONS.chat}</span>
+    <div class="chat-bubble chat-typing"><i></i><i></i><i></i></div>`;
+  log.appendChild(el);
+  el.scrollIntoView({ block: 'end' });
+}
+function hideTyping() { $('#chat-typing')?.remove(); }
+
+async function sendChat(text) {
+  if (!text.trim()) return;
+  chatBubble('user', text);
+  chatHistory.push({ role: 'user', text });
+  chatChips([]);
+  showTyping();
+
+  // ① Gemini(서버 중계) 먼저 시도 — 키가 없거나 실패하면 ② 내장 지식으로
+  if (llmAvailable !== false) {
+    try {
+      const context = {
+        name: userName,
+        region: myRegion() ? myRegion().name : null,
+        crops: (status?.crops || []).map((c) => CROP_NAMES[c.cropId] || c.cropId),
+      };
+      const r = await api('/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({ messages: chatHistory.slice(-12), context }),
+      });
+      if (r.ok && r.text) {
+        llmAvailable = true;
+        hideTyping();
+        chatBubble('bot', r.text);
+        chatHistory.push({ role: 'bot', text: r.text });
+        chatChips(CHAT_FAQ.slice(0, 3));
+        return;
+      }
+      if (r.reason === 'no-key') llmAvailable = false; // 이후엔 바로 내장 지식 사용
+    } catch { /* 서버 오류 → 내장 지식으로 */ }
+  }
+
+  // ② 내장 지식 (규칙 기반) 대체
+  hideTyping();
+  const reply = botReply(text);
+  chatBubble('bot', reply.text);
+  chatHistory.push({ role: 'bot', text: reply.text });
+  chatChips(reply.chips);
+}
+
+function renderChat() {
+  if (chatStarted) return;
+  chatStarted = true;
+  chatBubble('bot', `안녕하세요, ${userName}님! 밭일 도우미 흙톡이에요. 사과·배·오이·감자·상추 키우는 법이 궁금하면 뭐든 물어보세요.`);
+  chatChips(CHAT_FAQ);
 }
 
 /* ════════════════════════════════════════════
@@ -1917,14 +2250,20 @@ function renderRecords() {
    8. 설정
 ════════════════════════════════════════════ */
 
-function renderSettings() {
+function renderSettings(editingName = false) {
   $('#settings-profile').innerHTML = `
-    <div class="sc-row">
-      <div>
+    <div class="sc-row" style="align-items:flex-start">
+      <div style="flex:1;min-width:0">
         <div class="sc-label">밭 주인</div>
-        <div class="sc-value">${userName}</div>
+        ${editingName ? `
+          <form id="rename-form" class="addr-form" style="margin-top:8px">
+            <input id="rename-input" type="text" maxlength="10" value="${userName}" autocomplete="off"/>
+            <button type="submit" class="addr-find">저장</button>
+          </form>
+          <p style="font-size:12px;color:var(--accent);margin-top:8px">이름이 바뀌면 새 밭에서 다시 시작해요.</p>`
+        : `<div class="sc-value">${userName}</div>`}
       </div>
-      <button class="link-btn" id="rename-btn">이름 바꾸기</button>
+      <button class="link-btn" id="rename-btn">${editingName ? '취소' : '이름 바꾸기'}</button>
     </div>
     <div class="sc-row" style="margin-top:14px">
       <div>
@@ -1947,13 +2286,22 @@ function renderSettings() {
     await renderRewards();
     show('rewards');
   };
-  $('#rename-btn').onclick = () => {
-    const next = prompt('새 이름을 입력해 주세요.\n(이름이 바뀌면 새 밭에서 다시 시작해요)', userName);
-    if (!next || !next.trim() || next.trim() === userName) return;
-    userName = next.trim();
-    localStorage.setItem('farm.name', userName);
-    location.reload();
-  };
+  // 이름 바꾸기: 버튼을 누르면 카드 안에 입력창이 열림 (prompt 창은 환경에 따라 막혀서 사용 안 함)
+  $('#rename-btn').onclick = () => renderSettings(!editingName);
+  if (editingName) {
+    const input = $('#rename-input');
+    input.focus();
+    input.select();
+    $('#rename-form').onsubmit = (e) => {
+      e.preventDefault();
+      const next = input.value.trim();
+      if (!next) { toast('이름을 입력해 주세요.'); return; }
+      if (next === userName) { renderSettings(false); return; }
+      userName = next;
+      localStorage.setItem('farm.name', userName);
+      location.reload();
+    };
+  }
 }
 
 /* ════════════════════════════════════════════
@@ -1972,10 +2320,21 @@ async function boot() {
     t.addEventListener('click', async () => {
       if (v === 'home') { await refreshStatus(); renderHome(); }
       if (v === 'todos') renderTodos();
+      if (v === 'chat') renderChat();
       if (v === 'records') { await refreshStatus(); renderRecords(); }
       if (v === 'settings') renderSettings();
       show(v);
     });
+  });
+
+  // 흙톡 입력 폼
+  $('#chat-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = $('#chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    sendChat(text);
   });
 
   // 할 일 추가 폼

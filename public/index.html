@@ -74,6 +74,20 @@
     <div class="order-list" id="order-list"></div>
   </section>
 
+  <!-- ── 흙톡 (재배 지식 챗봇) ─────────────────── -->
+  <section id="view-chat" class="view" hidden>
+    <header class="page-head">
+      <h1>흙톡</h1>
+      <p>작물 키우기, 궁금한 건 뭐든 물어보세요.</p>
+    </header>
+    <div class="chat-log" id="chat-log"></div>
+    <div class="chat-chips" id="chat-chips"></div>
+    <form class="chat-form" id="chat-form">
+      <input id="chat-input" type="text" maxlength="100" placeholder="예: 오이 물은 얼마나 줘요?" autocomplete="off" />
+      <button type="submit" class="addr-find">전송</button>
+    </form>
+  </section>
+
   <!-- ── 기록 ─────────────────────────────────── -->
   <section id="view-records" class="view" hidden>
     <header class="page-head">
@@ -115,6 +129,7 @@
   <nav class="tabbar" id="tabbar" hidden>
     <button class="tab" data-view="home"></button>
     <button class="tab" data-view="todos"></button>
+    <button class="tab" data-view="chat"></button>
     <button class="tab" data-view="records"></button>
     <button class="tab" data-view="settings"></button>
   </nav>
