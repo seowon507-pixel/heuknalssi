@@ -1313,20 +1313,51 @@ async function plantSeeds(cropIds) {
 ════════════════════════════════════════════ */
 
 const REGIONS = [
-  { id: 'gangwon',   name: '강원 고랭지',  env: { tMax: 26, tMin: 16, moisture: 55, ph: 6.2 } },
-  { id: 'gyeonggi',  name: '경기 북부',    env: { tMax: 29, tMin: 20, moisture: 50, ph: 6.4 } },
-  { id: 'chungbuk',  name: '충북 내륙',    env: { tMax: 30, tMin: 21, moisture: 45, ph: 6.3 } },
-  { id: 'chungnam',  name: '충남 서해안',  env: { tMax: 29, tMin: 22, moisture: 60, ph: 6.5 } },
-  { id: 'jeonbuk',   name: '전북 평야',    env: { tMax: 31, tMin: 23, moisture: 55, ph: 6.0 } },
-  { id: 'jeonnam',   name: '전남 남해안',  env: { tMax: 30, tMin: 23, moisture: 65, ph: 6.2 } },
-  { id: 'gyeongbuk', name: '경북 내륙',    env: { tMax: 31, tMin: 21, moisture: 40, ph: 6.3 } },
-  { id: 'gyeongnam', name: '경남 남부',    env: { tMax: 31, tMin: 23, moisture: 55, ph: 6.1 } },
-  { id: 'jeju',      name: '제주',         env: { tMax: 29, tMin: 23, moisture: 60, ph: 5.8 } },
+  { id: 'gangwon',   name: '강원 고랭지',  lat: 37.7, lng: 128.7, env: { tMax: 26, tMin: 16, moisture: 55, ph: 6.2 } },
+  { id: 'gyeonggi',  name: '경기 북부',    lat: 37.7, lng: 127.0, env: { tMax: 29, tMin: 20, moisture: 50, ph: 6.4 } },
+  { id: 'chungbuk',  name: '충북 내륙',    lat: 36.8, lng: 127.7, env: { tMax: 30, tMin: 21, moisture: 45, ph: 6.3 } },
+  { id: 'chungnam',  name: '충남 서해안',  lat: 36.5, lng: 126.6, env: { tMax: 29, tMin: 22, moisture: 60, ph: 6.5 } },
+  { id: 'jeonbuk',   name: '전북 평야',    lat: 35.8, lng: 127.0, env: { tMax: 31, tMin: 23, moisture: 55, ph: 6.0 } },
+  { id: 'jeonnam',   name: '전남 남해안',  lat: 34.8, lng: 126.7, env: { tMax: 30, tMin: 23, moisture: 65, ph: 6.2 } },
+  { id: 'gyeongbuk', name: '경북 내륙',    lat: 36.4, lng: 128.7, env: { tMax: 31, tMin: 21, moisture: 40, ph: 6.3 } },
+  { id: 'gyeongnam', name: '경남 남부',    lat: 35.3, lng: 128.3, env: { tMax: 31, tMin: 23, moisture: 55, ph: 6.1 } },
+  { id: 'jeju',      name: '제주',         lat: 33.4, lng: 126.5, env: { tMax: 29, tMin: 23, moisture: 60, ph: 5.8 } },
 ];
 const regionOf = (id) => REGIONS.find((r) => r.id === id) || null;
 const myRegion = () => regionOf(localStorage.getItem('farm.region'));
 
-const PARCEL_CELLS = 24; // 6 x 4 칸
+// ── 지도 API 연동 지점 ──────────────────────────
+// 팀 지도 API가 연결되면 아래 두 함수를 실제 지오코딩/역지오코딩으로 교체하면 됩니다.
+// 지금은: 좌표 → 가장 가까운 권역 / 주소 문자열 → 키워드 매칭.
+
+// 좌표 → 가까운 권역 (역지오코딩 대체)
+function nearestRegion(lat, lng) {
+  let best = REGIONS[0], bestD = Infinity;
+  for (const r of REGIONS) {
+    const d = (r.lat - lat) ** 2 + (r.lng - lng) ** 2;
+    if (d < bestD) { bestD = d; best = r; }
+  }
+  return best;
+}
+
+// 주소 문자열 → 권역 (지오코딩 대체: 시/도·주요 시군 키워드 매칭)
+const ADDRESS_HINTS = {
+  gangwon:   ['강원', '춘천', '원주', '강릉', '평창', '횡성', '홍천', '태백', '속초', '삼척', '정선', '영월', '철원', '인제', '양양', '동해'],
+  gyeonggi:  ['경기', '서울', '인천', '수원', '고양', '용인', '성남', '부천', '안산', '파주', '김포', '평택', '안양', '의정부', '남양주', '화성', '이천', '양평', '가평', '포천', '여주', '안성'],
+  chungbuk:  ['충북', '청주', '충주', '제천', '음성', '진천', '옥천', '영동', '괴산', '보은', '단양', '증평'],
+  chungnam:  ['충남', '대전', '세종', '천안', '아산', '서산', '당진', '보령', '홍성', '예산', '태안', '공주', '논산', '부여', '서천', '금산', '청양', '계룡'],
+  jeonbuk:   ['전북', '전주', '군산', '익산', '정읍', '김제', '남원', '완주', '부안', '고창', '임실', '순창', '진안', '무주', '장수'],
+  jeonnam:   ['전남', '광주', '목포', '여수', '순천', '나주', '광양', '해남', '고흥', '보성', '무안', '영암', '강진', '장흥', '완도', '진도', '신안', '함평', '영광', '장성', '담양', '곡성', '구례', '화순'],
+  gyeongbuk: ['경북', '대구', '포항', '경주', '안동', '구미', '영주', '영천', '상주', '문경', '경산', '의성', '청송', '영양', '영덕', '청도', '고령', '성주', '칠곡', '예천', '봉화', '울진', '울릉'],
+  gyeongnam: ['경남', '부산', '울산', '창원', '진주', '김해', '양산', '거제', '통영', '사천', '밀양', '함안', '거창', '창녕', '고성', '하동', '합천', '남해', '함양', '산청', '의령'],
+  jeju:      ['제주', '서귀포'],
+};
+function resolveAddress(text) {
+  for (const [id, hints] of Object.entries(ADDRESS_HINTS)) {
+    if (hints.some((h) => text.includes(h))) return regionOf(id);
+  }
+  return null;
+}
 
 let wiz = null;
 
@@ -1401,21 +1432,80 @@ function renderWiz() {
     return;
   }
 
-  // ── 위치 확인 (지역) ──
+  // ── 위치 확인: 현재 위치 또는 주소로 밭 위치를 찍음 (지도 API 연동 지점) ──
   if (step === 'region') {
-    const title = a.mode === 'preparing' ? '어느 지역을 생각하고 있나요?' : '어디에서 키우고 있나요?';
-    body.innerHTML = wizFrame(title, '지역의 기후·토양을 기준으로 밭 상태를 분석해요.',
-      `<div class="region-grid">
-        ${REGIONS.map((r) => `
-          <button class="region-btn ${a.regionId === r.id ? 'active' : ''}" data-r="${r.id}">${r.name}</button>`).join('')}
+    const title = a.mode === 'preparing' ? '밭을 생각해 둔 곳이 어디인가요?' : '밭이 어디에 있나요?';
+    body.innerHTML = wizFrame(title, '현재 위치를 쓰거나 주소를 입력하면, 그 지역 기후·토양 기준으로 분석해요.',
+      `<button class="option-card" id="wiz-geo">
+        <b>📍 현재 위치로 찾기</b>
+        <span>브라우저 위치 권한을 한 번 허용해 주세요.</span>
+      </button>
+      <form id="wiz-addr-form" class="addr-form">
+        <input id="wiz-addr" type="text" placeholder="주소로 찾기 (예: 강원 평창군, 전남 해남군)"
+          autocomplete="off" value="${a.address || ''}"/>
+        <button type="submit" class="addr-find">찾기</button>
+      </form>
+      <div id="wiz-loc-result"></div>
+      <p class="wiz-sub" style="text-align:center;margin-top:14px">
+        <button class="link-btn" id="wiz-region-list-toggle">목록에서 직접 고르기</button>
+      </p>
+      <div class="region-grid" id="wiz-region-list" hidden>
+        ${REGIONS.map((r) => `<button class="region-btn" data-r="${r.id}">${r.name}</button>`).join('')}
       </div>`, '위치 확인');
-    body.querySelectorAll('.region-btn').forEach((btn) => {
-      btn.onclick = () => {
-        a.regionId = btn.dataset.r;
-        if (wiz.settingsOnly) goWiz('parcel');
-        else if (a.mode === 'preparing') goWiz('crop-prep');
-        else goWiz('parcel');
-      };
+
+    const goNext = () => {
+      if (wiz.settingsOnly) finishWiz();
+      else if (a.mode === 'preparing') goWiz('crop-prep');
+      else goWiz('crops-grow');
+    };
+
+    // 찾은 위치를 확인 카드로 보여주고, 확정 시 다음 단계로
+    const showResult = (region, detail) => {
+      a.regionId = region.id;
+      a.address = detail;
+      $('#wiz-loc-result').innerHTML = `
+        <div class="loc-card">
+          <div class="loc-info">
+            <div class="loc-name">${region.name}</div>
+            <div class="loc-detail">${detail}</div>
+          </div>
+          <button class="btn btn-primary loc-ok" id="wiz-loc-ok">이 위치로 확인</button>
+        </div>`;
+      $('#wiz-loc-ok').onclick = goNext;
+    };
+
+    // 현재 위치 (역지오코딩 → 지도 API 연동 지점)
+    $('#wiz-geo').onclick = () => {
+      if (!navigator.geolocation) { toast('이 브라우저는 위치를 지원하지 않아요. 주소로 입력해 주세요.'); return; }
+      toast('위치를 확인하는 중...');
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          const region = nearestRegion(latitude, longitude);
+          showResult(region, `현재 위치 (위도 ${latitude.toFixed(3)}, 경도 ${longitude.toFixed(3)}) 부근`);
+        },
+        () => toast('위치를 가져오지 못했어요. 주소로 입력해 주세요.', 3200),
+        { timeout: 8000 },
+      );
+    };
+
+    // 주소 입력 (지오코딩 → 지도 API 연동 지점)
+    $('#wiz-addr-form').onsubmit = (e) => {
+      e.preventDefault();
+      const text = $('#wiz-addr').value.trim();
+      if (!text) { toast('주소를 입력해 주세요.'); return; }
+      const region = resolveAddress(text);
+      if (region) showResult(region, text);
+      else toast('주소에서 지역을 찾지 못했어요. 시/도나 시/군 이름을 넣어보세요.', 3200);
+    };
+
+    // 폴백: 목록에서 직접 선택
+    $('#wiz-region-list-toggle').onclick = () => {
+      const list = $('#wiz-region-list');
+      list.hidden = !list.hidden;
+    };
+    body.querySelectorAll('#wiz-region-list .region-btn').forEach((btn) => {
+      btn.onclick = () => showResult(regionOf(btn.dataset.r), '목록에서 직접 선택');
     });
     return;
   }
@@ -1478,43 +1568,7 @@ function renderWiz() {
     body.querySelectorAll('.wr-move').forEach((btn) => {
       btn.onclick = () => { a.regionId = btn.dataset.r; renderWiz(); };
     });
-    $('#wiz-check-go').onclick = () => goWiz('parcel');
-    return;
-  }
-
-  // ── 필지 경계 설정 ──
-  if (step === 'parcel') {
-    const selected = new Set(a.parcel || []);
-    const region = regionOf(a.regionId);
-    body.innerHTML = wizFrame('밭의 경계를 표시해 주세요',
-      `${region ? region.name + ' · ' : ''}칸을 눌러 내 필지 모양을 그려요. (지도 연동 예정)`,
-      `<div class="parcel-grid">
-        ${Array.from({ length: PARCEL_CELLS }, (_, i) =>
-          `<button class="parcel-cell ${selected.has(i) ? 'on' : ''}" data-i="${i}" aria-label="필지 칸 ${i + 1}"></button>`).join('')}
-      </div>
-      <p class="wiz-sub" id="parcel-count" style="text-align:center"></p>
-      <button class="btn btn-primary btn-wide" id="wiz-parcel-done" disabled>경계 저장</button>`, '필지 경계');
-
-    const update = () => {
-      $('#parcel-count').textContent = selected.size
-        ? `${selected.size}칸을 골랐어요.` : '최소 1칸 이상 표시해 주세요.';
-      $('#wiz-parcel-done').disabled = selected.size === 0;
-    };
-    body.querySelectorAll('.parcel-cell').forEach((cell) => {
-      cell.onclick = () => {
-        const i = Number(cell.dataset.i);
-        selected.has(i) ? selected.delete(i) : selected.add(i);
-        cell.classList.toggle('on', selected.has(i));
-        update();
-      };
-    });
-    update();
-    $('#wiz-parcel-done').onclick = () => {
-      a.parcel = [...selected];
-      if (wiz.settingsOnly) finishWiz();
-      else if (a.mode === 'preparing') finishWiz();
-      else goWiz('crops-grow');
-    };
+    $('#wiz-check-go').onclick = finishWiz;
     return;
   }
 
@@ -1541,7 +1595,7 @@ async function finishWiz() {
     localStorage.setItem('farm.name', userName);
   }
   if (a.regionId) localStorage.setItem('farm.region', a.regionId);
-  if (a.parcel) localStorage.setItem('farm.parcel', JSON.stringify(a.parcel));
+  if (a.address) localStorage.setItem('farm.address', a.address);
 
   if (wiz.settingsOnly) {
     toast('재배지 설정을 저장했어요.');
@@ -1876,7 +1930,7 @@ function renderSettings() {
       <div>
         <div class="sc-label">재배지</div>
         <div class="sc-value" style="font-size:13.5px">
-          ${myRegion() ? `${myRegion().name} · 필지 ${(JSON.parse(localStorage.getItem('farm.parcel') || '[]')).length}칸` : '아직 설정 안 함'}
+          ${myRegion() ? myRegion().name : '아직 설정 안 함'}
         </div>
       </div>
       <button class="link-btn" id="edit-region-btn">변경</button>
