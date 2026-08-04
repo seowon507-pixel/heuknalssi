@@ -4,3 +4,4 @@ data/
 # 의존성 · 로그
 node_modules/
 *.log
+.DS_Store

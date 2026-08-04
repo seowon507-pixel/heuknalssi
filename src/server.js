@@ -14,11 +14,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FarmGame } from './farmGame.js';
+import { CoreBackendError, HeuknalssiClient } from './heuknalssiClient.js';
 import { UserStore } from './userStore.js';
 import { toDateKey } from './dateUtil.js';
 
 const PORT = process.env.PORT || 4000;
 const store = new UserStore();
+const coreBackend = new HeuknalssiClient();
+const environmentCache = new Map();
+const ENVIRONMENT_CACHE_MS = 10 * 60 * 1000;
 
 // 프론트엔드 정적 파일 폴더 (public/)
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -95,7 +99,8 @@ const server = http.createServer(async (req, res) => {
       return res.end();
     }
 
-    const { pathname } = new URL(req.url, `http://${req.headers.host}`);
+    const requestUrl = new URL(req.url, `http://${req.headers.host}`);
+    const { pathname } = requestUrl;
 
     // API가 아닌 경로는 프론트엔드 정적 파일로 응답
     if (req.method === 'GET' && !pathname.startsWith('/api/')) {
@@ -113,6 +118,41 @@ const server = http.createServer(async (req, res) => {
       return send(res, 401, { error: '로그인이 필요합니다. (x-user-id 헤더 없음)' });
     }
     const game = store.getOrCreate(userId);
+
+    // 흙날씨 v3의 실제 공공데이터·작물 규칙 분석을 모바일 화면에 전달합니다.
+    if (req.method === 'GET' && pathname === '/api/me/environment') {
+      const crop = requestUrl.searchParams.get('crop');
+      const region = requestUrl.searchParams.get('region');
+      const cultivationMode = requestUrl.searchParams.get('cultivationMode') || 'OPEN_FIELD';
+      const cacheKey = `${userId}:${crop}:${region}:${cultivationMode}`;
+      const cached = environmentCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return send(res, 200, { ok: true, cached: true, analysis: cached.analysis });
+      }
+      try {
+        const fullAnalysis = await coreBackend.analyze({
+          userId,
+          crop,
+          region,
+          cultivationMode,
+        });
+        const analysis = mobileAnalysisProjection(fullAnalysis);
+        environmentCache.set(cacheKey, {
+          analysis,
+          expiresAt: Date.now() + ENVIRONMENT_CACHE_MS,
+        });
+        return send(res, 200, { ok: true, cached: false, analysis });
+      } catch (error) {
+        const statusCode = error instanceof CoreBackendError ? error.status : 502;
+        return send(res, statusCode, {
+          ok: false,
+          code: error instanceof CoreBackendError ? error.code : 'CORE_BACKEND_ERROR',
+          message: error instanceof CoreBackendError
+            ? error.message
+            : '농장 환경 분석을 불러오지 못했습니다.',
+        });
+      }
+    }
 
     // (로그인 직후 호출) 온보딩 상태 — isFirstTime=true면 캐릭터 선택 화면 표시
     if (req.method === 'GET' && pathname === '/api/me/onboarding') {
@@ -272,6 +312,16 @@ const server = http.createServer(async (req, res) => {
     return send(res, 500, { error: '서버 내부 오류', detail: String(err && err.message || err) });
   }
 });
+
+function mobileAnalysisProjection(analysis) {
+  return {
+    analysisId: analysis?.analysisId ?? null,
+    createdAt: analysis?.createdAt ?? null,
+    inputSummary: analysis?.inputSummary ?? null,
+    growthScore: analysis?.growthScore ?? null,
+    environmentCause: analysis?.environmentCause ?? null,
+  };
+}
 
 server.listen(PORT, () => {
   console.log(`🌾 백엔드 API 실행 중: http://localhost:${PORT}`);

@@ -93,6 +93,11 @@ body::before {
 }
 .btn-wide { width: 100%; }
 
+.home-actions {
+  display: grid;
+  gap: 10px;
+}
+
 /* 출석 완료 상태의 버튼 */
 .btn-done {
   background: transparent;
@@ -116,6 +121,25 @@ body::before {
   color: var(--ink-soft);
   margin: 26px 2px 10px;
 }
+
+/* 상태(날씨·토양) 배지 — conditions.js의 conditionBadge()가 사용.
+   ※ 아직 대시보드에는 연결하지 않음 (/conditions-preview.html 에서 확인) */
+.cond-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 8px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  color: var(--ink);
+  background: var(--paper-2);
+  box-shadow: inset 0 0 0 1.5px var(--line-soft);
+  white-space: nowrap;
+}
+.cond-badge svg { display: block; }
+.cond-badge.cond-good { background: var(--green-pale); box-shadow: inset 0 0 0 1.5px var(--green-soft); }
+.cond-badge.cond-warn { background: #f6ecdb; box-shadow: inset 0 0 0 1.5px #e0c49e; }
+.cond-badge.cond-danger { background: #f5e2d9; box-shadow: inset 0 0 0 1.5px #dcae9c; }
 
 .btn-ghost {
   background: transparent;
@@ -215,23 +239,27 @@ body::before {
 .crop-badges { display: flex; gap: 5px; }
 .crop-badge {
   font: inherit;
-  border: none;
+  border: 2px solid var(--line-soft);
   padding: 0;
   cursor: pointer;
   width: 34px;
   height: 34px;
   border-radius: 50%;
   background: var(--card);
-  box-shadow: inset 0 0 0 1.5px var(--line-soft), var(--shadow);
+  box-shadow: var(--shadow);
   overflow: hidden;
   display: grid;
   place-items: center;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 .crop-badge:active { transform: scale(0.94); }
+.crop-badge.crop-state-good { border-color: var(--green-soft); }
+.crop-badge.crop-state-caution { border-color: #dc8e34; }
+.crop-badge.crop-state-danger { border-color: #c65345; }
+.crop-badge.crop-state-pending { border-color: var(--line-soft); }
 .crop-badge.active {
-  box-shadow: inset 0 0 0 2px var(--accent), var(--shadow);
-  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--green), var(--shadow);
+  transform: translateY(-1px) scale(1.04);
 }
 .crop-badge svg { width: 28px; height: 30px; }
 .crop-badge.add {
@@ -269,11 +297,156 @@ body::before {
   to   { opacity: 1; transform: scale(1); }
 }
 
+/* 양호 상태의 작물 — 기분 좋게 통통 튀는 리듬 */
+.sway-happy {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: bounce-happy 2.4s ease-in-out infinite;
+}
+@keyframes bounce-happy {
+  0%, 100% { transform: rotate(-1.8deg) translateY(0); }
+  25%      { transform: rotate(0deg) translateY(-3px); }
+  50%      { transform: rotate(1.8deg) translateY(0); }
+  75%      { transform: rotate(0deg) translateY(-3px); }
+}
+
+/* 주의 상태의 작물 — 축 처져서 느릿하게 기우뚱 (시든 느낌) */
+.sway-sad {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: droop-sad 5s ease-in-out infinite;
+}
+@keyframes droop-sad {
+  0%, 100% { transform: rotate(-2.6deg) scaleY(0.982); }
+  55%      { transform: rotate(-0.5deg) scaleY(1); }
+}
+
+/* 위험 상태의 작물 — 덜덜 떨림 */
+.sway-danger {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: tremble 0.38s ease-in-out infinite;
+}
+@keyframes tremble {
+  0%, 100% { transform: rotate(-1deg) translateX(-0.6px); }
+  50%      { transform: rotate(1deg) translateX(0.6px); }
+}
+
+/* ── 장면 연출 애니메이션 (conditionScene) ── */
+.fx { transform-box: fill-box; transform-origin: center; }
+
+@keyframes fx-fall {
+  0%   { transform: translateY(-6px); opacity: 0; }
+  15%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateY(48px); opacity: 0; }
+}
+.fx-fall { animation: fx-fall 1.8s linear infinite; }
+
+@keyframes fx-fall-fast {
+  0%   { transform: translateY(-10px); opacity: 0; }
+  12%  { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { transform: translateY(54px); opacity: 0; }
+}
+.fx-fall-fast { animation: fx-fall-fast 0.9s linear infinite; }
+
+@keyframes fx-snow {
+  0%   { transform: translate(0, -8px) rotate(0deg); opacity: 0; }
+  12%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translate(10px, 56px) rotate(50deg); opacity: 0; }
+}
+.fx-snow { animation: fx-snow 4.5s linear infinite; }
+
+@keyframes fx-drift {
+  0%, 100% { transform: translateX(-5px); }
+  50%      { transform: translateX(5px); }
+}
+.fx-drift { animation: fx-drift 7s ease-in-out infinite; }
+
+@keyframes fx-shimmer {
+  0%, 100% { transform: translateY(0); opacity: 0.45; }
+  50%      { transform: translateY(-5px); opacity: 0.95; }
+}
+.fx-shimmer { animation: fx-shimmer 2.2s ease-in-out infinite; }
+
+@keyframes fx-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+.fx-pulse { animation: fx-pulse 3.4s ease-in-out infinite; }
+
+@keyframes fx-spin { to { transform: rotate(360deg); } }
+.fx-spin { animation: fx-spin 4.5s linear infinite; }
+
+@keyframes fx-twinkle {
+  0%, 100% { opacity: 0.2; }
+  50%      { opacity: 1; }
+}
+.fx-twinkle { animation: fx-twinkle 2s ease-in-out infinite; }
+
+/* 바람 선이 흐르는 효과 (점선이 앞으로 밀려감) */
+@keyframes fx-flow { to { stroke-dashoffset: -54; } }
+.fx-flow { stroke-dasharray: 12 6; animation: fx-flow 1.3s linear infinite; }
+
+@keyframes fx-leaf-fly {
+  0%   { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+  12%  { opacity: 1; }
+  100% { transform: translate(-110px, 34px) rotate(-80deg); opacity: 0; }
+}
+.fx-leaf-fly { animation: fx-leaf-fly 3.2s ease-in infinite; }
+
+@keyframes fx-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(4px); }
+}
+.fx-bob { animation: fx-bob 3s ease-in-out infinite; }
+
 .status-block { text-align: center; margin-bottom: 16px; }
 .status-title {
-  font-size: 30px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  word-break: keep-all;
+}
+.status-level {
+  flex: none;
+  padding: 6px 13px 5px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+}
+.status-level-good {
+  color: #4e6c39;
+  background: #edf3e6;
+  border-color: #c8d6b9;
+}
+.status-level-caution {
+  color: #9b5a20;
+  background: #fff0dc;
+  border-color: #e8bd85;
+}
+.status-level-danger {
+  color: #a3473a;
+  background: #fae7e2;
+  border-color: #dfa49a;
+}
+.status-level-neutral {
+  color: var(--ink-soft);
+  background: var(--card);
+  border-color: var(--line-soft);
+}
+.status-cause {
+  font-size: clamp(25px, 7vw, 30px);
   font-weight: 400;
-  letter-spacing: 0.12em;
+  line-height: 1.25;
+  letter-spacing: 0.055em;
 }
 .status-sub { color: var(--ink-soft); font-size: 14px; margin-top: 6px; }
 
@@ -730,6 +903,410 @@ body::before {
 @keyframes sheet-up {
   from { transform: translateY(40px); opacity: 0; }
   to   { transform: none; opacity: 1; }
+}
+
+/* ── 상세 보기 시트 ───────────────────────── */
+.overlay-panel { position: relative; }
+.overlay-panel.detail { min-height: 78dvh; }
+.sheet-close {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  background: var(--paper-2);
+  box-shadow: inset 0 0 0 1.5px var(--line-soft);
+  color: var(--ink-soft);
+  display: grid;
+  place-items: center;
+  z-index: 2;
+  transition: transform 0.12s ease;
+}
+.sheet-close:active { transform: scale(0.92); }
+.sheet-title { font-size: 21px; font-weight: 400; word-break: keep-all; }
+.sheet-sub { font-size: 12.5px; color: var(--ink-soft); margin: 3px 0 14px; }
+
+.score-hero {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin: 4px 0 16px;
+  padding: 8px;
+  border-radius: 18px;
+  cursor: pointer;
+  position: relative;
+}
+.score-hero svg { display: block; }
+.score-grade { font-size: 23px; letter-spacing: 0.04em; }
+.score-name { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+.score-hero-text { text-align: left; }
+
+.score-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.score-cell {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1.5px var(--line-soft), var(--shadow);
+  padding: 13px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+  position: relative;
+  padding-right: 36px;
+}
+.score-toggle {
+  transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+}
+.score-toggle:active { transform: translateY(1px); }
+.score-toggle:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+.score-toggle[aria-expanded="true"] {
+  background: #faf5e9;
+  box-shadow: inset 0 0 0 1.5px #d9c9a9, var(--shadow);
+}
+.score-disclosure {
+  position: absolute;
+  right: 11px;
+  top: 11px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--green-deep);
+  background: #f3eddf;
+  box-shadow: inset 0 0 0 1px #ded1b7;
+}
+.score-disclosure svg {
+  width: 14px;
+  height: 14px;
+}
+.score-hero .score-disclosure {
+  top: 50%;
+  right: calc(50% - 144px);
+  transform: translateY(-50%);
+}
+.score-disclosure svg { transition: transform 0.16s ease; }
+.score-toggle[aria-expanded="true"] .score-disclosure svg { transform: rotate(180deg); }
+.score-axis-explanations { margin-top: 10px; }
+.score-explanation {
+  padding: 13px 14px;
+  border-radius: 15px;
+  background: #f8f2e6;
+  box-shadow: inset 0 0 0 1.5px #e3d4b8;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.62;
+  animation: score-explanation-in 0.18s ease both;
+}
+.score-explanation[hidden] { display: none; }
+.score-explanation-total { margin: -8px 0 14px; }
+.score-explanation strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 400;
+}
+.score-explanation-lines { display: grid; gap: 4px; }
+.score-explanation-lines p { margin: 0; word-break: keep-all; }
+@keyframes score-explanation-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.score-cell .sc-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.score-cell .sc-head strong { font-size: 21px; font-weight: 400; color: var(--ink); }
+.score-bar {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--green-pale);
+  overflow: hidden;
+}
+.score-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+
+.week-forecast {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1.5px var(--line-soft), var(--shadow);
+  padding: 12px 6px;
+}
+.wf-day {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+.wf-day:active { transform: translateY(1px); }
+.wf-day:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.wf-day.good { background: var(--green-pale); box-shadow: inset 0 0 0 1.5px #cdd8bd; }
+.wf-day.warn { background: #fff0dc; box-shadow: inset 0 0 0 1.5px #e8bd85; }
+.wf-day.danger { background: #fae7e2; box-shadow: inset 0 0 0 1.5px #dfa49a; }
+.wf-day.today .wf-dow { font-weight: 700; }
+.wf-day.good[aria-expanded="true"] { box-shadow: inset 0 0 0 2px var(--green); }
+.wf-day.warn[aria-expanded="true"] { box-shadow: inset 0 0 0 2px #c77722; }
+.wf-day.danger[aria-expanded="true"] { box-shadow: inset 0 0 0 2px #b74638; }
+.wf-day svg { display: block; }
+.wf-hi { font-size: 12.5px; color: var(--ink); }
+.wf-lo { font-size: 11.5px; color: var(--blue); }
+.wf-rain { min-height: 12px; font-size: 8.5px; color: var(--blue); white-space: nowrap; }
+.wf-day .fx { display: block; }
+.weather-day-explanation { margin-top: 10px; }
+
+/* 예보 등급 뱃지 (주의/위험) */
+.wf-flag {
+  font-size: 9.5px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+.wf-flag.warn { background: #f6ecdb; color: #a8672f; }
+.wf-flag.danger { background: #f0d8cc; color: #b04a35; }
+.wf-flag.good { background: var(--green-pale); color: var(--green-deep); }
+.wf-flag.none { visibility: hidden; }
+
+.reference-note {
+  font-size: 10.5px;
+  color: var(--ink-soft);
+}
+.soil-test-prompt {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px 13px;
+  border-radius: 15px;
+  background: #f7f3e9;
+  box-shadow: inset 0 0 0 1.5px var(--line-soft);
+}
+.soil-test-prompt > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.soil-test-prompt strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 400;
+}
+.soil-test-open {
+  flex: none;
+  min-height: 36px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--green-pale);
+  color: var(--green-deep);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  box-shadow: inset 0 0 0 1.5px rgba(111, 129, 90, 0.18);
+}
+.soil-test-open span { font-size: 18px; line-height: 1; }
+.soil-test-open:active { transform: translateY(1px); }
+
+.overlay-panel.soil-test-guide { padding-top: 22px; }
+.sheet-back {
+  min-height: 34px;
+  border: 0;
+  background: transparent;
+  color: var(--green-deep);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.sheet-back span { font-size: 20px; line-height: 1; }
+.soil-guide-heading {
+  text-align: center;
+  margin: -2px auto 18px;
+}
+.soil-guide-heading .sheet-sub {
+  max-width: 330px;
+  margin: 5px auto 0;
+  line-height: 1.65;
+  word-break: keep-all;
+}
+.soil-guide-illustration {
+  width: 104px;
+  height: 104px;
+  margin: 0 auto 8px;
+}
+.soil-guide-illustration svg { display: block; }
+.soil-guide-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 9px;
+}
+.soil-guide-steps li {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 11px;
+  align-items: start;
+  padding: 12px;
+  background: var(--card);
+  border-radius: 15px;
+  box-shadow: inset 0 0 0 1.5px var(--line-soft), var(--shadow);
+}
+.soil-step-number {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--green-pale);
+  color: var(--green-deep);
+  font-size: 13px;
+}
+.soil-guide-steps strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--ink);
+  margin-top: 2px;
+}
+.soil-guide-steps p {
+  margin: 3px 0 0;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+.soil-guide-note {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f8f1e5;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+.soil-guide-note strong { display: block; color: #8b6846; font-weight: 400; }
+.soil-guide-note p { margin: 2px 0 0; }
+.soil-guide-nearby {
+  margin-top: 2px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+  text-align: center;
+}
+.soil-guide-nearby span { font-size: 20px; line-height: 1; }
+.sheet-loading {
+  min-height: 44dvh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  color: var(--ink-soft);
+  text-align: center;
+}
+.loading-seed {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--green-pale);
+  color: var(--green-deep);
+  font-size: 28px;
+  animation: fx-pulse 1.2s ease-in-out infinite;
+}
+.error-copy { margin: 14px 0 22px; line-height: 1.6; }
+.forecast-empty { margin: 0; }
+.farm-region-value { max-width: 240px; line-height: 1.45; }
+
+/* 예보 기반 추천 할 일 */
+.sheet-todos { display: flex; flex-direction: column; gap: 8px; }
+.sheet-todo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--card);
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1.5px var(--line-soft), var(--shadow);
+  padding: 11px 12px;
+}
+.sheet-todo .wf-flag { margin-top: 0; flex: none; font-size: 10.5px; }
+.sheet-todo .st-text { flex: 1; font-size: 13.5px; line-height: 1.45; }
+.sheet-todo .st-add {
+  font: inherit;
+  font-size: 12.5px;
+  border: none;
+  cursor: pointer;
+  flex: none;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--paper-2);
+  color: var(--green-deep);
+  box-shadow: inset 0 0 0 1.5px var(--green-soft);
+}
+.sheet-todo .st-add:disabled {
+  color: var(--ink-soft);
+  box-shadow: inset 0 0 0 1.5px var(--line-soft);
+  cursor: default;
 }
 
 .toast {

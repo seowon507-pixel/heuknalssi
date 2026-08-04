@@ -2,6 +2,9 @@
 // 그림은 전부 아래 "일러스트 라이브러리"에서 코드로 그립니다.
 // (외부 이미지 없음 → 어떤 화면에서도 스타일이 어긋나지 않음)
 
+import { CONDITIONS, conditionIcon, conditionBadge } from './conditions.js';
+import { buildAnalysisViewModel } from './analysis-model.js';
+
 /* ════════════════════════════════════════════
    1. 일러스트 라이브러리 (SVG)
    좌표계: viewBox 0 0 260 288, 지면 y≈227, 식물 기준점 (130, 227)
@@ -15,7 +18,7 @@ const CP = {
   cucumber: { leaf: '#8aab63', deep: '#5e7c41', light: '#aac186', body: '#7fa05b' },
   potato:   { leaf: '#8ca86b', deep: '#68854b', light: '#aec28c', tuber: '#b39062', tuberDeep: '#8a6c47' },
   apple:    { leaf: '#87a465', deep: '#647f47', light: '#a8bf88', fruit: '#c4705a', fruitDeep: '#9e5240', trunk: '#8a6b4d', trunkDeep: '#6b5138', blossom: '#f6e9e4' },
-  pear:     { leaf: '#93af72', deep: '#6d884d', light: '#b3c692', fruit: '#c5b768', fruitDeep: '#9a8d43', trunk: '#8a6b4d', trunkDeep: '#6b5138', blossom: '#f8f3e3' },
+  pear:     { leaf: '#93af72', deep: '#6d884d', light: '#b3c692', fruit: '#dcb56e', fruitDeep: '#a67f45', trunk: '#8a6b4d', trunkDeep: '#6b5138', blossom: '#f8f3e3' },
 };
 
 /* ── 조각 그리기 도우미 ── */
@@ -34,8 +37,37 @@ function stem(d, color, w = 3) {
   return `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="round"/>`;
 }
 
-// 얼굴: 점 눈 + 작은 미소 + 발그레
-function face(x, y, s = 1) {
+// 얼굴 — mood에 따라 표정이 바뀜
+//   happy(양호): 점 눈 + 미소 + 발그레
+//   sad(주의): 처진 눈썹 + 시무룩한 입
+//   danger(위험): X자 눈 + 덜덜 떠는 입 + 식은땀
+function face(x, y, s = 1, mood = 'happy') {
+  if (mood === 'danger') {
+    const xEye = (cx) => `
+      <line x1="${cx - 1.9 * s}" y1="${y - 1.9 * s}" x2="${cx + 1.9 * s}" y2="${y + 1.9 * s}"/>
+      <line x1="${cx + 1.9 * s}" y1="${y - 1.9 * s}" x2="${cx - 1.9 * s}" y2="${y + 1.9 * s}"/>`;
+    return `<g>
+      <g stroke="${INK}" stroke-width="${1.6 * s}" stroke-linecap="round">
+        ${xEye(x - 6 * s)}${xEye(x + 6 * s)}
+      </g>
+      <path d="M ${x - 3.4 * s} ${y + 5.2 * s} q ${1.7 * s} ${-2.2 * s} ${3.4 * s} 0 q ${1.7 * s} ${2.2 * s} ${3.4 * s} 0"
+        fill="none" stroke="${INK}" stroke-width="${1.4 * s}" stroke-linecap="round"/>
+      <path d="M ${x + 11 * s} ${y - 7 * s} q ${3 * s} ${3.6 * s} 0 ${5.4 * s} q ${-3 * s} ${-1.8 * s} 0 ${-5.4 * s} Z"
+        fill="#a9c2d2" stroke="#7f9cb0" stroke-width="${1.1 * s}"/>
+    </g>`;
+  }
+  if (mood === 'sad') {
+    return `<g>
+      <circle cx="${x - 6 * s}" cy="${y}" r="${1.9 * s}" fill="${INK}"/>
+      <circle cx="${x + 6 * s}" cy="${y}" r="${1.9 * s}" fill="${INK}"/>
+      <path d="M ${x - 8.8 * s} ${y - 4.6 * s} l ${4.2 * s} ${1.6 * s} M ${x + 8.8 * s} ${y - 4.6 * s} l ${-4.2 * s} ${1.6 * s}"
+        stroke="${INK}" stroke-width="${1.3 * s}" stroke-linecap="round" fill="none"/>
+      <path d="M ${x - 2.6 * s} ${y + 6 * s} q ${2.6 * s} ${-2.4 * s} ${5.2 * s} 0"
+        fill="none" stroke="${INK}" stroke-width="${1.4 * s}" stroke-linecap="round"/>
+      <ellipse cx="${x - 10 * s}" cy="${y + 3.6 * s}" rx="${2.7 * s}" ry="${1.6 * s}" fill="#c9825b" opacity=".18"/>
+      <ellipse cx="${x + 10 * s}" cy="${y + 3.6 * s}" rx="${2.7 * s}" ry="${1.6 * s}" fill="#c9825b" opacity=".18"/>
+    </g>`;
+  }
   return `<g>
     <circle cx="${x - 6 * s}" cy="${y}" r="${1.9 * s}" fill="${INK}"/>
     <circle cx="${x + 6 * s}" cy="${y}" r="${1.9 * s}" fill="${INK}"/>
@@ -82,15 +114,18 @@ function tuft(x, y, flip = 1) {
   </g>`;
 }
 
-function cloudArt(x, y, s = 1) {
+function cloudArt(x, y, s = 1, { fill = '#eef0e6', line = '#a9b0a0', rain = true } = {}) {
+  const drops = rain
+    ? `<g stroke="#90a9ba" stroke-width="1.6" stroke-linecap="round" opacity=".8">
+        <line x1="-12" y1="16" x2="-14" y2="22"/>
+        <line x1="0" y1="18" x2="-2" y2="24"/>
+        <line x1="12" y1="16" x2="10" y2="22"/>
+      </g>`
+    : '';
   return `<g transform="translate(${x} ${y}) scale(${s})" opacity=".9">
     <path d="M-20 8 q-8 0 -8 -7 q0 -8 8 -8 q2 -8 11 -8 q8 0 11 6 q9 -1 11 6 q2 8 -6 11 Z"
-      fill="#eef0e6" stroke="#a9b0a0" stroke-width="1.6" stroke-linejoin="round"/>
-    <g stroke="#90a9ba" stroke-width="1.6" stroke-linecap="round" opacity=".8">
-      <line x1="-12" y1="16" x2="-14" y2="22"/>
-      <line x1="0" y1="18" x2="-2" y2="24"/>
-      <line x1="12" y1="16" x2="10" y2="22"/>
-    </g>
+      fill="${fill}" stroke="${line}" stroke-width="1.6" stroke-linejoin="round"/>
+    ${drops}
   </g>`;
 }
 
@@ -123,72 +158,103 @@ function ground() {
 
 /* ── 성장 단계별 그림 ── */
 
-function seedArt(cropId) {
+function seedArt(cropId, mood = 'happy') {
   const c = CP[cropId];
-  let seed;
+  let seed, seedFace;
   if (cropId === 'potato') {
-    seed = `<path d="M118 214 q-6 8 -1 14 q6 7 16 4 q9 -3 8 -11 q-1 -9 -11 -11 q-8 -1 -12 4 Z"
-      fill="${c.tuber}" stroke="${c.tuberDeep}" stroke-width="2"/>
-      <circle cx="124" cy="220" r="1.4" fill="${c.tuberDeep}"/>
-      <circle cx="133" cy="224" r="1.4" fill="${c.tuberDeep}"/>
-      ${stem('M136 214 q3 -5 1 -8', c.deep, 2)}`;
+    seed = `<path d="M111 206 q-9 11 -1.5 20 q8.5 10 22 5.5 q12.5 -4 10.5 -15.5 q-2 -12.5 -15.5 -15 q-11 -2 -15.5 5 Z"
+      fill="${c.tuber}" stroke="${c.tuberDeep}" stroke-width="2.2"/>
+      ${stem('M137 206 q4 -6 1.5 -10', c.deep, 2.2)}`;
+    seedFace = face(128, 218, 0.72, mood);
   } else if (cropId === 'apple' || cropId === 'pear') {
-    seed = `<path d="M130 210 C137 216 136 226 130 229 C124 226 123 216 130 210 Z"
-      fill="#6b5138" stroke="#503b27" stroke-width="2"/>`;
+    seed = `<path d="M130 198 C142.5 208 140.5 226 130 231 C119.5 226 117.5 208 130 198 Z"
+      fill="#b08d5f" stroke="#6b5138" stroke-width="2.2"/>`;
+    seedFace = face(130, 217, 0.68, mood);
   } else {
-    const fill = cropId === 'cucumber' ? '#e3d9b4' : '#7c6347';
-    const line = cropId === 'cucumber' ? '#a99a6d' : '#503b27';
-    seed = `<ellipse cx="130" cy="219" rx="7" ry="11" fill="${fill}" stroke="${line}"
-      stroke-width="2" transform="rotate(14 130 219)"/>`;
+    const fill = cropId === 'cucumber' ? '#e3d9b4' : '#d9cba4';
+    const line = cropId === 'cucumber' ? '#a99a6d' : '#8a7a54';
+    seed = `<ellipse cx="130" cy="213" rx="11.5" ry="16.5" fill="${fill}" stroke="${line}"
+      stroke-width="2.2" transform="rotate(8 130 213)"/>`;
+    seedFace = face(130, 214, 0.68, mood);
   }
   return `
-    <ellipse cx="130" cy="229" rx="17" ry="5.5" fill="#5f4c36" opacity=".3"/>
+    <ellipse cx="130" cy="230" rx="20" ry="6" fill="#5f4c36" opacity=".3"/>
     ${seed}
-    ${sparkle(100, 198, 0.9)}
-    ${sparkle(163, 190, 0.75)}`;
+    ${seedFace}
+    ${sparkle(98, 196, 0.9)}
+    ${sparkle(165, 188, 0.75)}`;
 }
 
-function sproutArt(cropId) {
+function sproutArt(cropId, mood = 'happy') {
   const c = CP[cropId];
   return `
-    ${stem('M130 228 q -2 -12 1 -24', c.deep)}
-    ${leaf(131, 203, 27, 9.5, -152, c.leaf, c.deep)}
-    ${leaf(131, 203, 27, 9.5, -28, c.leaf, c.deep)}
-    <circle cx="131" cy="201" r="3" fill="${c.light}" stroke="${c.deep}" stroke-width="1.6"/>`;
+    ${stem('M130 228 q -2 -12 1 -22', c.deep)}
+    ${leaf(131, 205, 27, 9.5, -152, c.leaf, c.deep)}
+    ${leaf(131, 205, 27, 9.5, -28, c.leaf, c.deep)}
+    <circle cx="131" cy="199" r="7" fill="${c.light}" stroke="${c.deep}" stroke-width="1.8"/>
+    ${face(131, 199, 0.55, mood)}`;
 }
 
-function seedlingArt(cropId) {
+function seedlingArt(cropId, mood = 'happy') {
   const c = CP[cropId];
   return `
-    ${stem('M130 228 q -3 -18 0 -40', c.deep)}
+    ${stem('M130 228 q -3 -18 0 -38', c.deep)}
     ${leaf(130, 213, 31, 11, -158, c.leaf, c.deep)}
     ${leaf(130, 213, 31, 11, -22, c.leaf, c.deep)}
-    ${leaf(130, 197, 25, 9, -128, c.leaf, c.deep)}
-    ${leaf(130, 197, 25, 9, -52, c.leaf, c.deep)}
-    ${leaf(130, 188, 19, 7.5, -90, c.light, c.deep)}
+    ${leaf(130, 199, 25, 9, -128, c.leaf, c.deep)}
+    ${leaf(130, 199, 25, 9, -52, c.leaf, c.deep)}
+    <circle cx="130" cy="187" r="7.5" fill="${c.light}" stroke="${c.deep}" stroke-width="1.8"/>
+    ${face(130, 187, 0.6, mood)}
     ${dew(154, 206, 0.9)}`;
 }
 
-// 상추: 잎이 부챗살로 모이는 로제트
-function rosetteArt(big) {
-  const c = CP.lettuce;
-  const L = big ? 55 : 44, w = big ? 19 : 15;
-  const outer = [-162, -126, -90, -54, -18]
-    .map((a) => leaf(130, 227, L, w, a, c.leaf, c.deep)).join('');
-  const inner = [-138, -90, -42]
-    .map((a) => leaf(130, 227, L * 0.68, w * 0.78, a, c.light, c.deep)).join('');
-  const head = big
-    ? `<circle cx="130" cy="197" r="19" fill="${c.light}" stroke="${c.deep}" stroke-width="2"/>
-       <path d="M117 190 q6 -7 13 -7 q7 0 13 7" fill="none" stroke="${c.deep}" stroke-width="1.4" opacity=".5"/>
-       ${face(130, 198, 1)}`
-    : '';
-  return outer + inner + head + (big ? sparkle(172, 168, 0.9) : '');
+// 상추 잎 한 장: 위쪽 가장자리가 물결치는(주름진) 잎
+function lettuceLeaf(x, y, h, w, ang, fill, line) {
+  return `<g transform="translate(${x} ${y}) rotate(${ang})">
+    <path d="M0 0
+      C ${-w * 1.05} ${-h * 0.2} ${-w * 1.1} ${-h * 0.55} ${-w * 0.72} ${-h * 0.74}
+      Q ${-w * 0.82} ${-h * 0.96} ${-w * 0.38} ${-h * 0.88}
+      Q ${-w * 0.32} ${-h * 1.12} 0 ${-h * 0.97}
+      Q ${w * 0.32} ${-h * 1.12} ${w * 0.38} ${-h * 0.88}
+      Q ${w * 0.82} ${-h * 0.96} ${w * 0.72} ${-h * 0.74}
+      C ${w * 1.1} ${-h * 0.55} ${w * 1.05} ${-h * 0.2} 0 0 Z"
+      fill="${fill}" stroke="${line}" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M0 ${-h * 0.08} Q ${-w * 0.08} ${-h * 0.5} 0 ${-h * 0.82}"
+      fill="none" stroke="${line}" stroke-width="1.2" opacity=".4"/>
+  </g>`;
 }
 
-// 감자: 덤불 (mature면 흙 위로 감자 두 알)
-function potatoBushArt(mature) {
+// 상추: 속이 차지 않는 잎상추 — 주름진 잎들이 위로 펼쳐진 다발
+function rosetteArt(big, mood = 'happy') {
+  const c = CP.lettuce;
+  if (!big) {
+    // growing: 아직 작은 잎 다발
+    return `
+      ${lettuceLeaf(114, 227, 44, 12, -14, c.leaf, c.deep)}
+      ${lettuceLeaf(146, 227, 44, 12, 14, c.leaf, c.deep)}
+      ${lettuceLeaf(130, 227, 52, 13, 0, c.leaf, c.deep)}
+      ${lettuceLeaf(130, 227, 36, 11, 0, c.light, c.deep)}
+      ${face(130, 207, 0.72, mood)}`;
+  }
+  // mature: 뒷잎(진한색) + 앞잎(연한색), 얼굴은 앞 가운데 잎에
+  return `
+    ${lettuceLeaf(106, 227, 58, 14, -18, c.leaf, c.deep)}
+    ${lettuceLeaf(154, 227, 58, 14, 18, c.leaf, c.deep)}
+    ${lettuceLeaf(117, 227, 68, 15, -8, c.leaf, c.deep)}
+    ${lettuceLeaf(143, 227, 68, 15, 8, c.leaf, c.deep)}
+    ${lettuceLeaf(130, 227, 74, 16, 0, c.leaf, c.deep)}
+    ${lettuceLeaf(119, 227, 46, 13, -10, c.light, c.deep)}
+    ${lettuceLeaf(141, 227, 46, 13, 10, c.light, c.deep)}
+    ${lettuceLeaf(130, 227, 52, 14, 0, c.light, c.deep)}
+    ${face(130, 202, 1, mood)}
+    ${sparkle(174, 166, 0.9)}`;
+}
+
+// 감자: 덤불 — stage: 'leafing'(잎 성장) | 'bulking'(감자 비대) | 'mature'(수확)
+function potatoBushArt(stage, mood = 'happy') {
   const c = CP.potato;
-  const s = mature ? 1.15 : 1;
+  const mature = stage === 'mature';
+  const s = mature ? 1.15 : stage === 'bulking' ? 1 : 0.8;
   const stems = `
     ${stem(`M130 228 q ${-13 * s} -22 ${-21 * s} ${-38 * s}`, c.deep)}
     ${stem(`M130 228 q 0 -24 0 ${-42 * s}`, c.deep)}
@@ -213,14 +279,20 @@ function potatoBushArt(mature) {
         <circle cx="100" cy="231" r="1.3" fill="${c.tuberDeep}"/>
         <circle cx="109" cy="236" r="1.3" fill="${c.tuberDeep}"/>
         <ellipse cx="157" cy="236" rx="15" ry="11.5" fill="${c.tuber}" stroke="${c.tuberDeep}" stroke-width="2"/>
-        ${face(157, 233, 0.82)}
+        ${face(157, 233, 0.82, mood)}
       </g>`
-    : '';
+    : stage === 'bulking'
+      // 감자 비대: 흙 위로 빼꼼 나온 아기 감자에 얼굴
+      ? `<ellipse cx="146" cy="236" rx="10" ry="7.5" fill="${c.tuber}" stroke="${c.tuberDeep}" stroke-width="2"/>
+         ${face(146, 234, 0.6, mood)}`
+      // 잎 성장: 가운데 줄기 끝 둥근 순에 얼굴
+      : `<circle cx="130" cy="196" r="7.5" fill="${c.light}" stroke="${c.deep}" stroke-width="1.8"/>
+         ${face(130, 196, 0.6, mood)}`;
   return stems + leaves + flowers + tubers;
 }
 
 // 오이: 덩굴+꽃 (flower 단계) / 듬직한 오이 (mature)
-function cucumberFlowerArt() {
+function cucumberFlowerArt(mood = 'happy') {
   const c = CP.cucumber;
   return `
     ${stem('M130 228 C 126 202 140 186 134 164', c.deep)}
@@ -229,10 +301,37 @@ function cucumberFlowerArt() {
     ${stem('M134 172 q 15 -4 14 -14 q -1 -9 -9 -7 q -7 2 -4 8', c.deep, 1.8)}
     <ellipse cx="121" cy="170" rx="3.4" ry="5" fill="#dcbc5f" stroke="#b3903a" stroke-width="1.3" transform="rotate(-24 121 170)"/>
     ${flower5(134, 158, 9.5, '#e8ce74', '#b3903a')}
+    ${stem('M133 190 q 8 2 11 7', c.deep, 1.6)}
+    <rect x="139" y="195" width="13" height="26" rx="6.5" fill="${c.body}" stroke="${c.deep}" stroke-width="2"
+      transform="rotate(8 145.5 208)"/>
+    ${face(146, 204, 0.52, mood)}
     ${dew(106, 190, 0.9)}`;
 }
 
-function cucumberMatureArt() {
+// 오이 열매 단계: 덩굴에 오이 두 개가 매달림 (큰 쪽에 얼굴)
+function cucumberFruitArt(mood = 'happy') {
+  const c = CP.cucumber;
+  return `
+    ${stem('M130 228 C 123 198 143 180 134 150', c.deep)}
+    ${leaf(126, 198, 44, 16, -164, c.leaf, c.deep)}
+    ${leaf(134, 172, 32, 12, -24, c.leaf, c.deep)}
+    ${leaf(129, 156, 26, 10, -140, c.light, c.deep)}
+    ${stem('M134 156 q 14 -4 13 -13 q -1 -8 -8 -6 q -6 2 -3 7', c.deep, 1.7)}
+    ${flower5(136, 144, 7, '#e8ce74', '#b3903a')}
+    ${stem('M132 188 q -9 3 -12 10', c.deep, 1.8)}
+    <rect x="109" y="196" width="18" height="36" rx="9" fill="${c.body}" stroke="${c.deep}" stroke-width="2.2"
+      transform="rotate(-7 118 214)"/>
+    <g fill="${c.deep}" opacity=".45">
+      <circle cx="114" cy="208" r="1.1"/><circle cx="122" cy="218" r="1.1"/><circle cx="118" cy="226" r="1.1"/>
+    </g>
+    ${face(118, 208, 0.62, mood)}
+    ${stem('M136 174 q 9 3 11 9', c.deep, 1.6)}
+    <rect x="141" y="181" width="12" height="25" rx="6" fill="${c.body}" stroke="${c.deep}" stroke-width="2"
+      transform="rotate(8 147 193)"/>
+    ${dew(102, 186, 0.9)}`;
+}
+
+function cucumberMatureArt(mood = 'happy') {
   const c = CP.cucumber;
   return `
     ${leaf(102, 227, 60, 21, -124, c.leaf, c.deep)}
@@ -246,7 +345,7 @@ function cucumberMatureArt() {
         <circle cx="124" cy="196" r="1.4"/><circle cx="142" cy="206" r="1.4"/>
         <circle cx="128" cy="220" r="1.4"/><circle cx="116" cy="184" r="1.4"/>
       </g>
-      ${face(129, 172, 1.05)}
+      ${face(129, 172, 1.05, mood)}
     </g>
     ${stem('M146 156 q 16 -6 15 -17 q -1 -10 -10 -8 q -8 2 -4 9', c.deep, 1.8)}
     ${flower5(128, 143, 8.5, '#e8ce74', '#b3903a')}
@@ -263,30 +362,56 @@ function canopyPath(cx, cy, w, h) {
     C ${cx + w} ${cy + h * 0.42}, ${cx - w} ${cy + h * 0.42}, ${cx - w} ${cy} Z`;
 }
 
+// 사과: 위가 살짝 파인 붉은 열매 + 꼭지 잎
 function appleFruit(x, y, c) {
   return `<g>
-    <circle cx="${x}" cy="${y}" r="7" fill="${c.fruit}" stroke="${c.fruitDeep}" stroke-width="1.8"/>
-    <line x1="${x}" y1="${y - 7}" x2="${x}" y2="${y - 10}" stroke="${c.trunkDeep}" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M${x - 7} ${y} a7 7 0 1 0 14 0 a7 7.4 0 0 0 -5.6 -7 q-1.4 0.9 -2.8 0 a7 7.4 0 0 0 -5.6 7 Z"
+      fill="${c.fruit}" stroke="${c.fruitDeep}" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M${x - 3.6} ${y - 3} q0.6 -1.8 2 -2.6" fill="none" stroke="#eccabb" stroke-width="1.4"
+      stroke-linecap="round" opacity=".9"/>
+    <line x1="${x}" y1="${y - 6.4}" x2="${x}" y2="${y - 10}" stroke="${c.trunkDeep}" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M${x + 0.5} ${y - 9} q3.6 -2.6 5.6 0 q-2.8 2.4 -5.6 0 Z"
+      fill="${c.leaf}" stroke="${c.deep}" stroke-width="1.2" stroke-linejoin="round"/>
   </g>`;
 }
 
+// 배: 한국 배(신고배) — 둥글고 황갈색, 과점(작은 반점)이 있음
 function pearFruit(x, y, c) {
-  return `<g transform="translate(${x} ${y})">
-    <path d="M0,-10 C3,-10 2.5,-5 5,-2 C8.5,2 6.5,8.5 0,8.5 C-6.5,8.5 -8.5,2 -5,-2 C-2.5,-5 -3,-10 0,-10 Z"
-      fill="${c.fruit}" stroke="${c.fruitDeep}" stroke-width="1.8"/>
-    <line x1="0" y1="-10" x2="0" y2="-13" stroke="${c.trunkDeep}" stroke-width="1.6" stroke-linecap="round"/>
+  return `<g>
+    <circle cx="${x}" cy="${y}" r="7.2" fill="${c.fruit}" stroke="${c.fruitDeep}" stroke-width="1.8"/>
+    <g fill="${c.fruitDeep}" opacity=".5">
+      <circle cx="${x - 2.6}" cy="${y - 1.4}" r="0.75"/>
+      <circle cx="${x + 2.2}" cy="${y + 1.2}" r="0.75"/>
+      <circle cx="${x - 0.4}" cy="${y + 3.2}" r="0.75"/>
+      <circle cx="${x + 2.9}" cy="${y - 2.7}" r="0.75"/>
+      <circle cx="${x - 3.4}" cy="${y + 1.8}" r="0.75"/>
+    </g>
+    <path d="M${x - 3.4} ${y - 3.4} q0.7 -1.6 2.2 -2.3" fill="none" stroke="#f0dcae" stroke-width="1.3"
+      stroke-linecap="round" opacity=".9"/>
+    <line x1="${x}" y1="${y - 7.2}" x2="${x}" y2="${y - 10.5}" stroke="${c.trunkDeep}" stroke-width="1.6" stroke-linecap="round"/>
   </g>`;
 }
 
-function treeArt(cropId, stageKey) {
+function treeArt(cropId, stageKey, mood = 'happy') {
   const c = CP[cropId];
   if (stageKey === 'sapling') {
     return `
       ${stem('M130 228 q -2 -16 1 -32', c.trunk, 4.5)}
       ${stem('M130 212 q -8 -4 -12 -10', c.trunk, 3)}
       ${leaf(118, 202, 17, 7, -145, c.leaf, c.deep)}
-      ${leaf(131, 196, 18, 7.5, -80, c.light, c.deep)}
-      ${leaf(131, 199, 17, 7, -25, c.leaf, c.deep)}`;
+      ${leaf(131, 199, 17, 7, -25, c.leaf, c.deep)}
+      <circle cx="130" cy="192" r="8" fill="${c.light}" stroke="${c.deep}" stroke-width="1.8"/>
+      ${face(130, 192, 0.6, mood)}`;
+  }
+  // 어린 나무: 묘목보다 크고 성목보다 작은, 갓 우거지기 시작한 나무
+  if (stageKey === 'young') {
+    return `
+      ${stem('M130 228 q -2 -18 1 -34', c.trunk, 5)}
+      ${stem('M130 210 q -9 -5 -13 -11', c.trunk, 3)}
+      <path d="${canopyPath(130, 194, 25, 19)}"
+        fill="${c.leaf}" stroke="${c.deep}" stroke-width="2.2" stroke-linejoin="round"/>
+      ${leaf(108, 200, 13, 5.5, -160, c.light, c.deep)}
+      ${face(130, 189, 0.64, mood)}`;
   }
   const mature = stageKey === 'mature';
   const w = mature ? 46 : 36, h = mature ? 36 : 28;
@@ -302,42 +427,54 @@ function treeArt(cropId, stageKey) {
     <path d="M${130 - w * 0.5} ${cy - h * 0.35} q ${w * 0.5} ${-h * 0.4} ${w} 0"
       fill="none" stroke="${c.deep}" stroke-width="1.2" opacity=".35"/>`;
   let deco = '';
-  if (stageKey === 'blossom') {
+  if (stageKey === 'grown') {
+    // 성목: 다 자란 수형, 아직 꽃·열매는 없음
+    deco = `${leaf(103, 180, 12, 5, -165, c.light, c.deep)}
+      ${face(128, 172, 0.72, mood)}`;
+  } else if (stageKey === 'blossom') {
     deco = `${flower5(112, 174, 6, c.blossom, '#dcbc5f')}
       ${flower5(147, 170, 6, c.blossom, '#dcbc5f')}
-      ${flower5(130, 158, 6.5, c.blossom, '#dcbc5f')}
-      ${flower5(140, 184, 5.5, c.blossom, '#dcbc5f')}`;
+      ${flower5(140, 186, 5.5, c.blossom, '#dcbc5f')}
+      ${face(128, 172, 0.72, mood)}`;
   } else if (stageKey === 'fruit' || mature) {
     const F = cropId === 'apple' ? appleFruit : pearFruit;
     deco = mature
       ? `${F(110, 172, c)}${F(150, 168, c)}${F(130, 188, c)}
          ${flower5(142, 150, 5.5, c.blossom, '#dcbc5f')}
-         ${face(130, 152, 0.9)}
+         ${face(130, 152, 0.9, mood)}
          ${sparkle(172, 148, 0.9)}`
-      : `${F(114, 176, c)}${F(146, 172, c)}`;
+      : `${F(114, 178, c)}${F(146, 174, c)}
+         ${face(130, 164, 0.72, mood)}`;
   }
   return trunk + canopy + deco;
 }
 
-// 작물+단계 → 그림 조각
-function plantArt(cropId, stageKey) {
-  if (stageKey === 'seed') return seedArt(cropId);
-  if (stageKey === 'sprout') return sproutArt(cropId);
-  if (stageKey === 'seedling') return seedlingArt(cropId);
+// 작물+단계 → 그림 조각 (mood = 얼굴 표정: happy | sad | danger — 전 단계 적용)
+function plantArt(cropId, stageKey, mood = 'happy') {
+  if (stageKey === 'seed') return seedArt(cropId, mood);
+  if (stageKey === 'sprout') return sproutArt(cropId, mood);
+  if (stageKey === 'seedling') return seedlingArt(cropId, mood);
   switch (cropId) {
-    case 'lettuce':  return rosetteArt(stageKey === 'mature');
-    case 'potato':   return potatoBushArt(stageKey === 'mature');
-    case 'cucumber': return stageKey === 'mature' ? cucumberMatureArt() : cucumberFlowerArt();
+    case 'lettuce':
+      return rosetteArt(stageKey === 'mature', mood);
+    case 'potato':
+      return potatoBushArt(stageKey, mood); // leafing | bulking | mature
+    case 'cucumber':
+      if (stageKey === 'flower') return cucumberFlowerArt(mood);
+      if (stageKey === 'fruit') return cucumberFruitArt(mood);
+      return cucumberMatureArt(mood);
     case 'apple':
-    case 'pear':     return treeArt(cropId, stageKey);
+    case 'pear':
+      return treeArt(cropId, stageKey, mood); // sapling | young | grown | blossom | fruit | mature
   }
-  return sproutArt(cropId);
+  return sproutArt(cropId, mood);
 }
 
 let uid = 0;
 // 단계가 오를수록 화면을 채우도록 그림 배율을 키움 (기준점: 지면 (130,227))
 const STAGE_SCALE = {
-  seed: 1, sprout: 1.15, seedling: 1.22, sapling: 1.24,
+  seed: 1, sprout: 1.15, seedling: 1.22, sapling: 1.22,
+  young: 1.26, grown: 1.3, leafing: 1.24, bulking: 1.3,
   growing: 1.3, flower: 1.28, blossom: 1.32, fruit: 1.34, mature: 1.4,
 };
 
@@ -373,6 +510,298 @@ function cropPortrait(cropId, stageKey = 'mature') {
   return `<svg viewBox="40 88 180 198">
     ${ground()}
     <g transform="translate(130 227) scale(${s}) translate(-130 -227)">${plantArt(cropId, stageKey)}</g>
+  </svg>`;
+}
+
+/* ── 밭 상태(날씨·토양) 연출 — conditions.js의 상태 코드를 정원 장면에 입힘 ──
+   ※ 아직 대시보드에는 연결하지 않음. 미리보기: /conditions-preview.html */
+
+function snowflakeSceneArt(cx, cy, r, color = '#8fb0c4') {
+  let arms = '';
+  for (let i = 0; i < 3; i++) {
+    const a = (i * 60 * Math.PI) / 180;
+    const dx = Math.cos(a) * r, dy = Math.sin(a) * r;
+    arms += `<line x1="${cx - dx}" y1="${cy - dy}" x2="${cx + dx}" y2="${cy + dy}"/>`;
+    for (const t of [0.6, -0.6]) {
+      const px = cx + dx * t, py = cy + dy * t;
+      const b = a + Math.PI / 2;
+      arms += `<line x1="${px - Math.cos(b) * r * 0.22}" y1="${py - Math.sin(b) * r * 0.22}"
+        x2="${px + Math.cos(b) * r * 0.22}" y2="${py + Math.sin(b) * r * 0.22}"/>`;
+    }
+  }
+  return `<g stroke="${color}" stroke-width="1.7" stroke-linecap="round">${arms}</g>`;
+}
+
+function heatWavesArt(x, y, s = 1) {
+  return `<g stroke="#d8a256" stroke-width="${2 * s}" stroke-linecap="round" fill="none" opacity=".85">
+    <path d="M${x} ${y} q5 -5 10 0 q5 5 10 0"/>
+    <path d="M${x + 4} ${y + 11} q5 -5 10 0 q5 5 10 0"/>
+  </g>`;
+}
+
+function thermometerArt(x, y, s = 1, danger = false) {
+  const mercury = danger ? '#c85c46' : '#d98a43';
+  return `<g transform="translate(${x} ${y}) scale(${s})">
+    <rect x="-6.5" y="-28" width="13" height="38" rx="6.5"
+      fill="#fffaf0" stroke="#9b7b5d" stroke-width="1.8"/>
+    <circle cx="0" cy="14" r="10" fill="#fffaf0" stroke="#9b7b5d" stroke-width="1.8"/>
+    <rect x="-2.4" y="-20" width="4.8" height="31" rx="2.4" fill="${mercury}"/>
+    <circle cx="0" cy="14" r="6.2" fill="${mercury}"/>
+    <g stroke="#9b7b5d" stroke-width="1.4" stroke-linecap="round">
+      <line x1="8.5" y1="-18" x2="13" y2="-18"/>
+      <line x1="8.5" y1="-9" x2="12" y2="-9"/>
+      <line x1="8.5" y1="0" x2="13" y2="0"/>
+    </g>
+  </g>`;
+}
+
+function soilCracksArt() {
+  return `<g stroke="#5f4c36" stroke-width="2" stroke-linecap="round" fill="none" opacity=".8">
+    <path d="M84 244 l-9 15"/>
+    <path d="M130 240 v17 M130 249 l9 7"/>
+    <path d="M176 244 l11 13"/>
+    <path d="M105 253 l-6 10"/>
+  </g>`;
+}
+
+function rippleArt(cx, cy) {
+  return `<g stroke="#8fa9ba" stroke-width="1.6" fill="none" opacity=".8">
+    <ellipse cx="${cx}" cy="${cy}" rx="13" ry="4"/>
+    <ellipse cx="${cx}" cy="${cy}" rx="6" ry="1.8"/>
+  </g>`;
+}
+
+function phDropArt(x, y, s = 1) {
+  return `<g transform="translate(${x} ${y}) scale(${s})">
+    <path d="M0 -14 C5.5 -6 9 -1 9 5 a9 9 0 0 1 -18 0 C-9 -1 -5.5 -6 0 -14 Z"
+      fill="#a9c2d2" stroke="#7f9cb0" stroke-width="1.8" stroke-linejoin="round"/>
+    <text x="0" y="9" text-anchor="middle" font-size="10.5" fill="${INK}"
+      font-family="'Gowun Dodum', sans-serif">pH</text>
+  </g>`;
+}
+
+// 애니메이션 도우미 — 요소를 클래스/딜레이가 붙은 그룹으로 감쌈
+// (안쪽 요소의 transform 속성과 충돌하지 않도록 바깥 그룹에서 CSS 애니메이션)
+function fx(cls, inner, delay = 0, dur = null) {
+  const style = [];
+  if (delay) style.push(`animation-delay:${delay}s`);
+  if (dur) style.push(`animation-duration:${dur}s`);
+  return `<g class="fx ${cls}"${style.length ? ` style="${style.join(';')}"` : ''}>${inner}</g>`;
+}
+
+// 상태 코드 → 장면 연출
+// sev: 등급(good=웃음 / warn=시무룩 / danger=빈사+덜덜)
+// sky: 하늘색 / air: 공중 효과 / soilFx: 흙 위 효과 / overlay: 식물 위 덮개
+const CONDITION_FX = {
+  // ── 날씨 ──
+  stable: {
+    sev: 'good',
+    air: `${fx('fx-pulse', sunArt(80, 84, 9))}${fx('fx-drift', cloudArt(176, 72, 0.9, { rain: false }))}`,
+  },
+  clear: {
+    sev: 'good',
+    sky: '#fdfaf0',
+    air: `${fx('fx-pulse', sunArt(178, 70, 13))}
+      ${fx('fx-twinkle', sparkle(76, 112, 0.9))}${fx('fx-twinkle', sparkle(58, 152, 0.7, '#c9b98a'), 0.9)}`,
+  },
+  heat: {
+    sev: 'warn',
+    sky: '#fdf5e5',
+    air: `${fx('fx-pulse', sunArt(178, 72, 15))}
+      ${fx('fx-pulse', thermometerArt(62, 88, 0.9), 0.35, 2.8)}
+      ${fx('fx-shimmer', heatWavesArt(78, 132))}`,
+  },
+  heatwave: {
+    sev: 'danger',
+    sky: '#faeddc',
+    air: `${fx('fx-pulse', sunArt(178, 70, 17), 0, 2.2)}
+      ${fx('fx-pulse', thermometerArt(58, 88, 1, true), 0.25, 1.9)}
+      ${fx('fx-shimmer', heatWavesArt(82, 122))}${fx('fx-shimmer', heatWavesArt(96, 158, 0.9), 0.7)}`,
+  },
+  cold: {
+    sev: 'warn',
+    sky: '#f2f6f6',
+    air: `${fx('fx-drift', cloudArt(90, 76, 0.9, { rain: false }))}${sunArt(184, 66, 9)}
+      ${fx('fx-snow', snowflakeSceneArt(70, 132, 6))}${fx('fx-snow', snowflakeSceneArt(180, 122, 5), 1.8)}`,
+  },
+  frost: {
+    sev: 'danger',
+    sky: '#eef4f6',
+    air: `${fx('fx-snow', snowflakeSceneArt(80, 92, 8))}${fx('fx-snow', snowflakeSceneArt(172, 76, 6), 1.2)}
+      ${fx('fx-snow', snowflakeSceneArt(120, 128, 5), 2.4)}${fx('fx-snow', snowflakeSceneArt(196, 140, 6.5), 0.6)}
+      ${fx('fx-snow', snowflakeSceneArt(58, 168, 4.5), 3)}`,
+    soilFx: `<g stroke="#dfeaf0" stroke-width="2.2" stroke-linecap="round" opacity=".9">
+      <path d="M72 238 l6 -4 M100 233 l6 -4 M132 231 l6 -4 M164 233 l6 -4 M192 238 l6 -4"/>
+    </g>`,
+  },
+  rain: {
+    sev: 'warn',
+    sky: '#f0f3ee',
+    air: `${fx('fx-drift', cloudArt(96, 74, 1.05))}${fx('fx-drift', cloudArt(178, 60, 0.75, { rain: false }), 2)}
+      ${fx('fx-fall', dew(72, 138, 1))}${fx('fx-fall', dew(120, 118, 0.9), 0.6)}
+      ${fx('fx-fall', dew(160, 142, 1), 1.1)}${fx('fx-fall', dew(196, 168, 0.85), 0.3)}`,
+    soilFx: `${fx('fx-twinkle', rippleArt(84, 252), 0, 2.6)}${fx('fx-twinkle', rippleArt(182, 258), 1.2, 2.6)}`,
+  },
+  downpour: {
+    sev: 'danger',
+    sky: '#e9ece8',
+    air: `${fx('fx-drift', cloudArt(88, 68, 1.1, { fill: '#d9dde3', line: '#8f98a8' }), 0, 5)}
+      ${fx('fx-drift', cloudArt(180, 56, 0.9, { fill: '#d9dde3', line: '#8f98a8' }), 1, 5)}
+      ${fx('fx-fall-fast', `<g stroke="#8fa9ba" stroke-width="2" stroke-linecap="round" opacity=".85">
+        <line x1="70" y1="116" x2="64" y2="132"/><line x1="140" y1="112" x2="134" y2="128"/>
+        <line x1="200" y1="112" x2="194" y2="128"/>
+      </g>`)}
+      ${fx('fx-fall-fast', `<g stroke="#8fa9ba" stroke-width="2" stroke-linecap="round" opacity=".85">
+        <line x1="104" y1="130" x2="98" y2="146"/><line x1="172" y1="128" x2="166" y2="144"/>
+        <line x1="88" y1="158" x2="82" y2="174"/><line x1="196" y1="160" x2="190" y2="176"/>
+      </g>`, 0.45)}`,
+    soilFx: `<ellipse cx="172" cy="256" rx="26" ry="6.5" fill="#a9c2d2" opacity=".65" stroke="#7f9cb0" stroke-width="1.5"/>
+      ${fx('fx-twinkle', rippleArt(84, 250), 0, 1.6)}
+      ${fx('fx-twinkle', `<g stroke="#7f9cb0" stroke-width="1.6" stroke-linecap="round">
+        <path d="M152 246 l-4 -6 M188 246 l4 -6"/>
+      </g>`, 0.5, 1.6)}`,
+  },
+  wind: {
+    sev: 'warn',
+    sky: '#f7f6ec',
+    air: `<g class="fx-flow" stroke="#9aa7ae" stroke-width="2.2" stroke-linecap="round" fill="none" opacity=".9">
+        <path d="M34 104 h64 q11 0 11 -8 q0 -7 -7 -7"/>
+        <path d="M56 144 h88 q13 0 13 10 q0 7 -7 7"/>
+        <path d="M40 184 h46"/>
+      </g>
+      ${fx('fx-leaf-fly', leaf(190, 96, 13, 5, 30, '#aab98d', '#7c8b62'))}
+      ${fx('fx-leaf-fly', leaf(200, 170, 11, 4.5, 20, '#aab98d', '#7c8b62'), 1.5)}`,
+  },
+  typhoon: {
+    sev: 'danger',
+    sky: '#e5e8e5',
+    air: `${fx('fx-drift', cloudArt(84, 62, 1.05, { fill: '#ccd2cf', line: '#828c88', rain: false }), 0, 4)}
+      ${fx('fx-drift', cloudArt(186, 78, 0.85, { fill: '#ccd2cf', line: '#828c88', rain: false }), 0.8, 4)}
+      ${fx('fx-spin', `<path d="M130 108 m-2 -1.4 a2.8 2.8 0 1 1 -1.4 4.8 a7.7 7.7 0 1 0 8.4 -11.2 a14 14 0 1 1 -18.2 14.7"
+        fill="none" stroke="#7f9cb0" stroke-width="2.6" stroke-linecap="round"/>`)}
+      ${fx('fx-fall-fast', `<g stroke="#8fa9ba" stroke-width="2" stroke-linecap="round" opacity=".85">
+        <line x1="66" y1="140" x2="56" y2="152"/><line x1="170" y1="144" x2="160" y2="156"/>
+      </g>`)}
+      ${fx('fx-fall-fast', `<g stroke="#8fa9ba" stroke-width="2" stroke-linecap="round" opacity=".85">
+        <line x1="102" y1="156" x2="92" y2="168"/><line x1="200" y1="120" x2="190" y2="132"/>
+      </g>`, 0.4)}`,
+  },
+  drought: {
+    sev: 'warn',
+    sky: '#fdf5df',
+    air: `${fx('fx-pulse', sunArt(178, 72, 16))}${fx('fx-shimmer', heatWavesArt(62, 116, 0.9))}`,
+    soilFx: soilCracksArt(),
+  },
+  // ── 땅·토양 ──
+  soilStable: {
+    sev: 'good',
+    air: fx('fx-twinkle', sparkle(84, 196, 0.85, '#c9b98a')),
+    soilFx: `${tuft(96, 240, 1)}${tuft(168, 242, -1)}`,
+  },
+  dry: {
+    sev: 'warn',
+    sky: '#fcf8ec',
+    air: fx('fx-shimmer', heatWavesArt(70, 130, 0.8), 0.4),
+    soilFx: soilCracksArt(),
+  },
+  overwet: {
+    sev: 'warn',
+    sky: '#f3f5f1',
+    air: fx('fx-fall', dew(96, 152, 1.2), 0, 2.4),
+    soilFx: `<ellipse cx="130" cy="250" rx="46" ry="9" fill="#6b5540" opacity=".35"/>
+      ${fx('fx-twinkle', dew(98, 240, 0.9), 0, 2.4)}${fx('fx-twinkle', dew(166, 244, 0.9), 1.2, 2.4)}`,
+  },
+  drainage: {
+    sev: 'warn',
+    sky: '#f3f5f1',
+    soilFx: fx('fx-drift', `<g stroke="#7f9cb0" stroke-width="2.4" stroke-linecap="round" fill="none" opacity=".9">
+        <path d="M58 236 q6 -5 12 0 q6 5 12 0 q6 -5 12 0 q6 5 12 0 q6 -5 12 0 q6 5 12 0 q6 -5 12 0 q6 5 12 0"/>
+        <path d="M76 246 q6 -5 12 0 q6 5 12 0 q6 -5 12 0 q6 5 12 0 q6 -5 12 0"/>
+      </g>`, 0, 4),
+  },
+  acidity: {
+    sev: 'warn',
+    soilFx: `${fx('fx-pulse', phDropArt(180, 249, 1.08), 0, 2.8)}
+      ${fx('fx-twinkle', `<ellipse cx="180" cy="255" rx="18" ry="5.5" fill="none"
+        stroke="#7f9cb0" stroke-width="1.4" opacity=".65"/>`, 0.7, 2.8)}`,
+  },
+  salinity: {
+    sev: 'warn',
+    soilFx: `${fx('fx-twinkle', `<g fill="#f7f3e6" stroke="${INK}" stroke-width="1.4" stroke-linejoin="round">
+        <rect x="88" y="236" width="7" height="7" transform="rotate(45 91.5 239.5)"/>
+        <rect x="174" y="244" width="6" height="6" transform="rotate(45 177 247)"/>
+      </g>`)}
+      ${fx('fx-twinkle', `<g fill="#f7f3e6" stroke="${INK}" stroke-width="1.4" stroke-linejoin="round">
+        <rect x="138" y="232" width="8" height="8" transform="rotate(45 142 236)"/>
+        <rect x="112" y="250" width="6" height="6" transform="rotate(45 115 253)"/>
+      </g>`, 1)}`,
+  },
+  texture: {
+    sev: 'warn',
+    air: fx('fx-pulse', `<g>
+        <circle cx="196" cy="106" r="10" fill="#f5e3da" stroke="#c9825b" stroke-width="1.6"/>
+        <line x1="196" y1="101" x2="196" y2="108" stroke="#c9825b" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="196" cy="112" r="1.2" fill="#c9825b"/>
+      </g>`, 0, 1.6),
+    soilFx: `<path d="M30 252 Q130 243 230 252 L230 260 Q130 251 30 260 Z" fill="#c4ad85" opacity=".75"/>
+      <path d="M44 268 Q130 260 216 268 L216 275 Q130 267 44 275 Z" fill="#8a6c47" opacity=".6"/>`,
+  },
+  flood: {
+    sev: 'danger',
+    sky: '#edf2f1',
+    overlay: fx('fx-bob', `<path d="M14 210 q10 -6 20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 t20 0 L254 288 L6 288 Z"
+        fill="#9db8c9" opacity=".45"/>
+      <g stroke="#7f9cb0" stroke-width="2" stroke-linecap="round" fill="none" opacity=".8">
+        <path d="M40 224 q7 -5 14 0 q7 5 14 0"/>
+        <path d="M150 236 q7 -5 14 0 q7 5 14 0"/>
+        <path d="M84 254 q7 -5 14 0 q7 5 14 0"/>
+      </g>`),
+  },
+};
+
+/**
+ * 상태를 입힌 정원 장면.
+ * 등급에 따라 작물 표정(웃음/시무룩/빈사)과 움직임(살랑/덜덜)도 함께 바뀝니다.
+ * @param {string} cropId - 작물 (lettuce|cucumber|potato|apple|pear)
+ * @param {string} stageKey - 성장 단계 (기본 mature)
+ * @param {string|string[]} codes - conditions.js의 상태 코드. 날씨와 토양을 함께 표시할 수 있습니다.
+ */
+function conditionScene(cropId, stageKey = 'mature', codes = 'stable') {
+  const codeList = [...new Set((Array.isArray(codes) ? codes : [codes])
+    .filter((code) => CONDITION_FX[code]))];
+  if (codeList.length === 0) codeList.push('stable');
+  const fxDefs = codeList.map((code) => CONDITION_FX[code]);
+  const severityRank = { good: 0, warn: 1, danger: 2 };
+  const sev = fxDefs.reduce((highest, definition) =>
+    severityRank[definition.sev || 'good'] > severityRank[highest]
+      ? definition.sev
+      : highest, 'good');
+  const sky = fxDefs.find((definition) => definition.sky)?.sky || '#fbf8ef';
+  const air = fxDefs.map((definition) => definition.air || '').join('');
+  const soilFx = fxDefs.map((definition) => definition.soilFx || '').join('');
+  const overlay = fxDefs.map((definition) => definition.overlay || '').join('');
+  const faceMood = sev === 'danger' ? 'danger' : sev === 'warn' ? 'sad' : 'happy';
+  // 등급별 움직임: 양호=통통 튀는 리듬 / 주의=축 처진 흔들림 / 위험=덜덜 떨림
+  const swayClass = sev === 'danger' ? 'sway-danger' : sev === 'warn' ? 'sway-sad' : 'sway-happy';
+  const id = `vg${++uid}`;
+  const s = STAGE_SCALE[stageKey] || 1.2;
+  const sceneLabel = codeList.map((code) => CONDITIONS[code]?.label || code).join(' · ');
+  return `<svg viewBox="0 0 260 288" role="img" aria-label="${CROP_NAMES[cropId] || cropId} · ${sceneLabel}">
+    <defs><clipPath id="${id}"><ellipse cx="130" cy="144" rx="112" ry="130"/></clipPath></defs>
+    <ellipse cx="130" cy="144" rx="112" ry="130" fill="${sky}"/>
+    <g clip-path="url(#${id})">
+      <path d="M10,216 Q130,197 250,216" fill="none" stroke="#e3dbc4" stroke-width="1.6"/>
+      ${air}
+      ${ground()}
+      ${soilFx}
+      <g class="${swayClass}"><g transform="translate(130 227) scale(${s}) translate(-130 -227)">
+        ${plantArt(cropId, stageKey, faceMood)}
+      </g></g>
+      ${overlay}
+    </g>
+    <ellipse cx="130" cy="144" rx="112" ry="130" fill="none" stroke="${INK}" stroke-width="1.6" opacity=".7"/>
+    <ellipse cx="130" cy="144" rx="103" ry="121" fill="none" stroke="#c9825b" stroke-width="1.3"
+      stroke-dasharray="0.5 8" stroke-linecap="round" opacity=".55"/>
   </svg>`;
 }
 
@@ -425,6 +854,9 @@ const TAB_ICONS = {
 ════════════════════════════════════════════ */
 
 let userName = localStorage.getItem('farm.name') || '';
+const DEFAULT_FARM_REGION = '인천광역시 남동구';
+let farmRegion = localStorage.getItem('farm.region') || DEFAULT_FARM_REGION;
+const environmentCache = new Map();
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -493,8 +925,16 @@ let activeCropId = null;  // 대시보드에 크게 보여줄 작물 (아이콘�
 // 단계 스테퍼에 쓰는 짧은 이름 (씨앗에서 수확까지)
 const STEP_LABELS = {
   seed: '씨앗', sprout: '새싹', seedling: '모종', sapling: '묘목',
+  young: '어린 나무', grown: '성목', leafing: '잎 성장', bulking: '비대',
   growing: '성장', flower: '꽃', blossom: '꽃', fruit: '열매', mature: '수확',
 };
+// 작물별 예외 라벨 (감자는 씨감자/싹으로 부름)
+const CROP_STEP_LABELS = {
+  potato: { seed: '씨감자', sprout: '싹' },
+};
+function stepLabel(cropId, key) {
+  return (CROP_STEP_LABELS[cropId] && CROP_STEP_LABELS[cropId][key]) || STEP_LABELS[key] || key;
+}
 
 // 지금 대시보드에 보여줄 작물 (없어졌으면 첫 작물로)
 function getActiveCrop() {
@@ -518,12 +958,15 @@ function renderCropIcons(active) {
   const canAdd = Object.keys(CROP_NAMES).some((id) => !growing.has(id));
 
   $('#crop-badges').innerHTML =
-    crops.map((c) => `
-      <button class="crop-badge ${active && c.cropId === active.cropId ? 'active' : ''}"
+    crops.map((c) => {
+      const cached = environmentCache.get(`${farmRegion}:${c.cropId}`);
+      return `
+      <button class="crop-badge ${active && c.cropId === active.cropId ? 'active' : ''} ${cropBadgeStateClass(cached?.status)}"
         data-crop="${c.cropId}" title="${CROP_NAMES[c.cropId] || ''} 보기"
         aria-label="${CROP_NAMES[c.cropId] || ''} 상황 보기">
         ${cropPortrait(c.cropId)}
-      </button>`).join('')
+      </button>`;
+    }).join('')
     + (canAdd ? `<button class="crop-badge add" id="add-crop-btn" title="새 작물 심기" aria-label="새 작물 심기">+</button>` : '');
 
   $('#crop-badges').querySelectorAll('button[data-crop]').forEach((btn) => {
@@ -536,6 +979,40 @@ function renderCropIcons(active) {
   });
   const addBtn = $('#add-crop-btn');
   if (addBtn) addBtn.onclick = openSeedOverlay;
+
+  refreshCropBadgeStates(crops.filter((crop) => crop.cropId !== active?.cropId));
+}
+
+function cropBadgeStateClass(state) {
+  if (state === 'DANGER') return 'crop-state-danger';
+  if (state === 'CAUTION') return 'crop-state-caution';
+  if (state === 'GOOD') return 'crop-state-good';
+  return 'crop-state-pending';
+}
+
+function applyCropBadgeState(cropId, detail) {
+  const badge = document.querySelector(`.crop-badge[data-crop="${cropId}"]`);
+  if (!badge) return;
+  badge.classList.remove(
+    'crop-state-good',
+    'crop-state-caution',
+    'crop-state-danger',
+    'crop-state-pending',
+  );
+  badge.classList.add(cropBadgeStateClass(detail?.status));
+  const cropName = CROP_NAMES[cropId] || cropId;
+  const stateLabel = detail?.statusLabel || '분석 중';
+  badge.title = `${cropName} · ${stateLabel}`;
+  badge.setAttribute('aria-label', `${cropName} 상황 보기 · ${stateLabel}`);
+}
+
+async function refreshCropBadgeStates(crops) {
+  const requestedRegion = farmRegion;
+  await Promise.allSettled(crops.map(async (crop) => {
+    const detail = await loadEnvironmentDetail(crop);
+    if (requestedRegion !== farmRegion) return;
+    applyCropBadgeState(crop.cropId, detail);
+  }));
 }
 
 function renderHome() {
@@ -554,16 +1031,15 @@ function renderHome() {
   }
 
   // 상태 문구
-  const title = $('#status-title');
   const sub = $('#status-sub');
   if (mood === 'harvest') {
-    title.textContent = '수확 · 완료';
+    renderStatusTitle('양호', '수확 준비', 'GOOD');
     sub.textContent = `${crop.cropName}가 다 자랐어요! 수확해 주세요.`;
   } else if (mood === 'done') {
-    title.textContent = '양호 · 촉촉';
+    renderStatusTitle('양호', '촉촉', 'GOOD');
     sub.textContent = '';
   } else {
-    title.textContent = '기다림 · 마른 흙';
+    renderStatusTitle('주의', '마른 흙', 'CAUTION');
     sub.textContent = '아직 오늘의 물을 주지 않았어요.';
   }
 
@@ -574,7 +1050,7 @@ function renderHome() {
     const steps = (crop.stages || []).map((s, i) => `
       <div class="step ${i < crop.stageIndex ? 'passed' : ''} ${i === crop.stageIndex ? 'current' : ''}">
         <span class="step-dot"></span>
-        <span class="step-label">${STEP_LABELS[s.key] || s.name}</span>
+        <span class="step-label">${stepLabel(crop.cropId, s.key)}</span>
       </div>`).join('');
     sc.innerHTML = `
       <div class="stage-top">
@@ -593,11 +1069,66 @@ function renderHome() {
     btn.onclick = () => doHarvest(crop.cropId);
   } else if (status.checkedInToday) {
     btn.textContent = '상세 보기';
-    btn.onclick = () => toast('상세 보기는 준비 중이에요.');
+    btn.onclick = () => openDetailSheet(crop);
   } else {
     btn.textContent = '오늘도 출석하기';
     btn.onclick = doCheckIn;
   }
+
+  if (crop) refreshHomeEnvironment(crop);
+}
+
+async function refreshHomeEnvironment(crop) {
+  try {
+    const detail = await loadEnvironmentDetail(crop);
+    if (getActiveCrop()?.cropId !== crop.cropId) return;
+    applyCropBadgeState(crop.cropId, detail);
+    renderStatusTitle(detail.statusLabel, detail.causeLabel, detail.status);
+    $('#status-sub').textContent = Number.isFinite(detail.totalScore)
+      ? `${farmRegion} · 환경 점수 ${detail.totalScore}점`
+      : `${farmRegion} 환경을 분석하고 있어요.`;
+    $('#vignette').innerHTML = conditionScene(
+      crop.cropId,
+      crop.stageKey,
+      detail.sceneCodes,
+    );
+  } catch {
+    // 출석·성장 화면은 분석 서버 장애와 무관하게 계속 사용할 수 있습니다.
+  }
+}
+
+function renderStatusTitle(statusLabel, causeLabel, status = 'HOLD') {
+  const title = $('#status-title');
+  const tone = status === 'DANGER'
+    ? 'danger'
+    : status === 'CAUTION'
+      ? 'caution'
+      : status === 'GOOD'
+        ? 'good'
+        : 'neutral';
+  const level = document.createElement('span');
+  level.className = `status-level status-level-${tone}`;
+  level.textContent = statusLabel;
+  const cause = document.createElement('span');
+  cause.className = 'status-cause';
+  cause.textContent = causeLabel;
+  title.replaceChildren(level, cause);
+}
+
+async function loadEnvironmentDetail(crop, { force = false } = {}) {
+  const cacheKey = `${farmRegion}:${crop.cropId}`;
+  if (!force && environmentCache.has(cacheKey)) {
+    return environmentCache.get(cacheKey);
+  }
+  const response = await api(
+    `/api/me/environment?crop=${encodeURIComponent(crop.cropId)}&region=${encodeURIComponent(farmRegion)}&cultivationMode=OPEN_FIELD`,
+  );
+  if (!response?.ok || !response.analysis) {
+    throw new Error(response?.message || '농장 환경 분석을 불러오지 못했습니다.');
+  }
+  const detail = buildAnalysisViewModel(response.analysis);
+  environmentCache.set(cacheKey, detail);
+  return detail;
 }
 
 async function doCheckIn() {
@@ -618,6 +1149,590 @@ async function doCheckIn() {
     toast('서버에 연결할 수 없어요. (npm start 확인)');
     btn.disabled = false;
   }
+}
+
+/* ── 상세 보기 시트 ──────────────────────────
+   흙날씨 v3의 실제 분석 점수·원인 판정·단/중기 통합 예보를 표시합니다. */
+
+function scoreGrade(n) {
+  if (!Number.isFinite(n)) return '산정 중';
+  return n >= 70 ? '양호' : n >= 50 ? '주의' : '위험';
+}
+
+const WEATHER_METRIC_COPY = Object.freeze({
+  maxTemperature: { label: '최고기온', unit: '℃', pick: 'max' },
+  minTemperature: { label: '최저기온', unit: '℃', pick: 'min' },
+  precipitationProbability: { label: '강수확률', unit: '%', pick: 'max' },
+  precipitationAmount: { label: '강수량', unit: 'mm', pick: 'max' },
+  windSpeed: { label: '풍속', unit: 'm/s', pick: 'max' },
+});
+
+function readableScore(value) {
+  if (!Number.isFinite(value)) return '산정 중';
+  return Number.isInteger(value) ? `${value}점` : `${value.toFixed(2)}점`;
+}
+
+function compactNumber(value) {
+  if (!Number.isFinite(value)) return null;
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function triggerReading(trigger) {
+  const readings = trigger?.readings?.filter((reading) => Number.isFinite(reading.value)) || [];
+  if (!readings.length) return null;
+  const meta = WEATHER_METRIC_COPY[trigger.metric] || { pick: 'max' };
+  return readings.reduce((picked, reading) => {
+    if (!picked) return reading;
+    return meta.pick === 'min'
+      ? (reading.value < picked.value ? reading : picked)
+      : (reading.value > picked.value ? reading : picked);
+  }, null);
+}
+
+function comparisonLabel(comparison, unit) {
+  if (!Number.isFinite(comparison?.threshold)) return null;
+  const suffix = comparison.operator === 'GT'
+    ? '초과'
+    : comparison.operator === 'GTE'
+      ? '이상'
+      : comparison.operator === 'LT'
+        ? '미만'
+        : comparison.operator === 'LTE'
+          ? '이하'
+          : '기준';
+  return `${comparison.threshold}${unit} ${suffix}`;
+}
+
+function totalScoreExplanation(detail, crop) {
+  if (!Number.isFinite(detail.totalScore)) {
+    return {
+      title: '점수를 계산할 자료가 더 필요해요',
+      lines: ['확인된 기상과 토양 자료가 충분해지면 환경 점수와 이유를 함께 보여드릴게요.'],
+    };
+  }
+  const componentParts = [
+    Number.isFinite(detail.weather.score) ? `기상 ${readableScore(detail.weather.score)}` : null,
+    Number.isFinite(detail.soil.score) ? `토양 ${readableScore(detail.soil.score)}` : null,
+  ].filter(Boolean);
+  const lines = [
+    `${crop.cropName}의 기후 평년, 일주일 예보와 토양 상태를 작물 기준에 맞춰 비교했어요.`,
+    `${componentParts.join(', ')}을 함께 반영했고, ${detail.causeLabel}이 현재 점수에 가장 큰 영향을 줬어요.`,
+  ];
+  if (
+    Number.isFinite(detail.rawScore) &&
+    Number.isFinite(detail.scoreCap?.value) &&
+    detail.rawScore > detail.scoreCap.value
+  ) {
+    lines.push(`뚜렷한 위험 신호가 있어 최종 점수는 ${detail.scoreCap.value}점을 넘지 않도록 반영했어요.`);
+  } else {
+    lines.push('자료마다 실제 밭을 대표하는 정도가 달라 단순 평균하지 않고 신뢰할 수 있는 범위만 반영했어요.');
+  }
+  if (detail.soil.referenceOnly) {
+    lines.push('토양은 아직 내 밭 실측값이 아니라 지역 통계이므로 참고 수준으로만 반영했어요.');
+  }
+  return { title: `${detail.totalScore}점 · ${scoreGrade(detail.totalScore)}`, lines };
+}
+
+function weatherScoreExplanation(detail, crop) {
+  const trigger = detail.weather.trigger;
+  const meta = WEATHER_METRIC_COPY[trigger?.metric] || { label: '기상값', unit: trigger?.unit || '' };
+  const unit = trigger?.unit || meta.unit || '';
+  const reading = triggerReading(trigger);
+  const threshold = comparisonLabel(trigger?.comparison, unit);
+  const lines = [];
+
+  if (reading && threshold) {
+    const date = reading.date ? `${Number(reading.date.slice(5, 7))}월 ${Number(reading.date.slice(8, 10))}일 ` : '';
+    lines.push(`${date}${meta.label}이 ${reading.value}${unit}로 예보돼, ${crop.cropName}의 주의 기준인 ${threshold}에 해당해요.`);
+  } else if (detail.weather.status === 'GOOD') {
+    lines.push(`현재 예보에서는 ${crop.cropName}의 기상 기준을 벗어난 주요 위험이 확인되지 않았어요.`);
+  } else {
+    lines.push(`${crop.cropName}의 작물별 기상 기준과 비교한 결과 ${detail.weather.label} 신호가 확인됐어요.`);
+  }
+  const components = [
+    { label: '기후 평년', ...detail.scoreComponents?.climate },
+    { label: '일주일 예보', ...detail.scoreComponents?.forecast },
+  ].filter((component) => Number.isFinite(component.score));
+  const weighted = components.filter((component) =>
+    Number.isFinite(component.effectiveWeight) && component.effectiveWeight > 0);
+  const weightTotal = weighted.reduce((sum, component) => sum + component.effectiveWeight, 0);
+
+  if (weighted.length > 1 && weightTotal > 0) {
+    const formula = weighted.map((component) => {
+      const percent = Math.round((component.effectiveWeight / weightTotal) * 100);
+      return `${component.label} ${compactNumber(component.score)}점 × ${percent}%`;
+    }).join(' + ');
+    lines.push(`${formula}를 합쳐 기상 ${readableScore(detail.weather.score)}으로 계산했어요.`);
+  } else if (components.length) {
+    const values = components.map((component) =>
+      `${component.label} ${compactNumber(component.score)}점`).join(', ');
+    lines.push(`${values}을 반영해 기상 ${readableScore(detail.weather.score)}으로 계산했어요.`);
+  } else {
+    lines.push(`${detail.weather.label}의 정도와 이어지는 날짜를 반영해 기상 ${readableScore(detail.weather.score)}으로 계산했어요.`);
+  }
+  return { title: `${detail.weather.label}이 기상 점수에 반영된 이유`, lines };
+}
+
+function soilScoreExplanation(detail, crop) {
+  const soil = detail.soil;
+  const range = soil.optimalRange?.length === 2
+    ? `${soil.optimalRange[0]}~${soil.optimalRange[1]}`
+    : null;
+  const lines = [];
+
+  if (soil.code === 'acidity' && Number.isFinite(soil.observedValue) && range) {
+    lines.push(`확인된 토양 pH는 ${soil.observedValue}이고, ${crop.cropName}의 적정 범위 ${range}에서 벗어나 산도 불균형으로 판단했어요.`);
+  } else if (soil.code === 'acidity' && Number.isFinite(soil.outsideRatio)) {
+    const outsidePercent = Math.round(soil.outsideRatio * 100);
+    const fitPercent = Number.isFinite(soil.fitRatio)
+      ? Math.round(soil.fitRatio * 100)
+      : 100 - outsidePercent;
+    const unclassifiedPercent = Math.max(0, 100 - fitPercent - outsidePercent);
+    lines.push(`${crop.cropName}의 적정 pH는 ${range || '작물 기준 범위'}예요.`);
+    lines.push('현재는 내 밭의 pH 실측값이 연결되지 않아, 측정값과 적정 범위를 직접 비교할 수 없어요.');
+    lines.push(`대신 지역 토양 통계에서 적정 구간 면적은 약 ${fitPercent}%, 적정 구간 밖은 약 ${outsidePercent}%${unclassifiedPercent >= 1 ? `, 미분류는 약 ${unclassifiedPercent}%` : ''}로 나타나 지역 참고값 기준으로 ${soil.label}으로 표시했어요.`);
+  } else if (soil.code === 'salinity' && Number.isFinite(soil.observedValue)) {
+    lines.push(`확인된 EC는 ${soil.observedValue}dS/m로 ${crop.cropName}의 적정 범위를 벗어나 염류 과다로 판단했어요.`);
+  } else if (soil.status === 'GOOD') {
+    lines.push(`확인된 토양 항목이 ${crop.cropName}의 적정 범위에 들어왔어요.`);
+  } else {
+    lines.push(`${crop.cropName}의 토양 기준과 비교한 결과 ${soil.label} 신호가 확인됐어요.`);
+  }
+  if (soil.referenceOnly) {
+    lines.push(`필지 토양검정 결과를 연결하면 ‘내 밭 pH 측정값 ↔ ${crop.cropName} 적정 pH${range ? ` ${range}` : ''}’로 바로 비교해 드려요.`);
+  }
+  return { title: `${soil.label}으로 판단한 이유`, lines };
+}
+
+function disclosureIcon() {
+  return `<span class="score-disclosure" aria-hidden="true">
+    <svg viewBox="0 0 20 20" width="18" height="18" fill="none">
+      <path d="m6.5 8 3.5 3.5L13.5 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </span>`;
+}
+
+function weatherDayExplanation(day, crop, detail) {
+  const dateLabel = day.date
+    ? `${Number(day.date.slice(5, 7))}월 ${Number(day.date.slice(8, 10))}일`
+    : day.label;
+  const matchingOverallTrigger = detail.weather.code === day.code
+    ? detail.weather.trigger
+    : null;
+  const trigger = day.trigger || matchingOverallTrigger;
+  const meta = WEATHER_METRIC_COPY[trigger?.metric] || {
+    label: '기상값',
+    unit: trigger?.unit || '',
+  };
+  const unit = trigger?.unit || meta.unit || '';
+  const exactReading = trigger?.readings?.find((reading) =>
+    reading.date === day.date && Number.isFinite(reading.value));
+  const reading = exactReading || triggerReading(trigger);
+  const threshold = comparisonLabel(trigger?.comparison, unit);
+  const lines = [];
+
+  if (reading && threshold) {
+    lines.push(`판단 이유: ${meta.label} ${reading.value}${unit}가 ${crop.cropName}의 ${threshold} 기준에 해당해 ${day.statusLabel}로 판단했어요.`);
+  } else if (day.status === 'GOOD') {
+    lines.push(`${crop.cropName}의 고온·저온·강수·바람 기준을 벗어난 주요 신호가 이 날 예보에서 확인되지 않았어요.`);
+  } else {
+    const readings = [
+      Number.isFinite(day.tMax) ? `최고 ${day.tMax}℃` : null,
+      Number.isFinite(day.tMin) ? `최저 ${day.tMin}℃` : null,
+      Number.isFinite(day.precipitationProbability) ? `강수확률 ${day.precipitationProbability}%` : null,
+      Number.isFinite(day.windSpeed) ? `풍속 ${day.windSpeed}m/s` : null,
+    ].filter(Boolean).join(', ');
+    lines.push(`판단 이유: ${readings ? `${readings}로 예보돼 ` : ''}${crop.cropName}의 작물별 기준에서 ${day.causeLabel} 신호가 확인됐어요.`);
+  }
+
+  if (day.guidance?.reason) {
+    lines.push(`작물 영향: ${day.guidance.reason}`);
+  }
+  if (day.guidance?.actions?.length) {
+    day.guidance.actions.forEach((action, index) => {
+      lines.push(`${index === 0 ? '주의사항' : '추가 확인'}: ${action}`);
+    });
+  } else if (day.status !== 'GOOD') {
+    lines.push(`주의사항: ${CONDITION_TODOS[day.code] || '작물과 밭 상태를 직접 확인해 주세요.'}`);
+  }
+  if (day.guidance?.recheck) {
+    lines.push(`다시 확인: ${day.guidance.recheck}`);
+  } else if (
+    day.status !== 'GOOD' &&
+    Number.isFinite(day.precipitationProbability) &&
+    day.precipitationProbability > 0
+  ) {
+    lines.push(`강수확률은 ${day.precipitationProbability}%예요. 현장 작업 전에 최신 예보를 한 번 더 확인해 주세요.`);
+  }
+
+  return {
+    title: `${dateLabel} · ${day.statusLabel} · ${day.causeLabel}`,
+    lines,
+  };
+}
+
+function fillScoreExplanation(selector, copy) {
+  const panel = $(selector);
+  panel.querySelector('strong').textContent = copy.title;
+  const lines = panel.querySelector('.score-explanation-lines');
+  lines.replaceChildren(...copy.lines.map((line) => {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = line;
+    return paragraph;
+  }));
+}
+
+function bindScoreExplanation(buttonSelector, panelSelector, peerSelectors = []) {
+  const button = $(buttonSelector);
+  const panel = $(panelSelector);
+  button.onclick = () => {
+    const willOpen = panel.hidden;
+    for (const [peerButtonSelector, peerPanelSelector] of peerSelectors) {
+      const peerButton = $(peerButtonSelector);
+      const peerPanel = $(peerPanelSelector);
+      peerPanel.hidden = true;
+      peerButton.setAttribute('aria-expanded', 'false');
+    }
+    panel.hidden = !willOpen;
+    button.setAttribute('aria-expanded', String(willOpen));
+  };
+}
+
+// 예보 상태 → 추천 할 일 문구
+const CONDITION_TODOS = {
+  heat: '아침저녁으로 나눠 물 주기',
+  heatwave: '차광막 치고 물 넉넉히 주기',
+  cold: '보온 덮개 준비하기',
+  frost: '서리 대비 부직포 덮기',
+  rain: '비 오기 전 배수로 정리하기',
+  downpour: '폭우 대비 배수로·고랑 점검하기',
+  wind: '지지대 단단히 고정하기',
+  typhoon: '태풍 대비 시설 묶고 미리 수확하기',
+  drought: '물 주는 횟수 늘리기',
+};
+
+// 예보 아이콘에 입힐 기존 fx 애니메이션
+const ICON_ANIM = {
+  clear: 'fx-pulse', stable: 'fx-pulse', drought: 'fx-pulse',
+  heat: 'fx-shimmer', heatwave: 'fx-shimmer',
+  rain: 'fx-bob', downpour: 'fx-bob', overwet: 'fx-bob',
+  cold: 'fx-twinkle', frost: 'fx-twinkle',
+  wind: 'fx-drift', typhoon: 'fx-drift',
+};
+
+// 일주일 예보에서 주의·위험 날씨를 모아 추천 할 일 목록 생성
+function weekTodoSuggestions(week) {
+  const byCode = new Map();
+  for (const day of week) {
+    const sev = CONDITIONS[day.code]?.severity;
+    if (sev !== 'warn' && sev !== 'danger') continue;
+    if (!byCode.has(day.code)) byCode.set(day.code, { code: day.code, sev, days: [] });
+    byCode.get(day.code).days.push(day.label);
+  }
+  return [...byCode.values()].map((t) => ({
+    ...t,
+    label: CONDITIONS[t.code].label,
+    text: `(${t.days.join('·')}) ${CONDITIONS[t.code].label} 대비 — ${CONDITION_TODOS[t.code] || '밭 상태 살펴보기'}`,
+  }));
+}
+
+// 종합 점수 링 게이지
+function ringGauge(score) {
+  const available = Number.isFinite(score);
+  const value = available ? score : 0;
+  const r = 46, circ = 2 * Math.PI * r;
+  const filled = (circ * Math.max(0, Math.min(value, 100))) / 100;
+  const color = !available ? '#c8c8bb' : value >= 70 ? '#6f815a' : value >= 50 ? '#c9825b' : '#b04a35';
+  return `<svg width="116" height="116" viewBox="0 0 116 116" role="img" aria-label="환경 점수 ${available ? `${value}점` : '산정 중'}">
+    <circle cx="58" cy="58" r="${r}" fill="none" stroke="#e6ead6" stroke-width="10"/>
+    <circle cx="58" cy="58" r="${r}" fill="none" stroke="${color}" stroke-width="10"
+      stroke-linecap="round" stroke-dasharray="${filled} ${circ}" transform="rotate(-90 58 58)"/>
+    <text x="58" y="56" text-anchor="middle" font-size="27" fill="#4b4237"
+      font-family="'Gowun Dodum', sans-serif">${available ? value : '—'}</text>
+    <text x="58" y="76" text-anchor="middle" font-size="12" fill="#8a7d6a"
+      font-family="'Gowun Dodum', sans-serif">점</text>
+  </svg>`;
+}
+
+function closeOverlay() {
+  const overlay = $('#overlay');
+  overlay.hidden = true;
+  $('#overlay-panel').classList.remove('detail', 'soil-test-guide');
+}
+
+async function openDetailSheet(crop) {
+  const overlay = $('#overlay');
+  const panel = $('#overlay-panel');
+  panel.classList.add('detail');
+  panel.innerHTML = `
+    <button class="sheet-close" id="sheet-close" aria-label="닫기">✕</button>
+    <div class="sheet-loading" role="status">
+      <span class="loading-seed">⌁</span>
+      <p>농장 환경을 분석하고 있어요.</p>
+    </div>`;
+  overlay.hidden = false;
+  $('#sheet-close').onclick = closeOverlay;
+  overlay.onclick = (event) => { if (event.target === overlay) closeOverlay(); };
+
+  try {
+    const detail = await loadEnvironmentDetail(crop);
+    if (overlay.hidden) return;
+    renderDetailSheet(panel, crop, detail);
+  } catch (error) {
+    if (overlay.hidden) return;
+    panel.innerHTML = `
+      <button class="sheet-close" id="sheet-close" aria-label="닫기">✕</button>
+      <p class="eyebrow">상세 보기</p>
+      <h2 class="sheet-title">분석을 불러오지 못했어요</h2>
+      <p class="sheet-sub error-copy"></p>
+      <button class="btn btn-primary btn-wide" id="detail-retry">다시 분석하기</button>`;
+    $('.error-copy').textContent = error.message;
+    $('#sheet-close').onclick = closeOverlay;
+    $('#detail-retry').onclick = () => {
+      closeOverlay();
+      openDetailSheet(crop);
+    };
+  }
+}
+
+function renderDetailSheet(panel, crop, detail) {
+  const born = crop.startedKey ? diffDaysKey(crop.startedKey, todayKey()) + 1 : null;
+  const week = detail.week.map((day, index) => ({
+    ...day,
+    label: index === 0 ? '오늘' : day.date ? DOW[new Date(`${day.date}T00:00:00`).getDay()] : '—',
+  }));
+  const weatherScore = detail.weather.score;
+  const soilScore = detail.soil.score;
+  const scoreText = (value) => Number.isFinite(value) ? value : '—';
+  const scoreWidth = (value) => Number.isFinite(value) ? value : 0;
+
+  panel.innerHTML = `
+    <button class="sheet-close" id="sheet-close" aria-label="닫기">✕</button>
+    <p class="eyebrow">${detail.regionLabel || farmRegion} · ${crop.cropName}</p>
+    <h2 class="sheet-title">${detail.statusLabel} · ${detail.causeLabel}</h2>
+    <p class="sheet-sub">${born ? `태어난 지 ${born}일째 · ` : ''}기상청·농촌진흥청 자료와 작물 기준으로 계산</p>
+
+    <button class="score-hero score-toggle" id="total-score-toggle" type="button"
+      aria-label="환경 점수 분석 내용 보기"
+      aria-expanded="false" aria-controls="total-score-explanation">
+      ${ringGauge(detail.totalScore)}
+      <div class="score-hero-text">
+        <div class="score-grade">${scoreGrade(detail.totalScore)}</div>
+        <div class="score-name">환경 점수</div>
+      </div>
+      ${disclosureIcon()}
+    </button>
+    <div class="score-explanation score-explanation-total" id="total-score-explanation" hidden>
+      <strong></strong>
+      <div class="score-explanation-lines"></div>
+    </div>
+
+    <div class="score-row">
+      <button class="score-cell score-toggle" id="weather-score-toggle" type="button"
+        aria-label="기상 점수 분석 내용 보기"
+        aria-expanded="false" aria-controls="weather-score-explanation">
+        <div class="sc-head">기상 점수 <strong>${scoreText(weatherScore)}</strong></div>
+        <div class="score-bar"><i style="width:${scoreWidth(weatherScore)}%"></i></div>
+        ${conditionBadge(detail.weather.code)}
+        ${disclosureIcon()}
+      </button>
+      <button class="score-cell score-toggle" id="soil-score-toggle" type="button"
+        aria-label="토양 점수 분석 내용 보기"
+        aria-expanded="false" aria-controls="soil-score-explanation">
+        <div class="sc-head">토양 점수 <strong>${scoreText(soilScore)}</strong></div>
+        <div class="score-bar"><i style="width:${scoreWidth(soilScore)}%"></i></div>
+        ${conditionBadge(detail.soil.code)}
+        ${detail.soil.referenceOnly ? '<span class="reference-note">지역 토양 참고값</span>' : ''}
+        ${disclosureIcon()}
+      </button>
+    </div>
+    <div class="score-axis-explanations">
+      <div class="score-explanation" id="weather-score-explanation" hidden>
+        <strong></strong>
+        <div class="score-explanation-lines"></div>
+      </div>
+      <div class="score-explanation" id="soil-score-explanation" hidden>
+        <strong></strong>
+        <div class="score-explanation-lines"></div>
+      </div>
+    </div>
+
+    ${detail.soil.referenceOnly ? `
+      <div class="soil-test-prompt">
+        <div>
+          <strong>내 밭의 토양값이 필요해요</strong>
+          <span class="reference-note">현재는 지역 토양 통계로 계산했어요.</span>
+        </div>
+        <button class="soil-test-open" id="soil-test-guide-open" type="button">
+          무료 토양검정 안내 <span aria-hidden="true">›</span>
+        </button>
+      </div>` : ''}
+
+    <h3 class="section-label">일주일 기상정보</h3>
+    ${week.length ? `<div class="week-forecast">
+      ${week.map((day, index) => weatherDayMarkup(day, index)).join('')}
+    </div>
+    <div class="score-explanation weather-day-explanation" id="weather-day-explanation" hidden>
+      <strong></strong>
+      <div class="score-explanation-lines"></div>
+    </div>` : '<p class="empty-note forecast-empty">표시할 단·중기 예보가 없어요.</p>'}
+
+    <h3 class="section-label">예보 기반 추천 할 일</h3>
+    <div class="sheet-todos" id="sheet-todos"></div>`;
+
+  const suggestions = weekTodoSuggestions(week);
+  fillScoreExplanation('#total-score-explanation', totalScoreExplanation(detail, crop));
+  fillScoreExplanation('#weather-score-explanation', weatherScoreExplanation(detail, crop));
+  fillScoreExplanation('#soil-score-explanation', soilScoreExplanation(detail, crop));
+  bindScoreExplanation('#total-score-toggle', '#total-score-explanation');
+  bindScoreExplanation(
+    '#weather-score-toggle',
+    '#weather-score-explanation',
+    [['#soil-score-toggle', '#soil-score-explanation']],
+  );
+  bindScoreExplanation(
+    '#soil-score-toggle',
+    '#soil-score-explanation',
+    [['#weather-score-toggle', '#weather-score-explanation']],
+  );
+  document.querySelectorAll('.wf-day').forEach((button) => {
+    button.onclick = () => {
+      const day = week[Number(button.dataset.dayIndex)];
+      const explanation = $('#weather-day-explanation');
+      const willOpen = button.getAttribute('aria-expanded') !== 'true';
+      document.querySelectorAll('.wf-day').forEach((peer) => {
+        peer.setAttribute('aria-expanded', 'false');
+      });
+      if (!willOpen) {
+        explanation.hidden = true;
+        return;
+      }
+      fillScoreExplanation('#weather-day-explanation', weatherDayExplanation(day, crop, detail));
+      explanation.hidden = false;
+      button.setAttribute('aria-expanded', 'true');
+    };
+  });
+  $('#sheet-todos').innerHTML = suggestions.length
+    ? suggestions.map((suggestion, index) => `
+      <div class="sheet-todo">
+        <span class="wf-flag ${suggestion.sev === 'danger' ? 'danger' : 'warn'}">${suggestion.sev === 'danger' ? '위험' : '주의'}</span>
+        <span class="st-text"></span>
+        <button class="st-add" data-idx="${index}">담기</button>
+      </div>`).join('')
+    : '<p class="empty-note">이번 주는 작물 기준을 벗어난 예보가 없어요.</p>';
+  document.querySelectorAll('.sheet-todo .st-text').forEach((element, index) => {
+    element.textContent = suggestions[index].text;
+  });
+  document.querySelectorAll('.st-add').forEach((button) => {
+    button.onclick = async () => {
+      button.disabled = true;
+      const response = await api('/api/me/todos', {
+        method: 'POST',
+        body: JSON.stringify({ text: suggestions[Number(button.dataset.idx)].text }),
+      });
+      if (response.ok) {
+        button.textContent = '담김 ✓';
+        toast('TO-DO에 담았어요.');
+      } else {
+        button.disabled = false;
+        toast(response.message || '담지 못했어요.');
+      }
+    };
+  });
+  const soilTestButton = $('#soil-test-guide-open');
+  if (soilTestButton) {
+    soilTestButton.onclick = () => renderSoilTestGuide(panel, crop, detail);
+  }
+  $('#sheet-close').onclick = closeOverlay;
+}
+
+function renderSoilTestGuide(panel, crop, detail) {
+  panel.classList.add('detail', 'soil-test-guide');
+  panel.innerHTML = `
+    <button class="sheet-close" id="sheet-close" aria-label="닫기">✕</button>
+    <button class="sheet-back" id="soil-guide-back" type="button" aria-label="분석 상세로 돌아가기">
+      <span aria-hidden="true">‹</span> 분석으로
+    </button>
+
+    <div class="soil-guide-heading">
+      <div class="soil-guide-illustration" aria-hidden="true">
+        <svg width="104" height="104" viewBox="0 0 104 104" fill="none">
+          <circle cx="52" cy="52" r="49" fill="#F5F0E4" stroke="#DDD2BC" stroke-width="2"/>
+          <path d="M19 73C29 64 41 66 50 70C60 75 73 72 85 66V88H19V73Z" fill="#B69A70"/>
+          <path d="M55 38L67 57" stroke="#7B8560" stroke-width="4" stroke-linecap="round"/>
+          <path d="M65 54C71 50 77 50 82 53C78 60 73 63 66 61L65 54Z" fill="#87976B" stroke="#6E7D55" stroke-width="1.5"/>
+          <path d="M49 39C43 34 38 28 39 21C48 21 55 27 57 35L49 39Z" fill="#98A77A" stroke="#6E7D55" stroke-width="1.5"/>
+          <path d="M31 32H49L45 68H35L31 32Z" fill="#FFFDF8" stroke="#8E816E" stroke-width="2"/>
+          <path d="M33 49H47" stroke="#D29A70" stroke-width="2" stroke-dasharray="3 3"/>
+          <path d="M38 56C40 53 43 53 45 56" stroke="#8E816E" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="37" cy="43" r="1.5" fill="#8E816E"/>
+          <circle cx="44" cy="43" r="1.5" fill="#8E816E"/>
+        </svg>
+      </div>
+      <p class="eyebrow">무료 토양검정 안내</p>
+      <h2 class="sheet-title">내 밭의 흙을 직접 확인해 보세요</h2>
+      <p class="sheet-sub">현재 ${crop.cropName} 분석은 지역 토양 통계를 참고했습니다. 실제 밭의 pH·EC 검사값이 있으면 더 정밀하게 판단할 수 있어요.</p>
+    </div>
+
+    <ol class="soil-guide-steps" aria-label="토양검사 신청 순서">
+      <li>
+        <span class="soil-step-number">1</span>
+        <div><strong>농업기술센터에 문의</strong><p>가까운 시·군 농업기술센터에 “토양검정을 받고 싶어요”라고 문의하세요.</p></div>
+      </li>
+      <li>
+        <span class="soil-step-number">2</span>
+        <div><strong>안내받은 방법으로 흙 채취</strong><p>밭 여러 지점의 흙을 고르게 섞어 시료를 준비하면 한 지점의 편차를 줄일 수 있어요.</p></div>
+      </li>
+      <li>
+        <span class="soil-step-number">3</span>
+        <div><strong>농장 주소·작물과 함께 제출</strong><p>센터가 안내한 양과 용기에 맞춰 시료를 제출하고 결과지를 받아 두세요.</p></div>
+      </li>
+      <li>
+        <span class="soil-step-number">4</span>
+        <div><strong>pH·EC 결과로 다시 분석</strong><p>필지 검사값을 연결하면 지역 평균 대신 내 밭 상태를 점수와 행동 안내에 반영할 수 있어요.</p></div>
+      </li>
+    </ol>
+
+    <div class="soil-guide-note">
+      <strong>방문 전에 확인해 주세요</strong>
+      <p>무료 지원 여부, 시료의 양·채취 깊이와 처리 기간은 지역별로 다를 수 있습니다.</p>
+    </div>
+
+    <a class="btn btn-primary btn-wide soil-guide-nearby"
+      href="https://www.nongsaro.go.kr/portal/ps/psz/psza/contentSub.ps?cntntsNo=208877&amp;menuId=PS00078&amp;totalSearchYn=Y"
+      target="_blank" rel="noopener noreferrer">
+      <span aria-hidden="true">⌖</span> 우리 지역 농업기술센터 찾기
+    </a>`;
+
+  $('#sheet-close').onclick = closeOverlay;
+  $('#soil-guide-back').onclick = () => {
+    panel.classList.remove('soil-test-guide');
+    renderDetailSheet(panel, crop, detail);
+  };
+}
+
+function weatherDayMarkup(day, index) {
+  const severity = day.status === 'DANGER'
+    ? 'danger'
+    : day.status === 'CAUTION'
+      ? 'warn'
+      : 'good';
+  const temperature = (value) => Number.isFinite(value) ? `${value}°` : '—';
+  const rain = Number.isFinite(day.precipitationProbability)
+    ? `<span class="wf-rain">비 ${day.precipitationProbability}%</span>`
+    : '';
+  return `
+    <button class="wf-day ${severity} ${index === 0 ? 'today' : ''}" type="button"
+      data-day-index="${index}" aria-expanded="false" aria-controls="weather-day-explanation">
+      <span class="wf-dow">${day.label}</span>
+      <span class="fx ${ICON_ANIM[day.code] || 'fx-pulse'}" style="animation-delay:${index * 0.25}s">
+        ${conditionIcon(day.code, 28)}
+      </span>
+      <span class="wf-hi">${temperature(day.tMax)}</span>
+      <span class="wf-lo">${temperature(day.tMin)}</span>
+      ${rain}
+      <span class="wf-flag ${severity}">${day.statusLabel}</span>
+    </button>`;
 }
 
 async function doHarvest(cropId) {
@@ -715,6 +1830,7 @@ function openSeedOverlay() {
 
   const overlay = $('#overlay');
   const panel = $('#overlay-panel');
+  panel.classList.remove('detail'); // 상세 보기 시트 흔적 제거
   panel.innerHTML = `
     <p class="eyebrow">새 씨앗</p>
     <h2 style="font-size:20px;font-weight:400;margin-bottom:4px">무엇을 더 키워볼까요?</h2>
@@ -892,6 +2008,7 @@ async function renderRewards() {
 const CROP_NAMES = { lettuce: '상추', cucumber: '오이', potato: '감자', apple: '사과', pear: '배' };
 const STAGE_NAME_HINT = {
   seed: '씨앗', sprout: '새싹', seedling: '어린 모종', sapling: '묘목',
+  young: '어린 나무', grown: '성목', leafing: '잎 자라는 중', bulking: '알 굵는 중',
   growing: '자라는 중', flower: '꽃', blossom: '꽃', fruit: '열매', mature: '다 자람',
 };
 
@@ -994,11 +2111,27 @@ function renderSettings() {
     </div>
     <div class="sc-row" style="margin-top:14px">
       <div>
+        <div class="sc-label">농장 지역</div>
+        <div class="sc-value farm-region-value">${farmRegion}</div>
+      </div>
+      <button class="link-btn" id="region-btn">지역 바꾸기</button>
+    </div>
+    <div class="sc-row" style="margin-top:14px">
+      <div>
         <div class="sc-label">교환소</div>
         <div class="sc-value" style="font-size:13.5px;color:var(--ink-soft)">모은 포인트로 비료 신청하기</div>
       </div>
       <button class="link-btn" id="open-rewards-settings">열기</button>
     </div>`;
+  $('#region-btn').onclick = () => {
+    const next = prompt('농장 지역을 시·군·구까지 입력해 주세요.', farmRegion);
+    if (!next || !next.trim() || next.trim() === farmRegion) return;
+    farmRegion = next.trim();
+    localStorage.setItem('farm.region', farmRegion);
+    environmentCache.clear();
+    renderSettings();
+    toast('농장 지역을 바꿨어요.');
+  };
   $('#open-rewards-settings').onclick = async () => {
     await renderRewards();
     show('rewards');
@@ -1084,4 +2217,9 @@ async function enter() {
   }
 }
 
-boot();
+// 앱 화면(index.html)에서만 부팅 — 미리보기 페이지 등이 이 모듈을
+// import 해서 그림 함수만 쓸 수 있게 함
+if (document.querySelector('#view-home')) boot();
+
+// 다른 페이지(미리보기 등)에서 쓰는 그림 함수들
+export { plantScene, cropPortrait, conditionScene };
