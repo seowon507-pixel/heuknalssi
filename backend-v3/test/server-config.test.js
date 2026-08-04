@@ -104,6 +104,21 @@ test('FarmMap requires the registered domain, server key, and frozen WFS contrac
   assert.equal(configured.adapterConfig.farmmap.apiKey, 'server-only-key');
 });
 
+test('FarmMap uses the Vercel production hostname as a deployment fallback', () => {
+  const configured = loadConfig({
+    ENABLE_FARMMAP: 'true',
+    FARMMAP_API_KEY: 'server-only-key',
+    FARMMAP_DOMAIN: 'https://old-project.vercel.app',
+    FARMMAP_CONTRACT_VERSION: 'epis-farmmap-wfs-v1-2026-08-04',
+    VERCEL_PROJECT_PRODUCTION_URL: 'nong-kappa.vercel.app',
+  });
+
+  assert.equal(configured.capabilities.farmmap, 'CONFIGURED_UNVERIFIED');
+  assert.deepEqual(configured.adapterConfig.farmmap.fallbackDomains, [
+    'nong-kappa.vercel.app',
+  ]);
+});
+
 test('default server preflight reports deployment HOLD without verified assets', async () => {
   const backend = createBackend({
     env: {

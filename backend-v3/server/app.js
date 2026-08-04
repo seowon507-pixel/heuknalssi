@@ -171,6 +171,7 @@ export function createBackend({
         enabled: config.adapterConfig.farmmap.enabled,
         apiKey: config.adapterConfig.farmmap.apiKey,
         domain: config.adapterConfig.farmmap.domain,
+        fallbackDomains: config.adapterConfig.farmmap.fallbackDomains,
         contractVersion: config.adapterConfig.farmmap.contractVersion,
       },
     });

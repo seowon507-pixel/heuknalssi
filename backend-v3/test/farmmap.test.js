@@ -5,6 +5,7 @@ import {
   VERIFIED_FARMMAP_CONTRACT_VERSION,
   createFarmmapAdapter,
   epsg5179ToWgs84,
+  normalizeFarmmapDomain,
   parseFarmmapFeatureCollection,
 } from "../src/adapters/farmmap.js";
 
@@ -31,6 +32,18 @@ const FEATURE_COLLECTION = {
     },
   }],
 };
+
+test("FarmMap domain normalization accepts a Vercel hostname without a scheme", () => {
+  assert.equal(
+    normalizeFarmmapDomain("nong-kappa.vercel.app"),
+    "https://nong-kappa.vercel.app",
+  );
+  assert.equal(
+    normalizeFarmmapDomain("https://nong-kappa.vercel.app/path"),
+    "https://nong-kappa.vercel.app",
+  );
+  assert.equal(normalizeFarmmapDomain("javascript:alert(1)"), null);
+});
 
 test("FarmMap parser returns only bounded product fields and a normalized boundary", () => {
   const [candidate] = parseFarmmapFeatureCollection(FEATURE_COLLECTION);
@@ -144,9 +157,26 @@ test("FarmMap WFS search uses the registered server-side key and never returns i
   assert.equal(adapter.state, "CONFIGURED_UNVERIFIED");
   assert.equal(requestedUrl.hostname, "agis.epis.or.kr");
   assert.equal(requestedUrl.searchParams.get("request"), "GetFeature");
-  assert.equal(requestedUrl.searchParams.get("typeName"), "farm_map_api");
-  assert.equal(requestedUrl.searchParams.get("outputFormat"), "JSON");
-  assert.equal(requestedUrl.searchParams.get("srsName"), "EPSG:4326");
+  assert.equal(requestedUrl.searchParams.get("service"), "wfs");
+  assert.equal(requestedUrl.searchParams.get("version"), "1.1.0");
+  assert.equal(requestedUrl.searchParams.get("typename"), "farm_map_api");
+  assert.equal(requestedUrl.searchParams.get("outputformat"), "json");
+  assert.equal(
+    requestedUrl.searchParams.get("propertyname"),
+    "id,uid,clsf_nm,pnu,ldcg_cd,stdg_cd,stdg_addr,shape",
+  );
+  assert.equal(requestedUrl.searchParams.get("sortby"), "asc");
+  assert.equal(requestedUrl.searchParams.get("startindex"), "0");
+  assert.equal(requestedUrl.searchParams.get("maxfeatures"), "20");
+  assert.equal(requestedUrl.searchParams.get("srsname"), "EPSG:4326");
+  const [xmin, ymin, xmax, ymax, bboxCrs] = requestedUrl.searchParams
+    .get("bbox")
+    .split(",");
+  assert.ok(Number(xmin) < 126.72);
+  assert.ok(Number(xmax) > 126.72);
+  assert.ok(Number(ymin) < 37.45);
+  assert.ok(Number(ymax) > 37.45);
+  assert.equal(bboxCrs, "EPSG:4326");
   assert.equal(requestedUrl.searchParams.get("apiKey"), "fixture-farmmap-secret");
   assert.equal(result.state, "READY");
   assert.equal(result.candidates.length, 1);
@@ -173,4 +203,62 @@ test("FarmMap adapter stays unavailable for a missing or unknown contract", asyn
   assert.equal(adapter.state, "HOLD");
   assert.equal(calls, 0);
   assert.equal(result.state, "UNAVAILABLE");
+});
+
+test("FarmMap retries the Vercel production domain after a stale registered domain", async () => {
+  const requestedDomains = [];
+  const adapter = createFarmmapAdapter({
+    enabled: true,
+    apiKey: "fixture-farmmap-secret",
+    domain: "https://old-project.vercel.app",
+    fallbackDomains: ["nong-kappa.vercel.app"],
+    contractVersion: VERIFIED_FARMMAP_CONTRACT_VERSION,
+    fetchImpl: async (url) => {
+      const requestedUrl = new URL(String(url));
+      requestedDomains.push(requestedUrl.searchParams.get("domain"));
+      if (requestedDomains.length === 1) {
+        return new Response(JSON.stringify({ status: "rejected" }), {
+          status: 200,
+          headers: { "Content-Type": "text/plain" },
+        });
+      }
+      return new Response(JSON.stringify(FEATURE_COLLECTION), {
+        status: 200,
+        headers: { "Content-Type": "application/geo+json" },
+      });
+    },
+  });
+
+  const result = await adapter.searchParcels({
+    latitude: 37.45,
+    longitude: 126.72,
+    radiusMeters: 250,
+  });
+
+  assert.deepEqual(requestedDomains, [
+    "https://old-project.vercel.app",
+    "https://nong-kappa.vercel.app",
+  ]);
+  assert.equal(result.state, "READY");
+  assert.equal(result.candidates.length, 1);
+});
+
+test("FarmMap reports a rejected key or domain as an authentication error", async () => {
+  const adapter = createFarmmapAdapter({
+    enabled: true,
+    apiKey: "fixture-farmmap-secret",
+    domain: "nong-kappa.vercel.app",
+    contractVersion: VERIFIED_FARMMAP_CONTRACT_VERSION,
+    fetchImpl: async () => new Response(JSON.stringify({ status: "rejected" }), {
+      status: 200,
+      headers: { "Content-Type": "text/plain" },
+    }),
+  });
+
+  await assert.rejects(
+    adapter.searchParcels({ latitude: 37.45, longitude: 126.72 }),
+    (error) =>
+      error?.adapterState === "AUTH_ERROR" &&
+      error?.code === "FARMMAP_AUTH_REJECTED",
+  );
 });

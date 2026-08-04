@@ -99,6 +99,11 @@ export function loadConfig(env = process.env) {
   const supabaseUrl = env.SUPABASE_URL || null;
   const supabaseSecretKey =
     env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || null;
+  const vercelProductionDomain =
+    typeof env.VERCEL_PROJECT_PRODUCTION_URL === 'string' &&
+    env.VERCEL_PROJECT_PRODUCTION_URL.trim()
+      ? env.VERCEL_PROJECT_PRODUCTION_URL.trim()
+      : null;
 
   return Object.freeze({
     nodeEnv,
@@ -183,7 +188,11 @@ export function loadConfig(env = process.env) {
       farmmap: {
         enabled: enabled(env.ENABLE_FARMMAP),
         apiKey: env.FARMMAP_API_KEY || null,
-        domain: env.FARMMAP_DOMAIN || null,
+        domain: env.FARMMAP_DOMAIN || vercelProductionDomain,
+        fallbackDomains:
+          env.FARMMAP_DOMAIN && vercelProductionDomain
+            ? Object.freeze([vercelProductionDomain])
+            : Object.freeze([]),
         contractVersion: env.FARMMAP_CONTRACT_VERSION || null,
       },
     },
@@ -218,7 +227,8 @@ export function loadConfig(env = process.env) {
           : 'CATALOG_ONLY'
         : 'DISABLED',
       farmmap: enabled(env.ENABLE_FARMMAP)
-        ? env.FARMMAP_API_KEY && env.FARMMAP_DOMAIN &&
+        ? env.FARMMAP_API_KEY &&
+            (env.FARMMAP_DOMAIN || vercelProductionDomain) &&
             env.FARMMAP_CONTRACT_VERSION ===
               'epis-farmmap-wfs-v1-2026-08-04'
           ? 'CONFIGURED_UNVERIFIED'

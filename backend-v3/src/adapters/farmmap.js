@@ -1,10 +1,21 @@
 import { normalizeParcelGeometry } from "../domain/parcel.js";
+import { AdapterError } from "./errors.js";
 import { providerDisclosureUrl, requestProviderJson } from "./network.js";
 
 const DEFAULT_ENDPOINT = "https://agis.epis.or.kr/ASD/farmmapApi/wfs.do";
 const DEFAULT_LAYER = "farm_map_api";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_CANDIDATES = 20;
+const FARMMAP_PROPERTY_NAMES = Object.freeze([
+  "id",
+  "uid",
+  "clsf_nm",
+  "pnu",
+  "ldcg_cd",
+  "stdg_cd",
+  "stdg_addr",
+  "shape",
+]);
 const DEGREE = Math.PI / 180;
 const GRS80 = Object.freeze({
   semiMajorAxis: 6_378_137,
@@ -19,6 +30,22 @@ const EPSG_5179 = Object.freeze({
 });
 export const VERIFIED_FARMMAP_CONTRACT_VERSION =
   "epis-farmmap-wfs-v1-2026-08-04";
+
+export function normalizeFarmmapDomain(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const raw = value.trim();
+  const candidate = /^[a-z][a-z\d+.-]*:\/\//iu.test(raw)
+    ? raw
+    : `https://${raw}`;
+  try {
+    const url = new URL(candidate);
+    if (!["http:", "https:"].includes(url.protocol)) return null;
+    if (url.username || url.password) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
 
 function requireCoordinate(value, label, minimum, maximum) {
   if (!Number.isFinite(value) || value < minimum || value > maximum) {
@@ -166,6 +193,19 @@ function normalizeFarmmapGeometry(geometry, crs) {
  */
 export function parseFarmmapFeatureCollection(payload) {
   if (
+    payload &&
+    typeof payload === "object" &&
+    !Array.isArray(payload) &&
+    payload.type !== "FeatureCollection" &&
+    Object.hasOwn(payload, "status")
+  ) {
+    throw new AdapterError("FarmMap rejected the registered key or domain.", {
+      adapterState: "AUTH_ERROR",
+      code: "FARMMAP_AUTH_REJECTED",
+      retryable: false,
+    });
+  }
+  if (
     !payload ||
     typeof payload !== "object" ||
     Array.isArray(payload) ||
@@ -230,6 +270,7 @@ export function createFarmmapAdapter({
   enabled = false,
   apiKey,
   domain,
+  fallbackDomains = [],
   contractVersion = null,
   fetchImpl = globalThis.fetch,
   endpoint = DEFAULT_ENDPOINT,
@@ -237,10 +278,17 @@ export function createFarmmapAdapter({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   now = Date.now,
 } = {}) {
+  const registeredDomain = normalizeFarmmapDomain(domain);
+  const domains = Object.freeze([
+    registeredDomain,
+    ...(Array.isArray(fallbackDomains) ? fallbackDomains : []),
+  ]
+    .map(normalizeFarmmapDomain)
+    .filter((value, index, values) => value && values.indexOf(value) === index));
   const configured =
     enabled &&
     typeof apiKey === "string" && apiKey.trim() &&
-    typeof domain === "string" && domain.trim() &&
+    domains.length > 0 &&
     contractVersion === VERIFIED_FARMMAP_CONTRACT_VERSION;
 
   return Object.freeze({
@@ -267,43 +315,61 @@ export function createFarmmapAdapter({
       const latitudeOffset = radius / 111_320;
       const longitudeOffset = radius /
         (111_320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
-      const url = new URL(endpoint);
-      url.searchParams.set("service", "WFS");
-      url.searchParams.set("version", "1.1.0");
-      url.searchParams.set("request", "GetFeature");
-      url.searchParams.set("typeName", layer);
-      // EPIS validates this parameter against the literal WFS format name.
-      // `application/json` is rejected even though a GeoJSON body is returned;
-      // the provider accepts `JSON` (case-insensitively).
-      url.searchParams.set("outputFormat", "JSON");
-      url.searchParams.set("srsName", "EPSG:4326");
-      url.searchParams.set(
-        "bbox",
-        [
-          lon - longitudeOffset,
-          lat - latitudeOffset,
-          lon + longitudeOffset,
-          lat + latitudeOffset,
-          "EPSG:4326",
-        ].join(","),
-      );
-      url.searchParams.set("maxFeatures", String(MAX_CANDIDATES));
-      url.searchParams.set("apiKey", apiKey.trim());
-      url.searchParams.set("domain", domain.trim());
-      const payload = await requestProviderJson({
-        fetchImpl,
-        url,
-        provider: "FARMMAP",
-        requestInit: { headers: { Accept: "application/geo+json, application/json" } },
-        signal,
-        timeoutMs,
-        deadlineAt,
-        now: () => Number(new Date(now()).getTime()),
-        maxResponseBytes: 2 * 1024 * 1024,
-      });
+      let candidates = null;
+      for (let index = 0; index < domains.length; index += 1) {
+        const url = new URL(endpoint);
+        // The provider recommends lower-case WFS parameter names. WFS 1.1.0
+        // remains an explicitly supported contract and uses `maxfeatures`.
+        url.searchParams.set("service", "wfs");
+        url.searchParams.set("version", "1.1.0");
+        url.searchParams.set("request", "GetFeature");
+        url.searchParams.set("typename", layer);
+        // EPIS validates this parameter against the literal WFS format name.
+        // `application/json` is rejected even though a GeoJSON body is returned;
+        // the provider accepts `JSON` (case-insensitively).
+        url.searchParams.set("outputformat", "json");
+        url.searchParams.set("propertyname", FARMMAP_PROPERTY_NAMES.join(","));
+        url.searchParams.set("sortby", "asc");
+        url.searchParams.set("startindex", "0");
+        url.searchParams.set("srsname", "EPSG:4326");
+        url.searchParams.set(
+          "bbox",
+          [
+            lon - longitudeOffset,
+            lat - latitudeOffset,
+            lon + longitudeOffset,
+            lat + latitudeOffset,
+            "EPSG:4326",
+          ].join(","),
+        );
+        url.searchParams.set("maxfeatures", String(MAX_CANDIDATES));
+        url.searchParams.set("apiKey", apiKey.trim());
+        url.searchParams.set("domain", domains[index]);
+        try {
+          const payload = await requestProviderJson({
+            fetchImpl,
+            url,
+            provider: "FARMMAP",
+            requestInit: {
+              headers: { Accept: "application/geo+json, application/json" },
+            },
+            signal,
+            timeoutMs,
+            deadlineAt,
+            now: () => Number(new Date(now()).getTime()),
+            maxResponseBytes: 2 * 1024 * 1024,
+          });
+          candidates = parseFarmmapFeatureCollection(payload);
+          break;
+        } catch (error) {
+          const hasFallback = index < domains.length - 1;
+          if (error?.adapterState === "AUTH_ERROR" && hasFallback) continue;
+          throw error;
+        }
+      }
       return Object.freeze({
         state: "READY",
-        candidates: Object.freeze(parseFarmmapFeatureCollection(payload)),
+        candidates: Object.freeze(candidates ?? []),
         sourceUrl: providerDisclosureUrl(endpoint, "FARMMAP"),
         limitations: Object.freeze([
           "REFERENCE_MAP_NOT_LEGAL_CADASTRAL_BOUNDARY",
