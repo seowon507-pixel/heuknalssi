@@ -1,7 +1,7 @@
 const REVIEWED_AT = "2026-07-25";
 const SOURCE_VERSION = "농사로 공개 페이지 (2026-07-25 열람)";
 
-const SOURCES = Object.freeze({
+export const REVIEWED_CROP_SOURCES = Object.freeze({
   APPLE: Object.freeze({
     sourceTitle: "농사로 농작업일정 — 사과",
     sourceUrl:
@@ -200,7 +200,7 @@ const APPLE_RULES = [
     sensitivityTier: "CRITICAL",
     critical: true,
     ...provenance(
-      SOURCES.APPLE,
+      REVIEWED_CROP_SOURCES.APPLE,
       "기상생태 — 연평균 8~11℃, 재배 가능 6~14℃",
       "apple-climate-v1",
     ),
@@ -209,7 +209,7 @@ const APPLE_RULES = [
     crop: "APPLE",
     cultivationMode: "OPEN_FIELD",
     optimalRange: [5.8, 6.3],
-    source: SOURCES.APPLE,
+    source: REVIEWED_CROP_SOURCES.APPLE,
   }),
   forecastRiskRule({
     ruleId: "apple.open-field.forecast.max-temperature-gte-30.v1",
@@ -221,7 +221,7 @@ const APPLE_RULES = [
     threshold: 30,
     severity: "CAUTION",
     actionId: "CHECK_CURRENT_FORECAST_RISK",
-    source: SOURCES.APPLE,
+    source: REVIEWED_CROP_SOURCES.APPLE,
     sourcePageOrTable:
       "기상생태 — 30℃ 이상에서 과실비대·꽃눈형성 저해 가능",
     ruleVersion: "apple-forecast-v1",
@@ -234,7 +234,7 @@ const APPLE_RULES = [
         "토양이 마르면 기존 관수시설로 적정 수분을 유지합니다.",
         "미세살수장치나 간이 차광시설이 있다면 작동 상태를 확인합니다.",
       ],
-      source: SOURCES.APPLE_HEAT_GUIDE,
+      source: REVIEWED_CROP_SOURCES.APPLE_HEAT_GUIDE,
     },
   }),
 ];
@@ -256,7 +256,7 @@ const PEAR_RULES = [
     sensitivityTier: "CRITICAL",
     critical: true,
     ...provenance(
-      SOURCES.PEAR,
+      REVIEWED_CROP_SOURCES.PEAR,
       "기상생태 — 생육 적온 약 20℃; 범위가 아니므로 단일 목표로만 표시",
       "pear-climate-v1",
     ),
@@ -265,7 +265,7 @@ const PEAR_RULES = [
     crop: "PEAR",
     cultivationMode: "OPEN_FIELD",
     optimalRange: [5.5, 6.5],
-    source: SOURCES.PEAR,
+    source: REVIEWED_CROP_SOURCES.PEAR,
   }),
   forecastRiskRule({
     ruleId: "pear.open-field.forecast.flowering-min-temperature-lte-minus-1_7.v1",
@@ -277,7 +277,7 @@ const PEAR_RULES = [
     threshold: -1.7,
     severity: "WARNING",
     actionId: "CHECK_CURRENT_FORECAST_RISK",
-    source: SOURCES.PEAR,
+    source: REVIEWED_CROP_SOURCES.PEAR,
     sourcePageOrTable:
       "기상생태 — 개화기 동해 한계 -1.7~-2.8℃ 중 보수적 상단값 적용",
     ruleVersion: "pear-forecast-v1",
@@ -290,7 +290,7 @@ const PEAR_RULES = [
         "방상팬이나 살수장치가 있다면 작동 상태를 점검합니다.",
         "장비가 없거나 피해가 보이면 지역 농업기술센터에 현장 대응을 문의합니다.",
       ],
-      source: SOURCES.PEAR,
+      source: REVIEWED_CROP_SOURCES.PEAR,
     },
   }),
   forecastRiskRule({
@@ -303,7 +303,7 @@ const PEAR_RULES = [
     threshold: 33,
     severity: "CAUTION",
     actionId: "CHECK_CURRENT_FORECAST_RISK",
-    source: SOURCES.PEAR_HEAT_GUIDE,
+    source: REVIEWED_CROP_SOURCES.PEAR_HEAT_GUIDE,
     sourcePageOrTable:
       "과수 고온 피해는 일 최고기온 33℃ 이상 폭염이 반복될 때 증가; 배의 과실비대기에는 햇볕 데임·열과 확인",
     ruleVersion: "pear-forecast-v1",
@@ -318,7 +318,7 @@ const PEAR_RULES = [
       ],
       recheck:
         "폭염 예보가 갱신되는 날과 폭염·강우가 지난 다음 날에 과실과 토양 상태를 다시 확인합니다.",
-      source: SOURCES.PEAR_HEAT_GUIDE,
+      source: REVIEWED_CROP_SOURCES.PEAR_HEAT_GUIDE,
     },
   }),
 ];
@@ -327,14 +327,14 @@ const POTATO_RULES = [
   ...monthlyClimateRules({
     crop: "POTATO",
     optimalRange: [14, 23],
-    source: SOURCES.POTATO,
+    source: REVIEWED_CROP_SOURCES.POTATO,
     sourcePageOrTable: "기상생태 — 생육 적온 14~23℃",
   }),
   soilPhRule({
     crop: "POTATO",
     cultivationMode: "OPEN_FIELD",
     optimalRange: [5, 6],
-    source: SOURCES.POTATO,
+    source: REVIEWED_CROP_SOURCES.POTATO,
   }),
   forecastRiskRule({
     ruleId: "potato.open-field.forecast.tuber-bulking-max-temperature-gte-27.v1",
@@ -346,7 +346,7 @@ const POTATO_RULES = [
     threshold: 27,
     severity: "WARNING",
     actionId: "CHECK_CURRENT_FORECAST_RISK",
-    source: SOURCES.POTATO,
+    source: REVIEWED_CROP_SOURCES.POTATO,
     sourcePageOrTable:
       "기상생태 — 27~30℃에서 괴경 비대 정지; 보수적 하단값 적용",
     ruleVersion: "potato-forecast-v1",
@@ -359,7 +359,7 @@ const POTATO_RULES = [
         "기존 관수·차광 설비가 있다면 정상 작동하는지 확인합니다.",
         "고온 뒤 생육 정체가 보이면 지역 농업기술센터에 현장 상태를 상담합니다.",
       ],
-      source: SOURCES.POTATO,
+      source: REVIEWED_CROP_SOURCES.POTATO,
     },
   }),
   forecastRiskRule({
@@ -372,7 +372,7 @@ const POTATO_RULES = [
     threshold: 27,
     severity: "CAUTION",
     actionId: "CHECK_CURRENT_FORECAST_RISK",
-    source: SOURCES.POTATO_HEAT_GUIDE,
+    source: REVIEWED_CROP_SOURCES.POTATO_HEAT_GUIDE,
     sourcePageOrTable:
       "노지 현장기술지원 — 큰 일교차와 최고 27.5℃ 노출 시 생리적 스트레스 확인; 생육단계·토양수분을 함께 점검",
     ruleVersion: "potato-forecast-v1",
@@ -387,7 +387,7 @@ const POTATO_RULES = [
       ],
       recheck:
         "고온 예보가 지난 다음 날 아침에 잎·줄기와 토양수분 상태를 다시 확인합니다.",
-      source: SOURCES.POTATO_HEAT_GUIDE,
+      source: REVIEWED_CROP_SOURCES.POTATO_HEAT_GUIDE,
     },
   }),
 ];
@@ -396,20 +396,20 @@ const CUCUMBER_RULES = [
   ...monthlyClimateRules({
     crop: "CUCUMBER",
     optimalRange: [20, 25],
-    source: SOURCES.CUCUMBER,
+    source: REVIEWED_CROP_SOURCES.CUCUMBER,
     sourcePageOrTable: "기상생태 — 생육 적온 20~25℃",
   }),
   soilPhRule({
     crop: "CUCUMBER",
     cultivationMode: "OPEN_FIELD",
     optimalRange: [5.5, 6.8],
-    source: SOURCES.CUCUMBER,
+    source: REVIEWED_CROP_SOURCES.CUCUMBER,
   }),
   soilPhRule({
     crop: "CUCUMBER",
     cultivationMode: "FACILITY_SOIL",
     optimalRange: [5.5, 6.8],
-    source: SOURCES.CUCUMBER,
+    source: REVIEWED_CROP_SOURCES.CUCUMBER,
   }),
   forecastRiskRule({
     ruleId: "cucumber.open-field.forecast.min-temperature-lte-7.v1",
@@ -421,7 +421,7 @@ const CUCUMBER_RULES = [
     threshold: 7,
     severity: "WARNING",
     actionId: "CHECK_CURRENT_FORECAST_RISK",
-    source: SOURCES.CUCUMBER_OPEN_FIELD_RISK,
+    source: REVIEWED_CROP_SOURCES.CUCUMBER_OPEN_FIELD_RISK,
     sourcePageOrTable:
       "금후 기술지도 — 오이는 7~8℃ 이하에서 생육 정지; 보수적 하단값으로 노지 외기예보 확인",
     ruleVersion: "cucumber-open-field-forecast-v1",
@@ -436,7 +436,7 @@ const CUCUMBER_RULES = [
       ],
       recheck:
         "최저기온이 지난 다음 날 해가 뜬 뒤 생장점과 잎 상태를 다시 확인합니다.",
-      source: SOURCES.CUCUMBER_OPEN_FIELD_RISK,
+      source: REVIEWED_CROP_SOURCES.CUCUMBER_OPEN_FIELD_RISK,
     },
   }),
   forecastRiskRule({
@@ -449,7 +449,7 @@ const CUCUMBER_RULES = [
     threshold: 35,
     severity: "WARNING",
     actionId: "CHECK_CURRENT_FORECAST_RISK",
-    source: SOURCES.CUCUMBER_OPEN_FIELD_RISK,
+    source: REVIEWED_CROP_SOURCES.CUCUMBER_OPEN_FIELD_RISK,
     sourcePageOrTable:
       "금후 기술지도 — 오이는 35℃ 이상에서 고온장해 발생; 노지 지온·과습을 함께 확인",
     ruleVersion: "cucumber-open-field-forecast-v1",
@@ -464,7 +464,7 @@ const CUCUMBER_RULES = [
       ],
       recheck:
         "고온 당일 해가 진 뒤와 다음 날 아침에 잎·생장점과 토양수분을 다시 확인합니다.",
-      source: SOURCES.CUCUMBER_OPEN_FIELD_RISK,
+      source: REVIEWED_CROP_SOURCES.CUCUMBER_OPEN_FIELD_RISK,
     },
   }),
   ...["FACILITY_SOIL", "FACILITY_HYDRO"].flatMap((cultivationMode) => [
@@ -480,7 +480,7 @@ const CUCUMBER_RULES = [
       threshold: 5,
       severity: "WARNING",
       actionId: "CHECK_FACILITY_WEATHER",
-      source: SOURCES.CUCUMBER_FACILITY_RISK,
+      source: REVIEWED_CROP_SOURCES.CUCUMBER_FACILITY_RISK,
       sourcePageOrTable:
         "현장기술지원 종합의견 — 시설 내부 최저 5℃ 이하 생육 정지; 외기예보는 내부 상태 확인 신호로만 사용",
       ruleVersion: "cucumber-facility-forecast-v1",
@@ -493,7 +493,7 @@ const CUCUMBER_RULES = [
           "보온커튼과 난방장치가 있다면 정상 작동하는지 점검합니다.",
           "외기 예보만으로 내부 피해를 확정하지 말고 잎과 생장점 상태를 함께 확인합니다.",
         ],
-        source: SOURCES.CUCUMBER_FACILITY_RISK,
+        source: REVIEWED_CROP_SOURCES.CUCUMBER_FACILITY_RISK,
       },
     }),
     forecastRiskRule({
@@ -508,7 +508,7 @@ const CUCUMBER_RULES = [
       threshold: 35,
       severity: "WARNING",
       actionId: "CHECK_FACILITY_WEATHER",
-      source: SOURCES.CUCUMBER_FACILITY_RISK,
+      source: REVIEWED_CROP_SOURCES.CUCUMBER_FACILITY_RISK,
       sourcePageOrTable:
         "현장기술지원 종합의견 — 시설 내부 최고 35℃ 이상 생육 정지; 외기예보는 내부 상태 확인 신호로만 사용",
       ruleVersion: "cucumber-facility-forecast-v1",
@@ -521,7 +521,7 @@ const CUCUMBER_RULES = [
           "천창·측창과 환기장치가 있다면 정상 작동하는지 점검합니다.",
           "외기 예보만으로 내부 피해를 확정하지 말고 잎과 생장점 상태를 함께 확인합니다.",
         ],
-        source: SOURCES.CUCUMBER_FACILITY_RISK,
+        source: REVIEWED_CROP_SOURCES.CUCUMBER_FACILITY_RISK,
       },
     }),
   ]),
@@ -531,20 +531,20 @@ const LETTUCE_RULES = [
   ...monthlyClimateRules({
     crop: "LETTUCE",
     optimalRange: [15, 20],
-    source: SOURCES.LETTUCE,
+    source: REVIEWED_CROP_SOURCES.LETTUCE,
     sourcePageOrTable: "기상생태 — 생육 적온 15~20℃",
   }),
   soilPhRule({
     crop: "LETTUCE",
     cultivationMode: "OPEN_FIELD",
     optimalRange: [6.6, 7.2],
-    source: SOURCES.LETTUCE,
+    source: REVIEWED_CROP_SOURCES.LETTUCE,
   }),
   soilPhRule({
     crop: "LETTUCE",
     cultivationMode: "FACILITY_SOIL",
     optimalRange: [6.6, 7.2],
-    source: SOURCES.LETTUCE,
+    source: REVIEWED_CROP_SOURCES.LETTUCE,
   }),
   forecastRiskRule({
     ruleId: "lettuce.open-field.forecast.max-temperature-gte-25.v1",
@@ -556,7 +556,7 @@ const LETTUCE_RULES = [
     threshold: 25,
     severity: "CAUTION",
     actionId: "CHECK_CURRENT_FORECAST_RISK",
-    source: SOURCES.LETTUCE_GENERAL_RISK,
+    source: REVIEWED_CROP_SOURCES.LETTUCE_GENERAL_RISK,
     sourcePageOrTable:
       "생육 적온 15~20℃, 생육 초기 외 24~26℃ 이상에서 생육 억제·병해 증가",
     ruleVersion: "lettuce-open-field-forecast-v1",
@@ -571,7 +571,7 @@ const LETTUCE_RULES = [
       ],
       recheck:
         "고온 당일 해가 진 뒤와 다음 날 아침에 잎과 토양수분 상태를 다시 확인합니다.",
-      source: SOURCES.LETTUCE_GENERAL_RISK,
+      source: REVIEWED_CROP_SOURCES.LETTUCE_GENERAL_RISK,
     },
   }),
   ...["FACILITY_SOIL", "FACILITY_HYDRO"].map((cultivationMode) =>
@@ -587,7 +587,7 @@ const LETTUCE_RULES = [
       threshold: 25,
       severity: "CAUTION",
       actionId: "CHECK_FACILITY_WEATHER",
-      source: SOURCES.LETTUCE_FACILITY_RISK,
+      source: REVIEWED_CROP_SOURCES.LETTUCE_FACILITY_RISK,
       sourcePageOrTable:
         "상추 시설재배 — 25℃ 이상 고온에서 생육 저하 우려; 외기예보는 내부 센서 확인 신호로만 사용",
       ruleVersion: "lettuce-facility-forecast-v1",
@@ -602,7 +602,7 @@ const LETTUCE_RULES = [
         ],
         recheck:
           "고온 당일 해가 진 뒤와 다음 날 아침에 시설 센서값과 작물 상태를 다시 확인합니다.",
-        source: SOURCES.LETTUCE_FACILITY_RISK,
+        source: REVIEWED_CROP_SOURCES.LETTUCE_FACILITY_RISK,
       },
     }),
   ),
@@ -619,7 +619,7 @@ const LETTUCE_RULES = [
       threshold: 25,
       severity: "CAUTION",
       actionId: "CHECK_FACILITY_WEATHER",
-      source: SOURCES.LETTUCE_FACILITY_RISK,
+      source: REVIEWED_CROP_SOURCES.LETTUCE_FACILITY_RISK,
       sourcePageOrTable:
         "현장기술지원 종합의견 — 화아분화 후 25℃ 이상에서 추대 가속; 외기예보는 내부 상태 확인 신호로만 사용",
       ruleVersion: "lettuce-facility-forecast-v1",
@@ -632,7 +632,7 @@ const LETTUCE_RULES = [
           "천창·측창과 냉방·차광 설비가 있다면 정상 작동하는지 점검합니다.",
           "외기 예보만으로 내부 상태를 확정하지 말고 센서값과 작물 상태를 함께 기록합니다.",
         ],
-        source: SOURCES.LETTUCE_FACILITY_RISK,
+        source: REVIEWED_CROP_SOURCES.LETTUCE_FACILITY_RISK,
       },
     }),
   ),

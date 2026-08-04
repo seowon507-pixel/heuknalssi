@@ -2080,6 +2080,62 @@
       color: #5F7166;
       font-size: 11px;
     }
+    .assistant-reference {
+      margin: 9px 0 0;
+      padding: 0;
+      overflow: hidden;
+      border: 1px solid #C9DED2;
+      border-radius: 10px;
+      background: #FFFFFF;
+    }
+    .assistant-reference-image {
+      display: block;
+      width: 100%;
+      max-height: 190px;
+      object-fit: cover;
+      background: #EFF4F0;
+    }
+    .assistant-reference-missing {
+      margin: 0;
+      padding: 14px 12px;
+      border-bottom: 1px dashed #D2E0D7;
+      background: #F7FAF8;
+      color: #5F7166;
+      font-size: 12px;
+      text-align: center;
+    }
+    .assistant-reference-caption {
+      display: grid;
+      gap: 4px;
+      padding: 9px 11px 10px;
+      /* .assistant-message의 pre-line을 물려받으면 줄바꿈이 이중으로 생긴다. */
+      white-space: normal;
+    }
+    .assistant-reference-caption strong {
+      color: #1F3A2A;
+      font-size: 13px;
+    }
+    .assistant-reference-caption span {
+      color: #4A5C51;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .assistant-reference-badge {
+      justify-self: start;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #FBF0D8;
+      color: #7A5A16;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .assistant-reference-source {
+      color: #5F7166;
+      font-size: 11px;
+    }
+    a.assistant-reference-source {
+      text-decoration: underline;
+    }
     .assistant-proposal { display: grid; gap: 7px; border: 1px solid #B8D7C4; background: #F3FAF5; }
     .assistant-proposal > span { color: #234332; font-size: 14px; font-weight: 700; }
     .assistant-proposal-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 3px; }
@@ -3310,12 +3366,14 @@
       <button class="assistant-close" id="assistant-close" type="button" aria-label="흙톡 챗봇 닫기">×</button>
     </header>
     <div class="assistant-messages" id="assistant-messages" role="log" aria-live="polite" aria-relevant="additions">
-      <p class="assistant-message">현재 분석에서 확인된 날씨·토양 근거와 필요한 행동만 설명합니다. 새로운 진단이나 농약·비료 처방은 만들지 않습니다.</p>
+      <p class="assistant-message">현재 분석에서 확인된 날씨·토양 근거와 필요한 행동을 설명하고, 관련된 검수 재배 자료를 함께 찾아 보여줍니다. 새로운 진단이나 농약·비료 처방은 만들지 않습니다.</p>
     </div>
     <div class="assistant-quick-questions" aria-label="빠른 질문">
       <button type="button" data-assistant-question="왜 주의 상태인가요?">왜 주의인가요?</button>
       <button type="button" data-assistant-question="토양은 무엇을 확인해야 하나요?">토양 확인</button>
       <button type="button" data-assistant-question="오늘 무엇을 해야 하나요?">오늘 할 일</button>
+      <button type="button" data-assistant-question="토양 산도(pH)는 무엇을 뜻하나요?">토양 pH란?</button>
+      <button type="button" data-assistant-question="비가 온 뒤에는 무엇을 확인해야 하나요?">비 온 뒤</button>
     </div>
     <form class="assistant-form" id="assistant-form">
       <label class="sr-only" for="assistant-input">농장 분석 질문</label>

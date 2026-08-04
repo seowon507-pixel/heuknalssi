@@ -1,6 +1,8 @@
 # 흙날씨 Product-first PRD
 
-> 문서 상태: Revision R10 Active Growing Scope — `CHANGES_REQUESTED`
+> **현재 상태 안내(2026-08-04):** 이 문서는 R1~R10의 제품 결정과 감사 이력을 함께 보존한다. 과거 리비전의 `CHANGES_REQUESTED`, `HOLD`, API 승인 대기 표기는 당시 상태이며 현재 운영 판정으로 읽지 않는다. 최신 구현·검증 상태는 [`product_upgrade_validation/CURRENT_IMPLEMENTATION_STATUS_2026-08-04.md`](./product_upgrade_validation/CURRENT_IMPLEMENTATION_STATUS_2026-08-04.md)를 기준으로 한다.
+
+> 문서 상태: Revision R10 결정 이력 + 2026-08-04 최신 상태 문서 분리
 > 기준일: 2026-07-25
 > 적용 대상: 실제 실행되는 흙날씨 웹 제품 전체 흐름
 > 목표: 기능 보유 여부가 아니라 사용자가 3초 안에 화면의 목적·대상·다음 행동을 이해하는 상용 제품

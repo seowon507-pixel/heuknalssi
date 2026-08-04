@@ -8,10 +8,12 @@ export {
   buildAssistantCatalog,
   classifyAssistantIntent,
   classifyAssistantPolicy,
+  createKnowledgeSource,
   normalizeQuestion,
 } from './assistant.js';
 export {
   aggregateDailyPrecipitationProbability,
+  buildRollingTemperatureBiasCalibration,
   calculateIssuedForecastMetrics,
   evaluateFarmOutcomeGroundTruth,
   evaluateHistoricalSoilCoverage,
@@ -19,6 +21,12 @@ export {
   selectHistoricalSoilSnapshot,
 } from './backtest.js';
 export { latestKmaMidIssue, latestKmaShortIssue } from './forecast-issue.js';
+export {
+  createTemperatureCalibrationProfile,
+  evaluateTemperatureCalibrationDrift,
+  projectTemperatureCalibration,
+  temperatureCalibrationContract,
+} from './forecast-calibration.js';
 export {
   ACTION_PLAN_REPOSITORY_CONTRACT,
   createActionPlanService,
@@ -29,6 +37,15 @@ export {
 } from './crop-cycle.js';
 export { createHarvestAssessmentService } from './harvest-assessment.js';
 export { createHarvestWeatherService } from './harvest-weather.js';
+export {
+  KNOWLEDGE_IMAGE_HOST_ALLOWLIST,
+  KnowledgeImageError,
+  createKnowledgeImageService,
+} from './knowledge-images.js';
+export {
+  buildKnowledgeIndex,
+  retrieveKnowledge,
+} from './knowledge-retrieval.js';
 export {
   createSatelliteObservationService,
   satelliteObservationDefaults,
@@ -43,6 +60,7 @@ export {
   pestGuidanceDefaults,
 } from './pest-guidance.js';
 export {
+  assessObservationSpatialRepresentativeness,
   resolveLocationKeys,
   resolveOfficialCatalogMapping,
   toKmaGrid,

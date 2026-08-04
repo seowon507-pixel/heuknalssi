@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   aggregateDailyPrecipitationProbability,
+  buildRollingTemperatureBiasCalibration,
   calculateIssuedForecastMetrics,
   evaluateFarmOutcomeGroundTruth,
   evaluateHistoricalSoilCoverage,
@@ -108,6 +109,43 @@ test('missing forecast-observation pairs remain excluded instead of imputed', ()
       reason: 'OBSERVATION_MISSING',
     },
   ]);
+});
+
+test('rolling temperature calibration uses only observations available before issue time', () => {
+  const observations = [
+    { date: '2026-07-01', minTemperature: 18, maxTemperature: 28, precipitationAmount: 0 },
+    { date: '2026-07-02', minTemperature: 19, maxTemperature: 29, precipitationAmount: 0 },
+    { date: '2026-07-04', minTemperature: 100, maxTemperature: 100, precipitationAmount: 0 },
+  ];
+  const issuedForecasts = [
+    {
+      issuedAt: '2026-06-26T09:00:00.000Z', validAt: '2026-06-30T15:00:00.000Z',
+      validDate: '2026-07-01', minTemperature: 20, maxTemperature: 30,
+    },
+    {
+      issuedAt: '2026-06-27T09:00:00.000Z', validAt: '2026-07-01T15:00:00.000Z',
+      validDate: '2026-07-02', minTemperature: 21, maxTemperature: 31,
+    },
+    {
+      issuedAt: '2026-07-03T09:00:00.000Z', validAt: '2026-07-03T15:00:00.000Z',
+      validDate: '2026-07-04', minTemperature: 22, maxTemperature: 32,
+    },
+  ];
+  const result = buildRollingTemperatureBiasCalibration({
+    issuedForecasts,
+    observations,
+    minimumTrainingSampleCount: 2,
+    rollingWindowDays: 30,
+  });
+
+  assert.equal(result.lookAheadPairsUsed, 0);
+  assert.equal(result.providerValuesMutated, false);
+  assert.equal(result.rows[0].metrics.minTemperature.adjustedValue, null);
+  assert.equal(result.rows[1].metrics.minTemperature.adjustedValue, null);
+  assert.equal(result.rows[2].metrics.minTemperature.sampleCount, 2);
+  assert.equal(result.rows[2].metrics.minTemperature.appliedBiasC, 2);
+  assert.equal(result.rows[2].metrics.minTemperature.rawValue, 22);
+  assert.equal(result.rows[2].metrics.minTemperature.adjustedValue, 20);
 });
 
 test('ASOS replay separates comparable thresholds from forecast probability', () => {

@@ -43,6 +43,7 @@ import {
 } from './templates.js';
 import {
   answerGroundedQuestion,
+  createKnowledgeSource,
   normalizeQuestion,
 } from './assistant.js';
 
@@ -210,6 +211,11 @@ const SOURCE_BASES = Object.freeze({
 export function createApplicationServices({
   adapters = {},
   assistant = null,
+  // 흙톡 RAG 코퍼스. 검수 런타임 모듈이 주입하며, 없으면 흙톡은 기존처럼
+  // 현재 분석 근거만으로 답한다.
+  knowledgePassages = [],
+  knowledgeImages = {},
+  allowDraftKnowledge = false,
   rules = [],
   ruleRegistry = createRuleRegistry(rules),
   verifiedLocationMappings = {},
@@ -248,6 +254,13 @@ export function createApplicationServices({
     randomBytes,
     candidateStore,
     analysisStore,
+  });
+  // 코퍼스 색인은 기동 시 한 번만 만든다. 질문마다 다시 색인하면 응답 지연이
+  // 커지고, 색인 결과는 입력이 같으면 항상 같으므로 재사용해도 안전하다.
+  const knowledge = createKnowledgeSource({
+    passages: knowledgePassages,
+    images: knowledgeImages,
+    allowDraft: allowDraftKnowledge === true,
   });
   assertPositiveDuration(candidateTtlMs, 'candidateTtlMs');
   assertPositiveDuration(analysisTtlMs, 'analysisTtlMs');
@@ -777,6 +790,7 @@ export function createApplicationServices({
       analysis: record.result,
       question: normalizedQuestion,
       assistant,
+      knowledge,
       signal,
       deadlineAt: clock() + Math.min(coreDeadlineMs, 8_000),
     });
@@ -1648,6 +1662,10 @@ function normalizeResolvedLocation(candidate) {
     displayName: candidate.displayName,
     latitude: broad ? null : candidate.latitude,
     longitude: broad ? null : candidate.longitude,
+    elevationM:
+      !broad && Number.isFinite(candidate.elevationM)
+        ? candidate.elevationM
+        : null,
     administrativeRepresentative,
     legalDongCode:
       candidate.legalDongCode10 ?? candidate.legalDongCode ?? null,

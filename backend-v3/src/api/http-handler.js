@@ -12,6 +12,7 @@ import {
   isValidIdempotencyKey,
   normalizeAccountKey,
 } from "../infrastructure/index.js";
+import { KnowledgeImageError } from "../application/knowledge-images.js";
 import {
   ApiError,
   normalizeApiError,
@@ -30,6 +31,7 @@ const DEFAULT_RATE_LIMITS = Object.freeze({
   "analyses.report": { limit: 5, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
   "analyses.pestGuidance": { limit: 30, windowMs: 60_000 },
+  "knowledgeImages.get": { limit: 60, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
   "actions.list": { limit: 60, windowMs: 60_000 },
   "actions.sync": { limit: 10, windowMs: 60_000 },
@@ -66,6 +68,7 @@ const DEFAULT_IP_RATE_LIMITS = Object.freeze({
   "analyses.report": { limit: 5, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
   "analyses.pestGuidance": { limit: 30, windowMs: 60_000 },
+  "knowledgeImages.get": { limit: 60, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
   "actions.list": { limit: 60, windowMs: 60_000 },
   "actions.sync": { limit: 10, windowMs: 60_000 },
@@ -135,6 +138,14 @@ const ROUTES = Object.freeze([
     pattern: /^\/api\/analyses\/([^/]+)\/pest-guidance$/,
     methods: ["GET"],
     parameter: "analysisId",
+  },
+  {
+    // 흙톡 재배 참고 이미지. 경로 매개변수는 레지스트리 키라서 임의 URL을
+    // 받지 않는다. 패턴에서 대문자·숫자·밑줄만 허용해 한 번 더 좁힌다.
+    name: "knowledgeImages.get",
+    pattern: /^\/api\/knowledge-images\/([A-Z][A-Z0-9_]{2,63})$/,
+    methods: ["GET"],
+    parameter: "imageId",
   },
   {
     name: "analyses.get",
@@ -390,6 +401,19 @@ function sendJson(res, status, body, headers = {}) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Content-Length", Buffer.byteLength(serialized));
   res.end(serialized);
+}
+
+function sendImage(res, { contentType, body, cacheSeconds }) {
+  if (res.destroyed || res.writableEnded) {
+    return;
+  }
+  res.statusCode = 200;
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Content-Length", body.length);
+  // setSecurityHeaders가 걸어 둔 no-store를 이미지에만 완화한다. 검수된 참고
+  // 이미지는 사용자별 자료가 아니므로 브라우저가 다시 받지 않아도 된다.
+  res.setHeader("Cache-Control", `private, max-age=${cacheSeconds}`);
+  res.end(body);
 }
 
 function sendEmpty(res, status) {
@@ -657,6 +681,7 @@ export function createHttpHandler({
   clock = Date.now,
   randomBytes = nodeRandomBytes,
   deviceBackup = null,
+  knowledgeImages = null,
 } = {}) {
   validateServices(services);
   validateFeatureServices(featureServices);
@@ -1180,6 +1205,29 @@ export function createHttpHandler({
         );
         sendJson(res, 200, result);
         return;
+      }
+
+      if (route.name === "knowledgeImages.get") {
+        if (!knowledgeImages || knowledgeImages.state !== "READY") {
+          throw new ApiError("KNOWLEDGE_IMAGE_NOT_CONNECTED");
+        }
+        try {
+          const image = await knowledgeImages.fetchImage(
+            route.parameters.imageId,
+            { signal: abortContext.signal },
+          );
+          sendImage(res, {
+            contentType: image.contentType,
+            body: image.body,
+            cacheSeconds: config.knowledgeImageCacheSeconds ?? 86_400,
+          });
+          return;
+        } catch (error) {
+          if (error instanceof KnowledgeImageError) {
+            throw new ApiError(error.code);
+          }
+          throw error;
+        }
       }
 
       if (route.name === "backup.save" || route.name === "backup.restore") {

@@ -8,6 +8,7 @@ import {
   parseKmaSurfaceStationCatalog,
 } from "../src/adapters/index.js";
 import {
+  assessObservationSpatialRepresentativeness,
   resolveLocationKeys,
   resolveOfficialCatalogMapping,
 } from "../src/application/index.js";
@@ -80,6 +81,7 @@ test("official KMA station and forecast-zone catalogs preserve routing identifie
     id: "100",
     longitude: 126.9,
     latitude: 37.5,
+    elevationM: 10,
     forecastRegionId: "11B10101",
     legalDongCode: "1111010100",
   });
@@ -94,11 +96,13 @@ test("nationwide catalog selects the nearest ASOS station and land ancestor", ()
         id: "108",
         latitude: 37.57142,
         longitude: 126.9658,
+        elevationM: 85.8,
       },
       {
         id: "112",
         latitude: 37.47772,
         longitude: 126.6249,
+        elevationM: 68.2,
       },
     ],
     zones: [
@@ -127,6 +131,7 @@ test("nationwide catalog selects the nearest ASOS station and land ancestor", ()
       id: "108",
       latitude: 37.57142,
       longitude: 126.9658,
+      elevationM: 85.8,
     },
     midForecastRegionIds: {
       temperatureRegId: "11B10101",
@@ -187,6 +192,32 @@ test("broad district input receives regional climate and mid forecast but not AS
     temperatureRegId: "11B10101",
     landRegId: "11B00000",
   });
+});
+
+test("spatial representativeness never applies an elevation correction without both elevations", () => {
+  const missingFarmElevation = assessObservationSpatialRepresentativeness({
+    distanceKm: 8,
+    stationElevationM: 772.43,
+  });
+  assert.equal(missingFarmElevation.level, "MEDIUM");
+  assert.equal(missingFarmElevation.evidenceBasis, "DISTANCE_ONLY");
+  assert.equal(
+    missingFarmElevation.correctionState,
+    "NOT_APPLIED_ELEVATION_MISSING",
+  );
+  assert.equal(missingFarmElevation.physicalTemperatureAdjustmentC, null);
+
+  const largeElevationGap = assessObservationSpatialRepresentativeness({
+    distanceKm: 8,
+    farmElevationM: 250,
+    stationElevationM: 772.43,
+  });
+  assert.equal(largeElevationGap.level, "LOW");
+  assert.equal(largeElevationGap.elevationDifferenceM, 522.4);
+  assert.equal(
+    largeElevationGap.correctionState,
+    "NOT_APPLIED_VALIDATED_MODEL_REQUIRED",
+  );
 });
 
 test("location catalog adapter caches both official provider lists", async () => {

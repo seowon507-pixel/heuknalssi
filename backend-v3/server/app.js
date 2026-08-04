@@ -21,6 +21,7 @@ import {
   createCropCycleService,
   createHarvestAssessmentService,
   createHarvestWeatherService,
+  createKnowledgeImageService,
   createPhotoSeasonService,
   createPestGuidanceService,
   createReportHistoryService,
@@ -51,6 +52,8 @@ export function createBackend({
   verifiedLocationMappings = {},
   runtimeStatus,
   soilContract = null,
+  knowledgePassages = [],
+  knowledgeImages = {},
 } = {}) {
   const config = loadConfig(env);
   const sharedState = createSupabaseSharedState({
@@ -201,6 +204,9 @@ export function createBackend({
     assistant,
     ruleRegistry: activeRuleRegistry,
     verifiedLocationMappings,
+    knowledgePassages,
+    knowledgeImages,
+    allowDraftKnowledge: config.allowDraftKnowledge,
     clock,
     ...(randomBytes ? { randomBytes } : {}),
     coreDeadlineMs: config.coreDeadlineMs,
@@ -280,6 +286,10 @@ export function createBackend({
         getAnalysis: services.getAnalysis,
       })
     : null;
+  const knowledgeImageService = createKnowledgeImageService({
+    images: knowledgeImages,
+    fetchImpl,
+  });
   const handler = createHttpHandler({
     services,
     featureServices: {
@@ -321,6 +331,7 @@ export function createBackend({
     clock,
     ...(randomBytes ? { randomBytes } : {}),
     deviceBackup,
+    knowledgeImages: knowledgeImageService,
   });
 
   return Object.freeze({

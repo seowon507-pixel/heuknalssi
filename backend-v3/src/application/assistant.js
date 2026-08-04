@@ -1,4 +1,13 @@
 import { buildDeterministicReport } from "./templates.js";
+import {
+  buildKnowledgeIndex,
+  retrieveKnowledge,
+} from "./knowledge-retrieval.js";
+import { describeKnowledgeImage } from "./knowledge-images.js";
+
+// 분석 근거 항목 뒤에 붙일 수 있는 재배 참고 문단의 최대 개수. 답변이 배경
+// 설명으로 뒤덮이지 않도록 분석 근거보다 적게 유지한다.
+const MAX_KNOWLEDGE_ITEMS = 3;
 
 const STATE_TEXT = Object.freeze({
   COMPLETE: "분석 완료",
@@ -97,17 +106,70 @@ const RESTRICTED_PATTERNS = Object.freeze([
       "비료 종류와 양은 필지 토양검정과 작물별 처방 없이 확정하지 않습니다. 최근 토양검정 결과가 있으면 등록하고, 없으면 농업기술센터의 토양검정·비료사용처방을 먼저 받아 주세요."
   },
   {
+    // 흙톡이 검수된 참고 사진을 보여주게 되었으므로, "사진"이라는 단어만으로는
+    // 막지 않는다. 여전히 막는 것은 사용자의 사진을 보고 원인·병명을 판단해
+    // 달라는 요청이다. 참고 사진을 보여 달라는 요청은 exemptedByImageRequest가
+    // 먼저 걸러 재배 참고 자료로 이어진다.
+    id: "PHOTO_DIAGNOSIS",
     outcome: "NOT_SUPPORTED",
-    pattern:
-      /(사진으로|사진\s*(보고|진단)|(?:사진|이미지).*(왜|이상|잎|병|진단|원인)|병명|무슨\s*병|병해충\s*진단)/u,
+    pattern: new RegExp(
+      [
+        "병명",
+        "무슨\\s*병",
+        "병해충\\s*진단",
+        "(?:사진|이미지)[^?!.]{0,20}" +
+          "(?:진단|판단|원인|왜|이상|이래|이러|병\\s*(?:인지|이야|이에요|입니까|같))",
+        "(?:진단|판단)[^?!.]{0,10}(?:사진|이미지)"
+      ].join("|"),
+      "u"
+    ),
     answer:
       "현재 버전은 사진으로 병명이나 병해충을 진단하지 않습니다. 잎·줄기·열매의 이상 부위를 여러 각도에서 기록하고 발생 시점과 범위를 함께 적은 뒤 농업기술센터에 확인해 주세요."
   }
 ]);
 
-export function buildAssistantCatalog(analysis) {
+/**
+ * 검수 코퍼스를 한 번만 색인해 두는 RAG 검색 소스를 만든다.
+ *
+ * @param {object} options
+ * @param {Array} options.passages    reviewed-knowledge-base.js의 문단 배열
+ * @param {boolean} options.allowDraft 검수 대기(DRAFT) 문단도 노출할지
+ */
+export function createKnowledgeSource({
+  passages = [],
+  images = {},
+  allowDraft = false
+} = {}) {
+  const index = buildKnowledgeIndex(passages);
+  const reviewedCount = passages.filter(
+    (passage) => passage?.reviewState === "REVIEWED",
+  ).length;
+  const usableCount = allowDraft ? index.documentCount : reviewedCount;
+  return Object.freeze({
+    state: usableCount > 0 ? "READY" : "EMPTY",
+    allowDraft,
+    passageCount: index.documentCount,
+    reviewedCount,
+    describeImage(imageId) {
+      if (typeof imageId !== "string" || !imageId) return null;
+      return describeKnowledgeImage(images?.[imageId], imageId);
+    },
+    retrieve({ question, crop, topics }) {
+      return retrieveKnowledge({
+        index,
+        question,
+        crop,
+        topics,
+        allowDraft,
+        limit: MAX_KNOWLEDGE_ITEMS,
+      });
+    },
+  });
+}
+
+export function buildAssistantCatalog(analysis, { knowledgeHits = [] } = {}) {
   const items = [];
-  const add = (kind, text, tags = []) => {
+  const add = (kind, text, tags = [], metadata = null) => {
     const normalized = typeof text === "string" ? text.trim() : "";
     if (!normalized) return;
     if (items.some((item) => item.kind === kind && item.text === normalized)) {
@@ -117,7 +179,10 @@ export function buildAssistantCatalog(analysis) {
       id: `ITEM_${items.length + 1}`,
       kind,
       text: normalized.slice(0, 360),
-      tags: [...new Set([...tags, ...tagsForText(normalized)])]
+      tags: [...new Set([...tags, ...tagsForText(normalized)])],
+      // 재배 참고 문단의 제목·이미지·출처. Google AI 어댑터의 normalizeCatalog가
+      // id/kind/text/tags만 남기므로 이 필드는 모델로 전송되지 않는다.
+      knowledge: metadata
     });
   };
 
@@ -169,7 +234,28 @@ export function buildAssistantCatalog(analysis) {
       );
     }
   }
-  return items.slice(0, 24);
+
+  // 분석 근거를 먼저 24개로 고정한 뒤 재배 참고 문단을 뒤에 붙인다. 순서를
+  // 바꾸면 실제 분석 근거가 배경 설명에 밀려 잘려 나갈 수 있다.
+  items.length = Math.min(items.length, 24);
+  for (const hit of knowledgeHits.slice(0, MAX_KNOWLEDGE_ITEMS)) {
+    const passage = hit?.passage;
+    if (!passage) continue;
+    add(
+      "KNOWLEDGE",
+      passage.text,
+      [...(passage.topics ?? []), "KNOWLEDGE"],
+      {
+        passageId: passage.id,
+        title: passage.title,
+        imageId: passage.imageId ?? null,
+        reviewState: passage.reviewState ?? "DRAFT",
+        source: passage.source ?? null,
+        score: hit.score ?? null
+      }
+    );
+  }
+  return items;
 }
 
 export function classifyAssistantIntent(question) {
@@ -194,6 +280,7 @@ export async function answerGroundedQuestion({
   analysis,
   question,
   assistant,
+  knowledge = null,
   signal,
   deadlineAt
 }) {
@@ -206,11 +293,23 @@ export async function answerGroundedQuestion({
       grounded: true,
       answer: policyResult.answer,
       itemIds: [],
+      references: Object.freeze([]),
+      retrieval: Object.freeze({ state: "SKIPPED_BY_POLICY", matched: 0 }),
       notice: "안전 기준과 현재 농장 문맥을 먼저 확인했습니다."
     });
   }
-  const catalog = buildAssistantCatalog(analysis);
   const intent = classifyAssistantIntent(question);
+  // 안전 정책을 통과한 질문만 코퍼스를 검색한다. 농약·비료·병명 질문은 위에서
+  // 이미 정해진 안내로 끝나므로 배경 지식이 붙지 않는다.
+  const knowledgeHits =
+    knowledge?.state === "READY"
+      ? knowledge.retrieve({
+          question,
+          crop: analysis?.inputSummary?.crop ?? null,
+          topics: intent.topics
+        })
+      : [];
+  const catalog = buildAssistantCatalog(analysis, { knowledgeHits });
   let selectedIds = [];
   let mode = "FALLBACK";
   let fallbackReason =
@@ -234,8 +333,10 @@ export async function answerGroundedQuestion({
   const selected = completeSelection({
     catalog,
     selectedIds,
-    intent
+    intent,
+    hasKnowledge: knowledgeHits.length > 0
   });
+  const references = buildReferences(selected, knowledge);
   return Object.freeze({
     mode,
     outcome: "ANSWERED",
@@ -243,16 +344,67 @@ export async function answerGroundedQuestion({
     grounded: true,
     answer: renderAnswer(selected),
     itemIds: selected.map(({ id }) => id),
-    notice:
-      mode === "GOOGLE_AI"
-        ? "Google AI가 검증된 근거 중 관련 항목만 선택했습니다."
-        : "검증된 근거를 기본 규칙으로 정리했습니다."
+    references,
+    retrieval: Object.freeze({
+      state: knowledge?.state ?? "NOT_CONFIGURED",
+      matched: knowledgeHits.length
+    }),
+    notice: assistantNotice({ mode, referenceCount: references.length })
   });
+}
+
+function assistantNotice({ mode, referenceCount }) {
+  const base =
+    mode === "GOOGLE_AI"
+      ? "Google AI가 검증된 근거 중 관련 항목만 선택했습니다."
+      : "검증된 근거를 기본 규칙으로 정리했습니다.";
+  return referenceCount > 0
+    ? `${base} 재배 참고 자료 ${referenceCount}건을 함께 찾았습니다.`
+    : base;
+}
+
+/**
+ * 선택된 항목 중 재배 참고 문단만 골라 화면에 보여줄 인용 카드로 바꾼다.
+ * 업스트림 이미지 URL은 담지 않는다. 브라우저는 imageId로만 프록시를 호출한다.
+ */
+function buildReferences(selected, knowledgeSource) {
+  return Object.freeze(
+    selected
+      .filter(({ kind, knowledge }) => kind === "KNOWLEDGE" && knowledge)
+      .map(({ knowledge }) =>
+        Object.freeze({
+          passageId: knowledge.passageId,
+          title: knowledge.title,
+          reviewState: knowledge.reviewState,
+          sourceTitle: knowledge.source?.sourceTitle ?? null,
+          sourceUrl: knowledge.source?.sourceUrl ?? null,
+          // available이 false면 화면은 이미지 자리를 비우고 "이미지 자료 미연결"로
+          // 표시한다. 연결되지 않은 URL로 <img>를 만들면 깨진 아이콘만 남는다.
+          image: knowledgeSource?.describeImage?.(knowledge.imageId) ?? null
+        })
+      )
+  );
+}
+
+// "참고 사진 보여줘"처럼 검수된 자료를 보여 달라는 요청. 판단을 요구하는 낱말이
+// 하나라도 섞이면 요청으로 보지 않고 사진 진단 차단 규칙으로 넘긴다.
+const REFERENCE_IMAGE_REQUEST =
+  /(?:사진|이미지|그림)[^?!.]{0,12}(?:보여|보고\s*싶|볼\s*수|있(?:어|나|을까|습니까)|첨부|함께|같이|참고)/u;
+const IMAGE_INTERPRETATION_REQUEST =
+  /(?:왜|이상|이래|이러|원인|진단|판단|병명|무슨\s*병)/u;
+
+function exemptedByImageRequest(rule, normalized) {
+  if (rule.id !== "PHOTO_DIAGNOSIS") return false;
+  return (
+    REFERENCE_IMAGE_REQUEST.test(normalized) &&
+    !IMAGE_INTERPRETATION_REQUEST.test(normalized)
+  );
 }
 
 export function classifyAssistantPolicy(question, analysis) {
   const normalized = normalizeQuestion(question);
   for (const rule of RESTRICTED_PATTERNS) {
+    if (exemptedByImageRequest(rule, normalized)) continue;
     if (rule.pattern.test(normalized)) return rule;
   }
 
@@ -399,7 +551,7 @@ export function normalizeQuestion(question) {
     .slice(0, 400);
 }
 
-function completeSelection({ catalog, selectedIds, intent }) {
+function completeSelection({ catalog, selectedIds, intent, hasKnowledge = false }) {
   const byId = new Map(catalog.map((item) => [item.id, item]));
   const selected = [
     ...new Set(selectedIds.filter((id) => byId.has(id)))
@@ -428,10 +580,19 @@ function completeSelection({ catalog, selectedIds, intent }) {
   if (intent.wantsRecheck) appendFirst(["RECHECK"]);
   if (intent.topics.includes("SOURCE")) appendFirst(["SOURCE", "LIMITATION"]);
   if (intent.topics.includes("SOIL")) appendFirst(["LIMITATION", "STATUS"]);
+  // 검색된 재배 참고가 있으면 최소 한 건은 답변에 남긴다. Google AI가 고르지
+  // 않았거나 FALLBACK으로 내려간 경우에도 배경 설명과 이미지가 사라지지 않게
+  // 하려는 것이다.
+  if (hasKnowledge && !selected.some(({ kind }) => kind === "KNOWLEDGE")) {
+    appendFirst(["KNOWLEDGE"]);
+  }
 
-  return selected
-    .sort((a, b) => kindOrder(a.kind) - kindOrder(b.kind))
-    .slice(0, 6);
+  const knowledge = selected.filter(({ kind }) => kind === "KNOWLEDGE");
+  const evidence = selected.filter(({ kind }) => kind !== "KNOWLEDGE");
+  return [
+    ...evidence.slice(0, 6),
+    ...knowledge.slice(0, MAX_KNOWLEDGE_ITEMS)
+  ].sort((a, b) => kindOrder(a.kind) - kindOrder(b.kind));
 }
 
 function scoreItem(item, intent) {
@@ -445,6 +606,16 @@ function scoreItem(item, intent) {
   return score;
 }
 
+function renderKnowledgeGroup(items) {
+  // 재배 참고는 문단마다 제목을 앞에 붙여 줄로 나눈다. 분석 근거와 달리 여러
+  // 주제가 섞일 수 있어서 한 줄로 이어 붙이면 어디까지가 한 설명인지 흐려진다.
+  return items
+    .map(({ knowledge, text }) =>
+      knowledge?.title ? `${knowledge.title}: ${text}` : text
+    )
+    .join("\n");
+}
+
 function renderAnswer(items) {
   if (items.length === 0) {
     return [
@@ -456,14 +627,18 @@ function renderAnswer(items) {
     ["확인된 내용", ["SUMMARY", "STATUS", "RISK"]],
     ["필요한 행동", ["ACTION"]],
     ["다시 확인할 때", ["RECHECK"]],
+    ["재배 참고", ["KNOWLEDGE"]],
     ["자료 확인", ["SOURCE", "LIMITATION"]]
   ];
   return groups
     .map(([heading, kinds]) => {
-      const texts = items
-        .filter(({ kind }) => kinds.includes(kind))
-        .map(({ text }) => text);
-      return texts.length ? `${heading}\n${texts.join(" ")}` : null;
+      const matched = items.filter(({ kind }) => kinds.includes(kind));
+      if (matched.length === 0) return null;
+      const body =
+        heading === "재배 참고"
+          ? renderKnowledgeGroup(matched)
+          : matched.map(({ text }) => text).join(" ");
+      return `${heading}\n${body}`;
     })
     .filter(Boolean)
     .join("\n\n");
@@ -498,7 +673,8 @@ function kindOrder(kind) {
     RISK: 2,
     ACTION: 3,
     RECHECK: 4,
-    SOURCE: 5,
-    LIMITATION: 6
+    KNOWLEDGE: 5,
+    SOURCE: 6,
+    LIMITATION: 7
   }[kind] ?? 9;
 }

@@ -35,10 +35,10 @@ function finiteNumber(value, field, { min, max }) {
 
 function stationLine(line) {
   const prefix = line.match(
-    /^\s*(\d{2,4})\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+\d+\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+\d+\s+(.+)$/u,
+    /^\s*(\d{2,4})\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+\d+\s+(-?\d+(?:\.\d+)?)\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+\d+\s+(.+)$/u,
   );
   if (!prefix) return null;
-  const suffix = prefix[4].match(
+  const suffix = prefix[5].match(
     /^.*\s([0-9A-Z]{8})\s+(\d{10})\s+\S+\s+.*$/u,
   );
   if (!suffix) return null;
@@ -51,6 +51,10 @@ function stationLine(line) {
     latitude: finiteNumber(prefix[3], "station latitude", {
       min: 32,
       max: 39.5,
+    }),
+    elevationM: finiteNumber(prefix[4], "station elevation", {
+      min: -20,
+      max: 2000,
     }),
     forecastRegionId: suffix[1],
     legalDongCode: suffix[2],

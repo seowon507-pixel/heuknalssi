@@ -39,6 +39,95 @@ function distanceKmBetween(
   return Math.round(6371.0088 * centralAngle * 10) / 10;
 }
 
+function optionalElevation(value, field) {
+  if (value === null || value === undefined) return null;
+  if (!Number.isFinite(value) || value < -20 || value > 2000) {
+    throw new TypeError(`${field} must be between -20m and 2000m or null.`);
+  }
+  return value;
+}
+
+/**
+ * Describes how representative a point ASOS observation can be for a farm.
+ * It never changes a provider temperature. A physical correction remains
+ * blocked until both elevations and a separately validated correction model
+ * are available.
+ */
+export function assessObservationSpatialRepresentativeness({
+  distanceKm = null,
+  farmElevationM = null,
+  stationElevationM = null,
+} = {}) {
+  if (
+    distanceKm !== null &&
+    (!Number.isFinite(distanceKm) || distanceKm < 0)
+  ) {
+    throw new TypeError("distanceKm must be a non-negative number or null.");
+  }
+  const farmElevation = optionalElevation(farmElevationM, "farmElevationM");
+  const stationElevation = optionalElevation(
+    stationElevationM,
+    "stationElevationM",
+  );
+  const elevationDifferenceM =
+    farmElevation === null || stationElevation === null
+      ? null
+      : Math.round(Math.abs(farmElevation - stationElevation) * 10) / 10;
+  const distanceLevel =
+    distanceKm === null
+      ? "UNKNOWN"
+      : distanceKm <= 10
+        ? "HIGH"
+        : distanceKm <= 30
+          ? "MEDIUM"
+          : "LOW";
+  const elevationLevel =
+    elevationDifferenceM === null
+      ? "UNKNOWN"
+      : elevationDifferenceM <= 100
+        ? "HIGH"
+        : elevationDifferenceM <= 300
+          ? "MEDIUM"
+          : "LOW";
+  const rank = { UNKNOWN: 0, LOW: 1, MEDIUM: 2, HIGH: 3 };
+  const knownLevels = [distanceLevel, elevationLevel].filter(
+    (level) => level !== "UNKNOWN",
+  );
+  const combinedLevel =
+    knownLevels.length === 0
+      ? "UNKNOWN"
+      : knownLevels.reduce((lowest, current) =>
+          rank[current] < rank[lowest] ? current : lowest,
+        );
+  const level =
+    elevationDifferenceM === null && combinedLevel === "HIGH"
+      ? "MEDIUM"
+      : combinedLevel;
+
+  return Object.freeze({
+    level,
+    distanceKm,
+    distanceLevel,
+    farmElevationM: farmElevation,
+    stationElevationM: stationElevation,
+    elevationDifferenceM,
+    elevationLevel,
+    evidenceBasis:
+      elevationDifferenceM !== null && distanceKm !== null
+        ? "DISTANCE_AND_ELEVATION"
+        : elevationDifferenceM !== null
+          ? "ELEVATION_ONLY"
+          : distanceKm !== null
+            ? "DISTANCE_ONLY"
+            : "NONE",
+    physicalTemperatureAdjustmentC: null,
+    correctionState:
+      elevationDifferenceM === null
+        ? "NOT_APPLIED_ELEVATION_MISSING"
+        : "NOT_APPLIED_VALIDATED_MODEL_REQUIRED",
+  });
+}
+
 export function toKmaGrid(latitude, longitude) {
   if (
     !isFiniteCoordinate(latitude) ||
@@ -143,6 +232,18 @@ export function resolveLocationKeys(
         ? observationStation.distanceKm
         : null
     : null;
+  const observationStationElevationM = Number.isFinite(
+    observationStation?.elevationM,
+  )
+    ? observationStation.elevationM
+    : null;
+  const observationSpatialRepresentativeness = observationStation
+    ? assessObservationSpatialRepresentativeness({
+        distanceKm: observationDistanceKm,
+        farmElevationM: location.elevationM ?? null,
+        stationElevationM: observationStationElevationM,
+      })
+    : null;
 
   return Object.freeze({
     legalDongCode10,
@@ -164,6 +265,8 @@ export function resolveLocationKeys(
         ? observationStation.id
         : null,
     observationDistanceKm,
+    observationStationElevationM,
+    observationSpatialRepresentativeness,
   });
 }
 
@@ -281,6 +384,9 @@ export function resolveOfficialCatalogMapping(location, catalog) {
           id: station.entry.id,
           latitude: station.entry.latitude,
           longitude: station.entry.longitude,
+          elevationM: Number.isFinite(station.entry.elevationM)
+            ? station.entry.elevationM
+            : null,
         })
       : null,
     midForecastRegionIds:
@@ -443,6 +549,15 @@ function mappingErrors(mapping, at) {
       errors.push(
         'observationStation requires verified coordinates or a verified legacy distance',
       );
+    }
+    if (
+      mapping.observationStation.elevationM !== null &&
+      mapping.observationStation.elevationM !== undefined &&
+      (!Number.isFinite(mapping.observationStation.elevationM) ||
+        mapping.observationStation.elevationM < -20 ||
+        mapping.observationStation.elevationM > 2000)
+    ) {
+      errors.push('observationStation.elevationM is invalid');
     }
   }
   return errors;

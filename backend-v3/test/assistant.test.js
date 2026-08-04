@@ -7,6 +7,7 @@ import {
   buildAssistantCatalog,
   classifyAssistantPolicy,
   classifyAssistantIntent,
+  createKnowledgeSource,
 } from "../src/application/index.js";
 
 function analysisFixture() {
@@ -328,4 +329,280 @@ test("grounded assistant exposes only a safe provider failure category", async (
   assert.equal(result.mode, "FALLBACK");
   assert.equal(result.fallbackReason, "GOOGLE_AI_AUTH_ERROR");
   assert.doesNotMatch(JSON.stringify(result), /sensitive|PRIVATE/);
+});
+
+// ── RAG (재배 참고 지식) ────────────────────────────────────
+
+function knowledgeFixture(overrides = {}) {
+  return createKnowledgeSource({
+    passages: [
+      {
+        id: "KB_TEST_SOIL",
+        title: "토양 산도란",
+        text: "토양 pH는 흙이 산성인지 알칼리성인지 나타내는 값입니다. 작물마다 적정 구간이 다릅니다.",
+        crops: [],
+        topics: ["SOIL"],
+        keywords: ["ph", "산도", "토양"],
+        imageId: "TEST_CONNECTED",
+        reviewState: "REVIEWED",
+        reviewedBy: "테스트 검수자",
+        source: {
+          sourceTitle: "테스트 출처",
+          sourceUrl: "https://example.test/soil",
+          reviewedAt: "2026-08-04",
+        },
+      },
+      {
+        id: "KB_TEST_APPLE",
+        title: "사과 개화기 저온",
+        text: "개화기에 저온을 겪으면 꽃 중심의 암술머리가 갈색으로 변할 수 있습니다. 다음 날 아침에 확인합니다.",
+        crops: ["APPLE"],
+        topics: ["WEATHER", "ACTION"],
+        keywords: ["사과", "개화", "저온", "서리"],
+        imageId: "TEST_NOT_CONNECTED",
+        reviewState: "REVIEWED",
+        reviewedBy: "테스트 검수자",
+        source: {
+          sourceTitle: "테스트 출처",
+          sourceUrl: "https://example.test/apple",
+          reviewedAt: "2026-08-04",
+        },
+      },
+    ],
+    images: {
+      TEST_CONNECTED: {
+        url: "https://ncpms.rda.go.kr/test.jpg",
+        alt: "대체 텍스트",
+        caption: "설명",
+        credit: "테스트 제공",
+        licence: "CC BY-NC 2.0",
+      },
+      TEST_NOT_CONNECTED: {
+        url: null,
+        alt: "대체 텍스트",
+        caption: "설명",
+        credit: "테스트 제공",
+      },
+    },
+    allowDraft: false,
+    ...overrides,
+  });
+}
+
+test("코퍼스가 없으면 흙톡은 기존처럼 분석 근거만으로 답한다", async () => {
+  const result = await answerGroundedQuestion({
+    analysis: analysisFixture(),
+    question: "토양 산도가 무엇인가요?",
+    assistant: null,
+  });
+
+  assert.equal(result.grounded, true);
+  assert.deepEqual(result.references, []);
+  assert.equal(result.retrieval.state, "NOT_CONFIGURED");
+  assert.doesNotMatch(result.answer, /재배 참고/);
+});
+
+test("검색된 재배 참고가 답변과 인용 카드에 함께 담긴다", async () => {
+  const result = await answerGroundedQuestion({
+    analysis: analysisFixture(),
+    question: "토양 산도(pH)가 무엇을 뜻하나요?",
+    assistant: null,
+    knowledge: knowledgeFixture(),
+  });
+
+  assert.equal(result.retrieval.state, "READY");
+  assert.ok(result.retrieval.matched > 0);
+  assert.match(result.answer, /재배 참고/);
+  assert.match(result.answer, /토양 산도란: /);
+  assert.equal(result.references.length > 0, true);
+
+  const reference = result.references.find(
+    ({ passageId }) => passageId === "KB_TEST_SOIL",
+  );
+  assert.equal(reference.title, "토양 산도란");
+  assert.equal(reference.sourceUrl, "https://example.test/soil");
+  assert.equal(reference.image.available, true);
+  assert.equal(reference.image.imageId, "TEST_CONNECTED");
+  assert.equal(reference.image.licence, "CC BY-NC 2.0");
+});
+
+test("인용 카드는 업스트림 이미지 URL을 클라이언트로 내보내지 않는다", async () => {
+  const result = await answerGroundedQuestion({
+    analysis: analysisFixture(),
+    question: "토양 산도(pH)가 무엇을 뜻하나요?",
+    assistant: null,
+    knowledge: knowledgeFixture(),
+  });
+
+  assert.doesNotMatch(JSON.stringify(result), /ncpms\.rda\.go\.kr|test\.jpg/);
+});
+
+test("연결되지 않은 이미지는 available=false로 표시된다", async () => {
+  const result = await answerGroundedQuestion({
+    analysis: analysisFixture(),
+    question: "사과 개화기에 서리가 오면 어디를 봐야 하나요?",
+    assistant: null,
+    knowledge: knowledgeFixture(),
+  });
+
+  const reference = result.references.find(
+    ({ passageId }) => passageId === "KB_TEST_APPLE",
+  );
+  assert.equal(reference.image.available, false);
+});
+
+test("Google AI가 재배 참고를 고르지 않아도 카드가 사라지지 않는다", async () => {
+  const result = await answerGroundedQuestion({
+    analysis: analysisFixture(),
+    question: "토양 산도(pH)가 무엇을 뜻하나요?",
+    knowledge: knowledgeFixture(),
+    assistant: {
+      state: "READY",
+      async select() {
+        // 분석 근거만 고르고 KNOWLEDGE 항목은 무시하는 응답.
+        return { selectedIds: ["ITEM_1"] };
+      },
+    },
+  });
+
+  assert.equal(result.mode, "GOOGLE_AI");
+  assert.equal(result.references.length, 1);
+});
+
+test("Google AI 요청 본문에는 재배 참고의 출처·이미지 메타데이터가 실리지 않는다", async () => {
+  let requestBody = null;
+  const selector = createGoogleAiSelector({
+    enabled: true,
+    apiKey: "test-key",
+    fetchImpl: async (_url, init) => {
+      requestBody = init.body;
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            { content: { parts: [{ text: '{"selectedIds":["ITEM_1"]}' }] } },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    },
+  });
+
+  // 흙톡이 실제로 만드는 카탈로그를 그대로 어댑터에 넘긴다.
+  const catalog = buildAssistantCatalog(analysisFixture(), {
+    knowledgeHits: [
+      {
+        passage: {
+          id: "KB_TEST_SOIL",
+          title: "토양 산도란",
+          text: "토양 pH는 흙이 산성인지 알칼리성인지 나타내는 값입니다.",
+          topics: ["SOIL"],
+          imageId: "TEST_CONNECTED",
+          reviewState: "REVIEWED",
+          source: {
+            sourceTitle: "테스트 출처",
+            sourceUrl: "https://example.test/soil",
+          },
+        },
+        score: 12,
+      },
+    ],
+  });
+  await selector.select({ intent: { topics: ["SOIL"] }, catalog });
+
+  assert.match(requestBody, /KNOWLEDGE/);
+  assert.match(requestBody, /토양 pH는/);
+  // 모델은 문단 본문만 본다. 출처 URL·이미지 식별자·검수 상태는 나가지 않는다.
+  for (const leak of [
+    "example.test",
+    "TEST_CONNECTED",
+    "sourceUrl",
+    "sourceTitle",
+    "reviewState",
+    "passageId",
+    "imageId",
+  ]) {
+    assert.equal(
+      requestBody.includes(leak),
+      false,
+      `요청 본문에 ${leak}이 포함되면 안 된다`,
+    );
+  }
+});
+
+test("안전 정책에 걸린 질문에는 재배 참고를 검색하지 않는다", async () => {
+  let retrieved = false;
+  const knowledge = knowledgeFixture();
+  const spy = {
+    ...knowledge,
+    retrieve(args) {
+      retrieved = true;
+      return knowledge.retrieve(args);
+    },
+  };
+
+  for (const question of [
+    "요소를 몇 kg 줘야 해?",
+    "이 사진 속 잎이 왜 이래?",
+  ]) {
+    const result = await answerGroundedQuestion({
+      analysis: analysisFixture(),
+      question,
+      assistant: null,
+      knowledge: spy,
+    });
+    assert.equal(retrieved, false, `${question}에서 검색이 실행되면 안 된다`);
+    assert.deepEqual(result.references, []);
+    assert.equal(result.retrieval.state, "SKIPPED_BY_POLICY");
+  }
+});
+
+test("참고 사진을 보여 달라는 요청은 사진 진단 차단에 걸리지 않는다", () => {
+  for (const question of [
+    "저온 피해 사진 보여줘",
+    "참고 이미지 있어요?",
+    "사과 잎 사진 같이 보여주세요",
+  ]) {
+    assert.equal(
+      classifyAssistantPolicy(question, analysisFixture()),
+      null,
+      `"${question}"은 통과해야 한다`,
+    );
+  }
+});
+
+test("내 사진으로 원인을 판단해 달라는 요청은 계속 차단한다", () => {
+  for (const question of [
+    "이 사진 속 잎이 왜 이래?",
+    "사진으로 진단해줘",
+    "이 사진 보고 원인 알려줘",
+    "사진 보여줄게 무슨 병이야?",
+    "병명 알려줘",
+  ]) {
+    const result = classifyAssistantPolicy(question, analysisFixture());
+    assert.equal(result?.outcome, "NOT_SUPPORTED", `"${question}"은 막아야 한다`);
+  }
+});
+
+test("재배 참고 문단이 분석 근거를 카탈로그에서 밀어내지 않는다", () => {
+  const hits = [
+    { passage: { id: "KB_A", title: "가", text: "가 본문", topics: ["SOIL"] }, score: 9 },
+    { passage: { id: "KB_B", title: "나", text: "나 본문", topics: ["SOIL"] }, score: 8 },
+    { passage: { id: "KB_C", title: "다", text: "다 본문", topics: ["SOIL"] }, score: 7 },
+  ];
+  const withKnowledge = buildAssistantCatalog(analysisFixture(), {
+    knowledgeHits: hits,
+  });
+  const withoutKnowledge = buildAssistantCatalog(analysisFixture());
+
+  const evidence = withKnowledge.filter(({ kind }) => kind !== "KNOWLEDGE");
+  assert.deepEqual(
+    evidence.map(({ text }) => text),
+    withoutKnowledge.map(({ text }) => text),
+  );
+  assert.equal(
+    withKnowledge.filter(({ kind }) => kind === "KNOWLEDGE").length,
+    3,
+  );
+  // 어댑터가 잘라내지 않도록 전체가 MAX_CATALOG_ITEMS(30) 이내여야 한다.
+  assert.ok(withKnowledge.length <= 30);
 });

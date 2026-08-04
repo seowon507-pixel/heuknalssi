@@ -109,6 +109,10 @@ export function loadConfig(env = process.env) {
       nodeEnv,
     ),
     trustedProxy: parseTrustedProxy(env),
+    // 검수 대기(DRAFT) 재배 참고 문단을 흙톡에 노출할지. 운영에서는 검수를
+    // 통과한 문단만 보여야 하므로 development에서만 켤 수 있다.
+    allowDraftKnowledge:
+      nodeEnv !== 'production' && enabled(env.ALLOW_DRAFT_KNOWLEDGE),
     coreDeadlineMs: 11_000,
     sourceTimeoutMs: 10_000,
     candidateTtlMs: 10 * 60 * 1000,

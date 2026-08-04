@@ -1,0 +1,1752 @@
+{
+  "auditKind": "EXTENDED_PRECIPITATION_AND_FIVE_DAY_FORECAST_BACKTEST",
+  "generatedAt": "2026-08-04T09:54:29.963Z",
+  "state": "PARTIAL",
+  "scope": {
+    "from": "2025-08-04",
+    "to": "2026-08-03",
+    "requestedDayCount": 365,
+    "locationCount": 8,
+    "shortLeadDays": [
+      1,
+      3
+    ],
+    "mediumLeadDays": [
+      5
+    ],
+    "shortConcurrency": 2,
+    "shortRequestDelayMs": 0,
+    "reportOnly": true,
+    "dailyPopAggregation": "MAX_OF_24_HOURLY_POP"
+  },
+  "shortHourlyPrecipitation": {
+    "state": "PARTIAL",
+    "expectedRowCount": 5840,
+    "rowCount": 4696,
+    "rowCoverageRatio": 0.8041095890410959,
+    "precipitationSampleCount": 4696,
+    "brierScore": 0.12714352640545143,
+    "temperatureSampleCount": 0,
+    "temperature": {
+      "minTemperature": {
+        "sampleCount": 0,
+        "meanAbsoluteError": null,
+        "rootMeanSquaredError": null,
+        "bias": null
+      },
+      "maxTemperature": {
+        "sampleCount": 0,
+        "meanAbsoluteError": null,
+        "rootMeanSquaredError": null,
+        "bias": null
+      }
+    },
+    "biasCalibration": {
+      "state": "NOT_APPLICABLE",
+      "method": null,
+      "appliedForecastCount": 0,
+      "lookAheadPairsUsed": 0,
+      "providerValuesMutated": false,
+      "rawTemperatureOnCalibratedPairs": null,
+      "adjustedTemperature": null,
+      "improvement": null,
+      "deploymentEligibility": null
+    },
+    "byLeadLocation": [
+      {
+        "leadDays": 1,
+        "areaCode": "2820000000",
+        "region": "인천광역시 남동구",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 294,
+        "forecastCoverageRatio": 0.8054794520547945,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 294,
+          "brierScore": 0.11431700680272094,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "112",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4150000000",
+        "region": "경기도 이천시",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 294,
+        "forecastCoverageRatio": 0.8054794520547945,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 294,
+          "brierScore": 0.12107857142857134,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "203",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4717000000",
+        "region": "경상북도 안동시",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 294,
+        "forecastCoverageRatio": 0.8054794520547945,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 294,
+          "brierScore": 0.1179003401360543,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "136",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4476000000",
+        "region": "충청남도 부여군",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 294,
+        "forecastCoverageRatio": 0.8054794520547945,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 294,
+          "brierScore": 0.12564013605442179,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "236",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4721000000",
+        "region": "경상북도 영주시",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 294,
+        "forecastCoverageRatio": 0.8054794520547945,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 294,
+          "brierScore": 0.11576190476190466,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "272",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4728000000",
+        "region": "경상북도 문경시",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 294,
+        "forecastCoverageRatio": 0.8054794520547945,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 294,
+          "brierScore": 0.12177687074829924,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "273",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4773000000",
+        "region": "경상북도 의성군",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 294,
+        "forecastCoverageRatio": 0.8054794520547945,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 294,
+          "brierScore": 0.11918537414965982,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "278",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "5176000000",
+        "region": "강원특별자치도 평창군",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 294,
+        "forecastCoverageRatio": 0.8054794520547945,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 294,
+          "brierScore": 0.13478367346938766,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "100",
+          "stationElevationM": 772.43,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "2820000000",
+        "region": "인천광역시 남동구",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 293,
+        "forecastCoverageRatio": 0.8027397260273973,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 293,
+          "brierScore": 0.1180614334470988,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "112",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4150000000",
+        "region": "경기도 이천시",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 293,
+        "forecastCoverageRatio": 0.8027397260273973,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 293,
+          "brierScore": 0.13601808873720142,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "203",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4717000000",
+        "region": "경상북도 안동시",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 293,
+        "forecastCoverageRatio": 0.8027397260273973,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 293,
+          "brierScore": 0.13442662116040974,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "136",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4476000000",
+        "region": "충청남도 부여군",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 293,
+        "forecastCoverageRatio": 0.8027397260273973,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 293,
+          "brierScore": 0.1282764505119455,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "236",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4721000000",
+        "region": "경상북도 영주시",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 293,
+        "forecastCoverageRatio": 0.8027397260273973,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 293,
+          "brierScore": 0.12460238907849826,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "272",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4728000000",
+        "region": "경상북도 문경시",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 293,
+        "forecastCoverageRatio": 0.8027397260273973,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 293,
+          "brierScore": 0.1384436860068261,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "273",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4773000000",
+        "region": "경상북도 의성군",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 293,
+        "forecastCoverageRatio": 0.8027397260273973,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 293,
+          "brierScore": 0.1366204778156998,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "278",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "5176000000",
+        "region": "강원특별자치도 평창군",
+        "state": "PARTIAL",
+        "expectedDayCount": 365,
+        "forecastDayCount": 293,
+        "forecastCoverageRatio": 0.8027397260273973,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 293,
+          "brierScore": 0.1475627986348123,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "100",
+          "stationElevationM": 772.43,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "NOT_APPLICABLE",
+          "method": null,
+          "appliedForecastCount": 0,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": null,
+          "adjustedTemperature": null,
+          "improvement": null,
+          "deploymentEligibility": null
+        }
+      }
+    ]
+  },
+  "historicalMediumFiveDay": {
+    "state": "PARTIAL",
+    "expectedRowCount": 2920,
+    "rowCount": 2920,
+    "rowCoverageRatio": 1,
+    "precipitationSampleCount": 2920,
+    "brierScore": 0.14500342465753405,
+    "temperatureSampleCount": 5830,
+    "temperature": {
+      "minTemperature": {
+        "sampleCount": 2915,
+        "meanAbsoluteError": 1.7840137221269308,
+        "rootMeanSquaredError": 2.370373167602059,
+        "bias": 0.7688507718696403
+      },
+      "maxTemperature": {
+        "sampleCount": 2915,
+        "meanAbsoluteError": 1.9354373927958834,
+        "rootMeanSquaredError": 2.5480682488954565,
+        "bias": 0.204322469982847
+      }
+    },
+    "biasCalibration": {
+      "state": "READY",
+      "method": "ROLLING_MEAN_ERROR_SUBTRACTION",
+      "minimumTrainingSampleCount": 30,
+      "rollingWindowDays": 90,
+      "maximumAbsoluteAdjustmentC": 5,
+      "appliedForecastCount": 2640,
+      "lookAheadPairsUsed": 0,
+      "providerValuesMutated": false,
+      "rawTemperatureOnCalibratedPairs": {
+        "minTemperature": {
+          "sampleCount": 2635,
+          "meanAbsoluteError": 1.8300569259962058,
+          "rootMeanSquaredError": 2.4183925220881406,
+          "bias": 0.7698671726755218
+        },
+        "maxTemperature": {
+          "sampleCount": 2635,
+          "meanAbsoluteError": 1.957874762808349,
+          "rootMeanSquaredError": 2.5834416536838245,
+          "bias": 0.2330170777988613
+        }
+      },
+      "adjustedTemperature": {
+        "minTemperature": {
+          "sampleCount": 2635,
+          "meanAbsoluteError": 1.6181711819736004,
+          "rootMeanSquaredError": 2.0802154850248042,
+          "bias": -0.12007883618817851
+        },
+        "maxTemperature": {
+          "sampleCount": 2635,
+          "meanAbsoluteError": 1.7916615128262734,
+          "rootMeanSquaredError": 2.318871423750728,
+          "bias": 0.011843780449513853
+        }
+      },
+      "improvement": {
+        "minTemperature": {
+          "meanAbsoluteErrorReduction": 0.2118857440226054,
+          "rootMeanSquaredErrorReduction": 0.33817703706333635
+        },
+        "maxTemperature": {
+          "meanAbsoluteErrorReduction": 0.16621324998207565,
+          "rootMeanSquaredErrorReduction": 0.26457022993309653
+        }
+      },
+      "deploymentEligibility": null
+    },
+    "byLeadLocation": [
+      {
+        "leadDays": 5,
+        "areaCode": "2820000000",
+        "region": "인천광역시 남동구",
+        "state": "READY",
+        "expectedDayCount": 365,
+        "forecastDayCount": 365,
+        "forecastCoverageRatio": 1,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.409315068493152,
+            "rootMeanSquaredError": 1.8524178942113796,
+            "bias": 0.18849315068493172
+          },
+          "maxTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.6216438356164395,
+            "rootMeanSquaredError": 2.0759879641744705,
+            "bias": -0.09945205479452066
+          }
+        },
+        "precipitation": {
+          "sampleCount": 365,
+          "brierScore": 0.1347671232876711,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "112",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "PARTIAL",
+          "method": "ROLLING_MEAN_ERROR_SUBTRACTION",
+          "minimumTrainingSampleCount": 30,
+          "rollingWindowDays": 90,
+          "maximumAbsoluteAdjustmentC": 5,
+          "appliedForecastCount": 330,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.4512121212121223,
+              "rootMeanSquaredError": 1.902701428830264,
+              "bias": 0.20393939393939414
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.653939393939395,
+              "rootMeanSquaredError": 2.1173597052017694,
+              "bias": -0.1721212121212122
+            }
+          },
+          "adjustedTemperature": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.4001328764869014,
+              "rootMeanSquaredError": 1.849315762850367,
+              "bias": -0.10085021124784473
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.6984661654548558,
+              "rootMeanSquaredError": 2.148797876860384,
+              "bias": -0.03616543395748248
+            }
+          },
+          "improvement": {
+            "minTemperature": {
+              "meanAbsoluteErrorReduction": 0.05107924472522085,
+              "rootMeanSquaredErrorReduction": 0.05338566597989702
+            },
+            "maxTemperature": {
+              "meanAbsoluteErrorReduction": -0.04452677151546092,
+              "rootMeanSquaredErrorReduction": -0.03143817165861451
+            }
+          },
+          "deploymentEligibility": {
+            "minTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C"
+              ]
+            },
+            "maxTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4150000000",
+        "region": "경기도 이천시",
+        "state": "READY",
+        "expectedDayCount": 365,
+        "forecastDayCount": 365,
+        "forecastCoverageRatio": 1,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.4854794520547938,
+            "rootMeanSquaredError": 1.8609174346623052,
+            "bias": 0.36109589041095924
+          },
+          "maxTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.8676712328767133,
+            "rootMeanSquaredError": 2.3606999194283556,
+            "bias": -0.3180821917808221
+          }
+        },
+        "precipitation": {
+          "sampleCount": 365,
+          "brierScore": 0.1435342465753423,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "203",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "PARTIAL",
+          "method": "ROLLING_MEAN_ERROR_SUBTRACTION",
+          "minimumTrainingSampleCount": 30,
+          "rollingWindowDays": 90,
+          "maximumAbsoluteAdjustmentC": 5,
+          "appliedForecastCount": 330,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.4990909090909093,
+              "rootMeanSquaredError": 1.871144520923442,
+              "bias": 0.3093939393939394
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.8975757575757588,
+              "rootMeanSquaredError": 2.3860325888703864,
+              "bias": -0.315757575757576
+            }
+          },
+          "adjustedTemperature": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.4994555323939676,
+              "rootMeanSquaredError": 1.8648097892858377,
+              "bias": -0.1533465768030429
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.8686229543928516,
+              "rootMeanSquaredError": 2.40162339688569,
+              "bias": -0.005527219689350578
+            }
+          },
+          "improvement": {
+            "minTemperature": {
+              "meanAbsoluteErrorReduction": -0.00036462330305830903,
+              "rootMeanSquaredErrorReduction": 0.0063347316376043405
+            },
+            "maxTemperature": {
+              "meanAbsoluteErrorReduction": 0.02895280318290716,
+              "rootMeanSquaredErrorReduction": -0.015590808015303548
+            }
+          },
+          "deploymentEligibility": {
+            "minTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C"
+              ]
+            },
+            "maxTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4717000000",
+        "region": "경상북도 안동시",
+        "state": "READY",
+        "expectedDayCount": 365,
+        "forecastDayCount": 365,
+        "forecastCoverageRatio": 1,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.5252054794520553,
+            "rootMeanSquaredError": 1.9468625972581473,
+            "bias": 0.34328767123287685
+          },
+          "maxTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.7906849315068485,
+            "rootMeanSquaredError": 2.2610822963096533,
+            "bias": -0.24219178082191783
+          }
+        },
+        "precipitation": {
+          "sampleCount": 365,
+          "brierScore": 0.13358904109589032,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "136",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "PARTIAL",
+          "method": "ROLLING_MEAN_ERROR_SUBTRACTION",
+          "minimumTrainingSampleCount": 30,
+          "rollingWindowDays": 90,
+          "maximumAbsoluteAdjustmentC": 5,
+          "appliedForecastCount": 330,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.5827272727272736,
+              "rootMeanSquaredError": 2.003746490951388,
+              "bias": 0.3287878787878791
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.7845454545454538,
+              "rootMeanSquaredError": 2.262654648992211,
+              "bias": -0.17303030303030315
+            }
+          },
+          "adjustedTemperature": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.512825571325466,
+              "rootMeanSquaredError": 1.9132279151649692,
+              "bias": -0.18728455853939555
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.7791291229189448,
+              "rootMeanSquaredError": 2.270431523745376,
+              "bias": -0.026828860039998424
+            }
+          },
+          "improvement": {
+            "minTemperature": {
+              "meanAbsoluteErrorReduction": 0.06990170140180774,
+              "rootMeanSquaredErrorReduction": 0.09051857578641886
+            },
+            "maxTemperature": {
+              "meanAbsoluteErrorReduction": 0.005416331626509008,
+              "rootMeanSquaredErrorReduction": -0.0077768747531647975
+            }
+          },
+          "deploymentEligibility": {
+            "minTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C"
+              ]
+            },
+            "maxTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4476000000",
+        "region": "충청남도 부여군",
+        "state": "READY",
+        "expectedDayCount": 365,
+        "forecastDayCount": 365,
+        "forecastCoverageRatio": 1,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.59150684931507,
+            "rootMeanSquaredError": 2.053763668360956,
+            "bias": 0.7646575342465751
+          },
+          "maxTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.596438356164384,
+            "rootMeanSquaredError": 2.0592923375535706,
+            "bias": -0.3104109589041098
+          }
+        },
+        "precipitation": {
+          "sampleCount": 365,
+          "brierScore": 0.14578082191780786,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "236",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "PARTIAL",
+          "method": "ROLLING_MEAN_ERROR_SUBTRACTION",
+          "minimumTrainingSampleCount": 30,
+          "rollingWindowDays": 90,
+          "maximumAbsoluteAdjustmentC": 5,
+          "appliedForecastCount": 330,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.6512121212121218,
+              "rootMeanSquaredError": 2.1045765427378553,
+              "bias": 0.7960606060606057
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.5996969696969696,
+              "rootMeanSquaredError": 2.0723358216215244,
+              "bias": -0.3203030303030304
+            }
+          },
+          "adjustedTemperature": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.4948438766273968,
+              "rootMeanSquaredError": 1.921908242856875,
+              "bias": -0.10562659101463219
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.5917079248121053,
+              "rootMeanSquaredError": 2.0734718511757024,
+              "bias": -0.08377322200853098
+            }
+          },
+          "improvement": {
+            "minTemperature": {
+              "meanAbsoluteErrorReduction": 0.15636824458472498,
+              "rootMeanSquaredErrorReduction": 0.18266829988098032
+            },
+            "maxTemperature": {
+              "meanAbsoluteErrorReduction": 0.007989044884864294,
+              "rootMeanSquaredErrorReduction": -0.0011360295541780197
+            }
+          },
+          "deploymentEligibility": {
+            "minTemperature": {
+              "eligible": true,
+              "activationState": "VALIDATED_CANDIDATE",
+              "reasons": []
+            },
+            "maxTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4721000000",
+        "region": "경상북도 영주시",
+        "state": "READY",
+        "expectedDayCount": 365,
+        "forecastDayCount": 365,
+        "forecastCoverageRatio": 1,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.6890410958904116,
+            "rootMeanSquaredError": 2.1725245714832853,
+            "bias": 0.49561643835616465
+          },
+          "maxTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.678082191780822,
+            "rootMeanSquaredError": 2.116931094833739,
+            "bias": -0.1131506849315067
+          }
+        },
+        "precipitation": {
+          "sampleCount": 365,
+          "brierScore": 0.14235616438356152,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "272",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "PARTIAL",
+          "method": "ROLLING_MEAN_ERROR_SUBTRACTION",
+          "minimumTrainingSampleCount": 30,
+          "rollingWindowDays": 90,
+          "maximumAbsoluteAdjustmentC": 5,
+          "appliedForecastCount": 330,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.7321212121212135,
+              "rootMeanSquaredError": 2.2160297558444206,
+              "bias": 0.4715151515151518
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.6893939393939388,
+              "rootMeanSquaredError": 2.1377912702486923,
+              "bias": -0.07787878787878783
+            }
+          },
+          "adjustedTemperature": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.7054441631457493,
+              "rootMeanSquaredError": 2.1691767293252036,
+              "bias": -0.11997432875484589
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.713193154655221,
+              "rootMeanSquaredError": 2.165972997910588,
+              "bias": 0.08084758222492815
+            }
+          },
+          "improvement": {
+            "minTemperature": {
+              "meanAbsoluteErrorReduction": 0.02667704897546419,
+              "rootMeanSquaredErrorReduction": 0.04685302651921708
+            },
+            "maxTemperature": {
+              "meanAbsoluteErrorReduction": -0.02379921526128226,
+              "rootMeanSquaredErrorReduction": -0.02818172766189564
+            }
+          },
+          "deploymentEligibility": {
+            "minTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C"
+              ]
+            },
+            "maxTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C",
+                "ABSOLUTE_BIAS_NOT_REDUCED"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4728000000",
+        "region": "경상북도 문경시",
+        "state": "READY",
+        "expectedDayCount": 365,
+        "forecastDayCount": 365,
+        "forecastCoverageRatio": 1,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.474794520547946,
+            "rootMeanSquaredError": 1.8858158366773292,
+            "bias": 0.334520547945205
+          },
+          "maxTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.6424657534246585,
+            "rootMeanSquaredError": 2.108891807925255,
+            "bias": -0.11095890410958895
+          }
+        },
+        "precipitation": {
+          "sampleCount": 365,
+          "brierScore": 0.1450958904109587,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "273",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "PARTIAL",
+          "method": "ROLLING_MEAN_ERROR_SUBTRACTION",
+          "minimumTrainingSampleCount": 30,
+          "rollingWindowDays": 90,
+          "maximumAbsoluteAdjustmentC": 5,
+          "appliedForecastCount": 330,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.5248484848484851,
+              "rootMeanSquaredError": 1.9294841515050314,
+              "bias": 0.34121212121212074
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.638181818181818,
+              "rootMeanSquaredError": 2.120491652538357,
+              "bias": -0.04000000000000003
+            }
+          },
+          "adjustedTemperature": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.4857130063225468,
+              "rootMeanSquaredError": 1.8884064355916064,
+              "bias": -0.11268656640842162
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.6620087914286745,
+              "rootMeanSquaredError": 2.154844393858286,
+              "bias": 0.13276752989619203
+            }
+          },
+          "improvement": {
+            "minTemperature": {
+              "meanAbsoluteErrorReduction": 0.03913547852593835,
+              "rootMeanSquaredErrorReduction": 0.04107771591342502
+            },
+            "maxTemperature": {
+              "meanAbsoluteErrorReduction": -0.023826973246856564,
+              "rootMeanSquaredErrorReduction": -0.03435274131992916
+            }
+          },
+          "deploymentEligibility": {
+            "minTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C"
+              ]
+            },
+            "maxTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C",
+                "ABSOLUTE_BIAS_NOT_REDUCED"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4773000000",
+        "region": "경상북도 의성군",
+        "state": "READY",
+        "expectedDayCount": 365,
+        "forecastDayCount": 365,
+        "forecastCoverageRatio": 1,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.6323287671232882,
+            "rootMeanSquaredError": 2.115306253937052,
+            "bias": 0.45534246575342485
+          },
+          "maxTemperature": {
+            "sampleCount": 365,
+            "meanAbsoluteError": 1.7608219178082183,
+            "rootMeanSquaredError": 2.2688419591537077,
+            "bias": -0.4260273972602741
+          }
+        },
+        "precipitation": {
+          "sampleCount": 365,
+          "brierScore": 0.14399999999999985,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "278",
+          "stationElevationM": null,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "PARTIAL",
+          "method": "ROLLING_MEAN_ERROR_SUBTRACTION",
+          "minimumTrainingSampleCount": 30,
+          "rollingWindowDays": 90,
+          "maximumAbsoluteAdjustmentC": 5,
+          "appliedForecastCount": 330,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.6903030303030304,
+              "rootMeanSquaredError": 2.1775298766346154,
+              "bias": 0.47393939393939405
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.7684848484848479,
+              "rootMeanSquaredError": 2.295595255213247,
+              "bias": -0.3830303030303031
+            }
+          },
+          "adjustedTemperature": {
+            "minTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.6540670420731045,
+              "rootMeanSquaredError": 2.1306736067501046,
+              "bias": -0.1193892444827895
+            },
+            "maxTemperature": {
+              "sampleCount": 330,
+              "meanAbsoluteError": 1.7259182259805512,
+              "rootMeanSquaredError": 2.282842072488086,
+              "bias": -0.059777638281922285
+            }
+          },
+          "improvement": {
+            "minTemperature": {
+              "meanAbsoluteErrorReduction": 0.03623598822992591,
+              "rootMeanSquaredErrorReduction": 0.04685626988451075
+            },
+            "maxTemperature": {
+              "meanAbsoluteErrorReduction": 0.04256662250429666,
+              "rootMeanSquaredErrorReduction": 0.012753182725161238
+            }
+          },
+          "deploymentEligibility": {
+            "minTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C"
+              ]
+            },
+            "maxTemperature": {
+              "eligible": false,
+              "activationState": "RAW_ONLY",
+              "reasons": [
+                "MAE_REDUCTION_BELOW_0_1C",
+                "RMSE_REDUCTION_BELOW_0_1C"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "5176000000",
+        "region": "강원특별자치도 평창군",
+        "state": "READY",
+        "expectedDayCount": 365,
+        "forecastDayCount": 365,
+        "forecastCoverageRatio": 1,
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 360,
+            "meanAbsoluteError": 3.487777777777785,
+            "rootMeanSquaredError": 4.178297101292182,
+            "bias": 3.241666666666671
+          },
+          "maxTemperature": {
+            "sampleCount": 360,
+            "meanAbsoluteError": 3.5477777777777773,
+            "rootMeanSquaredError": 4.3356083771484695,
+            "bias": 3.29722222222222
+          }
+        },
+        "precipitation": {
+          "sampleCount": 365,
+          "brierScore": 0.17090410958904076,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        },
+        "validationSpatialScope": {
+          "forecastSpatialLevel": "REGIONAL_FORECAST",
+          "observationSpatialLevel": "ASOS_POINT",
+          "stationId": "100",
+          "stationElevationM": 772.43,
+          "farmElevationM": null,
+          "physicalElevationCorrectionApplied": false,
+          "limitation": "REGIONAL_FORECAST_VALIDATED_AGAINST_POINT_ASOS_NOT_FIELD_MICROCLIMATE"
+        },
+        "biasCalibration": {
+          "state": "PARTIAL",
+          "method": "ROLLING_MEAN_ERROR_SUBTRACTION",
+          "minimumTrainingSampleCount": 30,
+          "rollingWindowDays": 90,
+          "maximumAbsoluteAdjustmentC": 5,
+          "appliedForecastCount": 330,
+          "lookAheadPairsUsed": 0,
+          "providerValuesMutated": false,
+          "rawTemperatureOnCalibratedPairs": {
+            "minTemperature": {
+              "sampleCount": 325,
+              "meanAbsoluteError": 3.5347692307692347,
+              "rootMeanSquaredError": 4.246475461621535,
+              "bias": 3.2720000000000002
+            },
+            "maxTemperature": {
+              "sampleCount": 325,
+              "meanAbsoluteError": 3.6569230769230767,
+              "rootMeanSquaredError": 4.4343241614964,
+              "bias": 3.394153846153845
+            }
+          },
+          "adjustedTemperature": {
+            "minTemperature": {
+              "sampleCount": 325,
+              "meanAbsoluteError": 2.2017291751896706,
+              "rootMeanSquaredError": 2.757753382138468,
+              "bias": -0.060570978040090685
+            },
+            "maxTemperature": {
+              "sampleCount": 325,
+              "meanAbsoluteError": 2.3019778283537646,
+              "rootMeanSquaredError": 2.9465160189042368,
+              "bias": 0.09445925506770249
+            }
+          },
+          "improvement": {
+            "minTemperature": {
+              "meanAbsoluteErrorReduction": 1.333040055579564,
+              "rootMeanSquaredErrorReduction": 1.488722079483067
+            },
+            "maxTemperature": {
+              "meanAbsoluteErrorReduction": 1.354945248569312,
+              "rootMeanSquaredErrorReduction": 1.4878081425921637
+            }
+          },
+          "deploymentEligibility": {
+            "minTemperature": {
+              "eligible": true,
+              "activationState": "VALIDATED_CANDIDATE",
+              "reasons": []
+            },
+            "maxTemperature": {
+              "eligible": true,
+              "activationState": "VALIDATED_CANDIDATE",
+              "reasons": []
+            }
+          }
+        }
+      }
+    ],
+    "permissionState": "SUCCESS"
+  },
+  "guarantees": {
+    "incompleteHourlyPopScored": false,
+    "currentForecastSubstitutedForHistoricalIssue": false,
+    "missingValuesImputed": false,
+    "credentialsDisclosed": false
+  },
+  "failures": [],
+  "artifacts": {
+    "extractJson": "product_upgrade_validation/backtest_1y/extended-forecast-extract-2025-08-04-2026-08-03.json"
+  }
+}

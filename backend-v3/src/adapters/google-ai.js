@@ -2,8 +2,9 @@ import { requestProviderJson } from "./network.js";
 
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const DEFAULT_TIMEOUT_MS = 8_000;
-const MAX_CATALOG_ITEMS = 24;
-const MAX_SELECTED_ITEMS = 6;
+// 분석 근거 24개 + 검색된 재배 참고 문단 3개를 함께 넘길 수 있어야 한다.
+const MAX_CATALOG_ITEMS = 30;
+const MAX_SELECTED_ITEMS = 8;
 const MAX_HARVEST_PHOTO_BYTES = 6 * 1024 * 1024;
 const MODEL_PATTERN = /^gemini-[A-Za-z0-9._-]{1,64}$/;
 const HARVEST_CROPS = new Set(["APPLE", "PEAR", "CUCUMBER", "POTATO", "LETTUCE"]);
@@ -57,7 +58,10 @@ export function createGoogleAiSelector({
                     "You are a selector, not an answer writer. Select only IDs " +
                     "from AVAILABLE_ITEMS that best answer the intent. Never add " +
                     "facts, numbers, causes, diagnoses, treatments, pesticide or " +
-                    "fertilizer advice. Return JSON only as " +
+                    "fertilizer advice. Items with kind KNOWLEDGE are reviewed " +
+                    "background reading, not findings about this farm: select at " +
+                    "most two of them, and only when they explain a non-KNOWLEDGE " +
+                    "item you also selected. Return JSON only as " +
                     '{"selectedIds":["ITEM_ID"]}.'
                 }
               ]

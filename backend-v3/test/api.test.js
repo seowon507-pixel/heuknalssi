@@ -34,12 +34,14 @@ async function openServer(
     config = {},
     clock = Date.now,
     randomBytes = makeRandomBytes(),
+    knowledgeImages = null,
   },
 ) {
   const handler = createHttpHandler({
     services,
     clock,
     randomBytes,
+    knowledgeImages,
     config: {
       allowedOrigins: [ALLOWED_ORIGIN],
       logger: { info() {}, error() {} },
@@ -556,4 +558,131 @@ test("CORS preflight is allowlisted and does not create a session", async (t) =>
   assert.equal(rejected.status, 403);
   assert.equal((await rejected.json()).code, "ORIGIN_REJECTED");
   assert.equal(rejected.headers.get("access-control-allow-origin"), null);
+});
+
+// ── 재배 참고 이미지 프록시 라우트 ──────────────────────────
+
+const PROXY_JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+function knowledgeImageStub({
+  state = "READY",
+  fetchImage = async () => ({ contentType: "image/jpeg", body: PROXY_JPEG }),
+} = {}) {
+  const calls = [];
+  return {
+    calls,
+    state,
+    async fetchImage(imageId, options) {
+      calls.push(imageId);
+      return fetchImage(imageId, options);
+    },
+  };
+}
+
+// 이 백엔드는 모든 요청에 세션을 자동 발급하므로 "미인증" 상태가 없다. 참고
+// 이미지 라우트의 실제 방어선은 Origin 검사와 고정 레지스트리이며, 이 테스트는
+// 허용되지 않은 오리진이 프록시까지 도달하지 못한다는 점을 고정한다.
+test("허용되지 않은 오리진은 이미지 프록시에 도달하지 못한다", async (t) => {
+  const knowledgeImages = knowledgeImageStub();
+  const { baseUrl } = await openServer(t, {
+    services: makeFlowServices(),
+    knowledgeImages,
+  });
+
+  const response = await fetch(`${baseUrl}/api/knowledge-images/APPLE_SUNBURN`, {
+    headers: { Origin: "https://evil.example.test" },
+  });
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).code, "ORIGIN_REJECTED");
+  assert.equal(response.headers.get("access-control-allow-origin"), null);
+  assert.equal(knowledgeImages.calls.length, 0);
+});
+
+test("세션이 있으면 이미지를 바이너리로 전달하고 캐시를 허용한다", async (t) => {
+  const knowledgeImages = knowledgeImageStub();
+  const { baseUrl } = await openServer(t, {
+    services: makeFlowServices(),
+    knowledgeImages,
+  });
+  const { cookie } = await startSession(baseUrl);
+
+  const response = await fetch(`${baseUrl}/api/knowledge-images/APPLE_SUNBURN`, {
+    headers: { Origin: ALLOWED_ORIGIN, Cookie: cookie },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "image/jpeg");
+  assert.match(response.headers.get("cache-control"), /max-age=\d+/);
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.deepEqual(
+    Buffer.from(await response.arrayBuffer()),
+    PROXY_JPEG,
+  );
+  assert.deepEqual(knowledgeImages.calls, ["APPLE_SUNBURN"]);
+});
+
+test("이미지 식별자 형식이 아닌 경로는 라우트에 닿지 않는다", async (t) => {
+  const knowledgeImages = knowledgeImageStub();
+  const { baseUrl } = await openServer(t, {
+    services: makeFlowServices(),
+    knowledgeImages,
+  });
+  const { cookie } = await startSession(baseUrl);
+
+  for (const path of [
+    "/api/knowledge-images/lowercase",
+    "/api/knowledge-images/..%2F..%2Fetc%2Fpasswd",
+    "/api/knowledge-images/https:%2F%2Fevil.test%2Fa.jpg",
+    "/api/knowledge-images/",
+    "/api/knowledge-images/A",
+  ]) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      headers: { Origin: ALLOWED_ORIGIN, Cookie: cookie },
+    });
+    assert.equal(response.status, 404, `거절해야 한다: ${path}`);
+  }
+  assert.equal(knowledgeImages.calls.length, 0);
+});
+
+test("이미지 소스가 연결되지 않으면 503으로 구분해 알린다", async (t) => {
+  const knowledgeImages = knowledgeImageStub({ state: "NOT_CONNECTED" });
+  const { baseUrl } = await openServer(t, {
+    services: makeFlowServices(),
+    knowledgeImages,
+  });
+  const { cookie } = await startSession(baseUrl);
+
+  const response = await fetch(`${baseUrl}/api/knowledge-images/APPLE_SUNBURN`, {
+    headers: { Origin: ALLOWED_ORIGIN, Cookie: cookie },
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).code, "KNOWLEDGE_IMAGE_NOT_CONNECTED");
+  assert.equal(knowledgeImages.calls.length, 0);
+});
+
+test("업스트림 실패 코드가 사용자에게 그대로 새지 않는다", async (t) => {
+  const knowledgeImages = knowledgeImageStub({
+    async fetchImage() {
+      const error = new Error("upstream secret detail");
+      error.code = "KNOWLEDGE_IMAGE_UNAVAILABLE";
+      error.name = "KnowledgeImageError";
+      throw Object.assign(error, {
+        constructor: undefined,
+      });
+    },
+  });
+  const { baseUrl } = await openServer(t, {
+    services: makeFlowServices(),
+    knowledgeImages,
+  });
+  const { cookie } = await startSession(baseUrl);
+
+  const response = await fetch(`${baseUrl}/api/knowledge-images/APPLE_SUNBURN`, {
+    headers: { Origin: ALLOWED_ORIGIN, Cookie: cookie },
+  });
+
+  assert.ok(response.status >= 500);
+  assert.doesNotMatch(await response.text(), /secret/);
 });

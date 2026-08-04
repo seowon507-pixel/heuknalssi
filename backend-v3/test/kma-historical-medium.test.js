@@ -9,15 +9,16 @@ import {
 
 const TEMPERATURE = [
   "#START7777",
-  "# REG_ID,TM_FC,TM_EF,MOD,MIN,MAX",
-  "11B20201,2025080418,202508090000,A01,23,31",
+  "# REG_ID TM_FC TM_EF MOD STN C MIN MAX MIN_L MIN_H MAX_L MAX_H",
+  "11B20201,202508041800,202508090000,A01,109,2,23,31,1,1,1,1,=",
+  "21F10501,202508041800,202508090000,A01,109,5,18,27,-999,-999,-999,-999,=",
   "#7777END",
 ].join("\n");
 const LAND = [
   "#START7777",
-  "# REG_ID,TM_FC,TM_EF,MOD,RN_ST",
-  "11B00000,2025080418,202508090000,A02,40",
-  "11B00000,2025080418,202508091200,A02,60",
+  "# REG_ID TM_FC TM_EF MOD STN C SKY PRE CONF WF RN_ST",
+  "11B00000,202508041800,202508090000,A02,109,2,WB03,WB00,HIGH,CLOUDY,40,=",
+  "11B00000,202508041800,202508091200,A02,109,2,WB03,WB00,HIGH,CLOUDY,60,=",
   "#7777END",
 ].join("\n");
 
@@ -67,6 +68,8 @@ test("historical medium adapter joins temperature and AM/PM land rows", async ()
     ],
   });
   assert.equal(result.adapterState, "SUCCESS");
+  assert.equal(result.validFrom, "2025-08-08T15:00:00.000Z");
+  assert.equal(result.validTo, "2025-08-09T14:59:59.000Z");
   assert.deepEqual(result.data.points[0], {
     id: "incheon",
     temperatureRegId: "11B20201",
@@ -78,7 +81,7 @@ test("historical medium adapter joins temperature and AM/PM land rows", async ()
   });
   assert.equal(requested.length, 2);
   assert.ok(requested.every((url) => url.searchParams.get("authKey") === "secret"));
-  assert.ok(requested.every((url) => url.searchParams.get("tmfc1") === "2025080418"));
+  assert.ok(requested.every((url) => url.searchParams.get("tmfc1") === "202508041800"));
 });
 
 test("historical medium permission failure stays unavailable", async () => {

@@ -24,6 +24,7 @@ function stationMapping({
   stationName,
   stationLatitude,
   stationLongitude,
+  stationElevationM = null,
   temperatureRegId,
   landRegId,
 }) {
@@ -53,6 +54,7 @@ function stationMapping({
         name: stationName,
         latitude: stationLatitude,
         longitude: stationLongitude,
+        elevationM: stationElevationM,
         stationMetadataVerified: true,
       },
       provenance: {
@@ -158,6 +160,7 @@ export const REVIEWED_LOCATION_MAPPINGS = Object.freeze(
       stationName: "대관령",
       stationLatitude: 37.67713,
       stationLongitude: 128.71834,
+      stationElevationM: 772.43,
       temperatureRegId: "11D10503",
       landRegId: "11D10000",
     }),

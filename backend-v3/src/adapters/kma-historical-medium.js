@@ -76,7 +76,7 @@ function compactIssue(value) {
   if (!/^\d{10}(?:\d{2})?$/u.test(text)) {
     throw new SchemaChangedError("Historical medium issue time is invalid.");
   }
-  return kmaDateTimeToIso(text.slice(0, 8), `${text.slice(8, 10)}00`, {
+  return kmaDateTimeToIso(text.slice(0, 8), `${text.slice(8, 10)}${text.slice(10, 12) || "00"}`, {
     field: "KMA historical medium issue time",
   });
 }
@@ -115,6 +115,11 @@ export function parseKmaHistoricalMediumTable(text, { kind } = {}) {
     .filter((line) => !line.trimStart().startsWith("#"))
     .map((line, index) => {
       const values = columns(line);
+      // The live typ01 API appends one undocumented `,=` record terminator.
+      // Accept only that exact extra cell; any other drift remains fail-closed.
+      if (values.length === header.length + 1 && values.at(-1) === "=") {
+        values.pop();
+      }
       if (values.length !== header.length) {
         throw new SchemaChangedError(
           `Historical medium row ${index} does not match its CSV header.`,
@@ -144,7 +149,7 @@ export function parseKmaHistoricalMediumTable(text, { kind } = {}) {
             : null,
       });
     });
-  if (rows.some(({ regionId }) => !/^11[0-9A-Z]{6}$/u.test(regionId))) {
+  if (rows.some(({ regionId }) => !/^[0-9]{2}[A-Z][0-9]{5}$/u.test(regionId))) {
     throw new SchemaChangedError("Historical medium response has an invalid region ID.");
   }
   return Object.freeze(rows);
@@ -286,7 +291,7 @@ export function createKmaHistoricalMediumForecastAdapter({
           const issuedAt = kmaDateTimeToIso(baseDate, baseTime, {
             field: "KMA historical medium base time",
           });
-          const compactIssue = `${baseDate}${baseTime.slice(0, 2)}`;
+          const compactIssue = `${baseDate}${baseTime}`;
           const compactTarget = String(targetDate ?? "").replaceAll("-", "");
           if (!/^\d{8}$/u.test(compactTarget)) {
             throw new TypeError("Historical medium targetDate must be an ISO date.");
@@ -331,11 +336,17 @@ export function createKmaHistoricalMediumForecastAdapter({
               Number.isFinite(point.maxTemperature) ||
               Number.isFinite(point.precipitationProbability),
           ).length;
+          const validFrom = kmaDateTimeToIso(compactTarget, "0000", {
+            field: "KMA historical medium target time",
+          });
+          const validTo = new Date(
+            new Date(validFrom).getTime() + 24 * 60 * 60 * 1000 - 1000,
+          ).toISOString();
           return {
             adapterState: usableCount > 0 ? "SUCCESS" : "NO_DATA",
             issuedAt,
-            validFrom: `${compactTarget.slice(0, 4)}-${compactTarget.slice(4, 6)}-${compactTarget.slice(6, 8)}T00:00:00+09:00`,
-            validTo: `${compactTarget.slice(0, 4)}-${compactTarget.slice(4, 6)}-${compactTarget.slice(6, 8)}T23:59:59+09:00`,
+            validFrom,
+            validTo,
             provenance: { ...envelopeBase.provenance, providerIssueTime: issuedAt },
             qualityFlags: [
               "KMA_HISTORICAL_MEDIUM_TYP01",

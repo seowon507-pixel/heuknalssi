@@ -647,6 +647,143 @@ function errorMetrics(errors) {
   };
 }
 
+function clamp(value, minimum, maximum) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+/**
+ * Produces an operational rolling bias calibration without look-ahead. For
+ * each forecast, only forecast-observation pairs whose valid date was already
+ * complete before that forecast's issue date may train the adjustment.
+ * Provider values remain available as raw* fields and missing values stay null.
+ */
+export function buildRollingTemperatureBiasCalibration({
+  issuedForecasts = [],
+  observations = [],
+  minimumTrainingSampleCount = 30,
+  rollingWindowDays = 90,
+  maximumAbsoluteAdjustmentC = 5,
+} = {}) {
+  if (!Array.isArray(issuedForecasts) || !Array.isArray(observations)) {
+    throw new TypeError('issuedForecasts and observations must be arrays.');
+  }
+  if (
+    !Number.isInteger(minimumTrainingSampleCount) ||
+    minimumTrainingSampleCount < 2 ||
+    minimumTrainingSampleCount > 365
+  ) {
+    throw new TypeError(
+      'minimumTrainingSampleCount must be an integer between 2 and 365.',
+    );
+  }
+  if (
+    !Number.isInteger(rollingWindowDays) ||
+    rollingWindowDays < minimumTrainingSampleCount ||
+    rollingWindowDays > 730
+  ) {
+    throw new TypeError(
+      'rollingWindowDays must include the training sample count and be at most 730.',
+    );
+  }
+  if (
+    !Number.isFinite(maximumAbsoluteAdjustmentC) ||
+    maximumAbsoluteAdjustmentC <= 0 ||
+    maximumAbsoluteAdjustmentC > 10
+  ) {
+    throw new TypeError(
+      'maximumAbsoluteAdjustmentC must be greater than 0 and at most 10.',
+    );
+  }
+
+  const observationsByDate = uniqueObservations(observations);
+  const forecasts = issuedForecasts
+    .map(normalizeIssuedForecast)
+    .sort(
+      (left, right) =>
+        Date.parse(left.issuedAt) - Date.parse(right.issuedAt) ||
+        left.validDate.localeCompare(right.validDate),
+    );
+  const rows = forecasts.map((forecast) => {
+    const issueDate = seoulDateFromInstant(new Date(forecast.issuedAt));
+    const metrics = {};
+    for (const metric of NUMERIC_FORECAST_METRICS) {
+      const trainingErrors = [];
+      for (const historical of forecasts) {
+        if (Date.parse(historical.validAt) >= Date.parse(forecast.issuedAt)) {
+          continue;
+        }
+        if (historical.validDate >= issueDate) continue;
+        const ageDays = daysBetween(historical.validDate, issueDate);
+        if (ageDays < 1 || ageDays > rollingWindowDays) continue;
+        const observation = observationsByDate.get(historical.validDate);
+        if (
+          !observation ||
+          historical[metric] === null ||
+          observation[metric] === null
+        ) {
+          continue;
+        }
+        trainingErrors.push(historical[metric] - observation[metric]);
+      }
+      const sampleCount = trainingErrors.length;
+      const rawBiasC =
+        sampleCount === 0
+          ? null
+          : trainingErrors.reduce((sum, value) => sum + value, 0) /
+            sampleCount;
+      const applied =
+        forecast[metric] !== null &&
+        sampleCount >= minimumTrainingSampleCount;
+      const appliedBiasC = applied
+        ? clamp(
+            rawBiasC,
+            -maximumAbsoluteAdjustmentC,
+            maximumAbsoluteAdjustmentC,
+          )
+        : null;
+      metrics[metric] = Object.freeze({
+        sampleCount,
+        rawBiasC,
+        appliedBiasC,
+        rawValue: forecast[metric],
+        adjustedValue:
+          appliedBiasC === null ? null : forecast[metric] - appliedBiasC,
+        applied,
+      });
+    }
+    return Object.freeze({
+      issuedAt: forecast.issuedAt,
+      validAt: forecast.validAt,
+      validDate: forecast.validDate,
+      precipitationProbability: forecast.precipitationProbability,
+      metrics: Object.freeze(metrics),
+    });
+  });
+  const appliedForecastCount = rows.filter((row) =>
+    NUMERIC_FORECAST_METRICS.some((metric) => row.metrics[metric].applied),
+  ).length;
+
+  return Object.freeze({
+    state:
+      rows.length === 0
+        ? 'HOLD'
+        : appliedForecastCount === 0
+          ? 'WARMUP'
+          : appliedForecastCount === rows.length
+            ? 'READY'
+            : 'PARTIAL',
+    method: 'ROLLING_MEAN_ERROR_SUBTRACTION',
+    minimumTrainingSampleCount,
+    rollingWindowDays,
+    maximumAbsoluteAdjustmentC,
+    issuedForecastCount: rows.length,
+    appliedForecastCount,
+    lookAheadPairsUsed: 0,
+    providerValuesMutated: false,
+    rows: Object.freeze(rows),
+  });
+}
+
 /**
  * Compares archived, issued-at-the-time daily forecasts with later ASOS
  * observations. Missing pairs remain excluded and visible; they are never

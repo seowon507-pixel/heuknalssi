@@ -97,6 +97,50 @@ GOOGLE_AI_MODEL=gemini-3.5-flash-lite
 않고, 서버가 분류한 질문 주제와 검증된 사실·행동 목록만 전달합니다.
 Google AI는 허용된 항목 ID만 선택하며 최종 문장은 서버가 작성합니다.
 
+### 흙톡 재배 참고 지식 (RAG)
+
+도우미는 현재 분석 근거 외에 검수된 재배 참고 문단을 함께 검색해 답변에
+붙입니다. 문단마다 이미지 슬롯과 출처가 있어 설명과 사진을 함께 보여줍니다.
+
+- 코퍼스: `runtime/reviewed-knowledge-base.js` (문단 36건, 이미지 슬롯 9건)
+- 검색: `src/application/knowledge-retrieval.js`. 한국어 형태소 분석기 없이
+  공백 토큰과 문자 bigram을 색인하는 BM25이며, 작물·주제 필터와 상대 임계값을
+  함께 씁니다. 외부 호출과 무작위성이 없어 같은 질문은 항상 같은 문단을
+  돌려줍니다.
+- 생성: 하지 않습니다. Google AI는 여기서도 항목 ID만 선택하고, 답변에 실리는
+  문장은 검수된 문단 원문입니다. 임베딩 API도 사용하지 않습니다.
+- 안전 정책이 먼저 실행되므로 농약·비료·병명 질문에서는 검색을 아예
+  건너뜁니다. 응답의 `retrieval.state`가 `SKIPPED_BY_POLICY`로 표시됩니다.
+- 응답에 `references[]`가 추가됩니다. 기존 `answer`, `mode`, `grounded`,
+  `outcome`, `notice` 필드는 그대로라 이전 클라이언트와 호환됩니다.
+
+문단은 현재 전부 `reviewState: "DRAFT"`입니다. 운영에서는 DRAFT가 노출되지
+않으므로 흙톡은 기존처럼 분석 근거만으로 답합니다. 개발·시연에서 보려면
+`ALLOW_DRAFT_KNOWLEDGE=true`를 설정하고, 화면에는 `검수 대기 자료` 배지가
+함께 붙습니다. 검수를 마친 문단은 `reviewState`를 `REVIEWED`로 바꾸고
+`reviewedBy`에 검수자를 적으면 플래그 없이 노출됩니다.
+
+### 재배 참고 이미지 프록시
+
+`GET /api/knowledge-images/:imageId`는 등록된 참고 이미지를 백엔드가 대신
+받아 전달합니다. 브라우저가 외부 기관 서버에 직접 접속하지 않으므로 CSP를
+`img-src 'self'`로 유지하고, 사용자 IP와 Referer도 외부로 나가지 않습니다.
+
+- 경로 매개변수는 레지스트리 키(`[A-Z][A-Z0-9_]{2,63}`)이며 URL을 받지
+  않습니다. 사용자 입력이 fetch 대상이 될 수 없습니다.
+- 대상 URL은 코퍼스에 등록된 값만 쓰고, 호스트가
+  `KNOWLEDGE_IMAGE_HOST_ALLOWLIST`에 없으면 요청 자체를 만들지 않습니다.
+  리다이렉트는 따라가지 않고, HTTPS·이미지 MIME·2 MiB 상한을 검사합니다.
+- 응답에는 업스트림 URL이 담기지 않습니다. 클라이언트는 `imageId`와
+  `available`만 받습니다.
+
+이미지 URL은 아직 비어 있습니다(`available: false`). 화면은 깨진 이미지 대신
+`이미지 자료 미연결`로 표시합니다. NCPMS 도감·농사로의 공개 URL은 추측해
+넣지 않으며, 사람이 직접 확인한 값만 `url`과 `licence`에 적고
+`npm run verify:knowledge-images`로 실존·형식·크기를 검증한 뒤 배포합니다.
+NCPMS 도감정보 OpenAPI는 **CC BY-NC 2.0(상업적 이용금지)**이므로 상업적
+배포에는 사용할 수 없습니다.
+
 ### 병해충·위성 보조 기능
 
 - `GET /api/analyses/:analysisId/pest-guidance`는 분석과 같은 익명 세션에서만 조회됩니다.

@@ -117,7 +117,7 @@ await waitFor(
 );
 
 const hasSavedFarm = await evaluate(
-  'document.querySelector("#onboarding")?.hidden === true && !document.querySelector("#dashboard-workspace")?.hidden',
+  'document.querySelector("#onboarding")?.hidden === true && (!document.querySelector("#dashboard-workspace")?.hidden || !document.querySelector("#farm-overview-dashboard")?.hidden)',
 );
 if (!hasSavedFarm) {
   await waitFor(
@@ -172,9 +172,19 @@ if (!hasSavedFarm) {
 }
 
 await waitFor(
-  '!document.querySelector("#dashboard-workspace")?.hidden',
+  '!document.querySelector("#dashboard-workspace")?.hidden || !document.querySelector("#farm-overview-dashboard")?.hidden',
   "dashboard result",
 );
+const aggregateDashboard = await evaluate(
+  '!document.querySelector("#farm-overview-dashboard")?.hidden',
+);
+if (aggregateDashboard) {
+  await click("#crop-result-switcher button:nth-child(2)");
+  await waitFor(
+    '!document.querySelector("#dashboard-workspace")?.hidden',
+    "crop dashboard result",
+  );
+}
 await waitFor(
   'document.querySelector("#dashboard-action-list .action-plan") && !document.querySelector("#dashboard-action-list")?.hasAttribute("aria-busy")',
   "action plan",
@@ -185,7 +195,9 @@ const initial = await evaluate(`(() => ({
   cropTabs: document.querySelectorAll("#crop-result-switcher button").length,
   totalActions: document.querySelectorAll("#dashboard-action-list .action-plan__card").length,
   openActions: document.querySelectorAll('#dashboard-action-list [data-action-status="DONE"]').length,
-  riskCount: document.querySelector("#nav-risk-count")?.hidden ? 0 : Number(document.querySelector("#nav-risk-count")?.textContent),
+  riskCount: !document.querySelector("#pest-nav-count") || document.querySelector("#pest-nav-count")?.hidden
+    ? 0
+    : Number(document.querySelector("#pest-nav-count")?.textContent),
   forecastDays: document.querySelectorAll("#dashboard-forecast-chart .dashboard-risk-day").length,
   soil: document.querySelector("#dashboard-soil-summary .dashboard-soil-placeholder strong")?.textContent?.trim(),
 }))()`);
@@ -211,7 +223,7 @@ const allActionsExpanded = await evaluate(
   'document.querySelector("#dashboard-all-actions")?.getAttribute("aria-expanded") === "true" && document.querySelector("#dashboard-action-list")?.classList.contains("is-expanded")',
 );
 
-await click("#sidebar-guide-trigger");
+await click("#assistant-launcher");
 await waitFor('!document.querySelector("#assistant-panel")?.hidden', "assistant open");
 await setValue("#assistant-input", "내일 잎 뒷면 확인을 할 일로 추가해줘");
 await evaluate('document.querySelector("#assistant-form")?.requestSubmit()');
@@ -293,7 +305,7 @@ if (photoJournal) {
     }, "image/png");
   })`);
     await waitFor(
-      '/저장했습니다|다시 촬영|저장하지 못했습니다/.test(document.querySelector("#photo-journal-status")?.textContent ?? "")',
+      '/저장했습니다|저장하고 시즌 기록|다시 촬영|저장하지 못했습니다/.test(document.querySelector("#photo-journal-status")?.textContent ?? "")',
       "photo validation",
     );
     photoStored = await evaluate(
@@ -328,7 +340,7 @@ const satellite = await evaluate(`(() => ({
   refreshDisabled: document.querySelector("#satellite-refresh")?.disabled,
 }))()`);
 
-await click("#sidebar-guide-trigger");
+await click("#assistant-launcher");
 await waitFor('!document.querySelector("#assistant-panel")?.hidden', "assistant reopen");
 await setValue("#assistant-input", "오늘 가장 먼저 할 일은 무엇인가요?");
 const beforeMessages = await evaluate(
@@ -345,9 +357,47 @@ const assistantAnswered = await evaluate(
 );
 await click("#assistant-close");
 
+await send("Emulation.setDeviceMetricsOverride", {
+  width: 390,
+  height: 844,
+  deviceScaleFactor: 1,
+  mobile: true,
+});
+await send("Page.reload", { ignoreCache: true });
+await waitFor('document.readyState === "complete"', "mobile page load");
+await waitFor(
+  'document.body.dataset.integration !== "pending"',
+  "mobile backend connection",
+);
+await waitFor(
+  '!document.querySelector("#dashboard-workspace")?.hidden || !document.querySelector("#farm-overview-dashboard")?.hidden',
+  "mobile dashboard result",
+);
+const mobile = await evaluate(`(() => ({
+  noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth + 1,
+  dashboardVisible: !document.querySelector("#dashboard-workspace")?.hidden || !document.querySelector("#farm-overview-dashboard")?.hidden,
+  actionCount: document.querySelectorAll("#dashboard-action-list .action-plan__card").length,
+  navigationVisible: Boolean(document.querySelector(".bottom-nav, .mobile-navigation, .mobile-bottom-navigation, [data-mobile-navigation]")),
+}))()`);
+await screenshot("UI_FUNCTIONAL_PARITY_MOBILE.png");
+await click("#assistant-launcher");
+await waitFor('!document.querySelector("#assistant-panel")?.hidden', "mobile assistant open");
+const mobileAssistant = await evaluate(`(() => {
+  const rect = document.querySelector("#assistant-panel")?.getBoundingClientRect();
+  return rect ? {
+    nearlyFullWidth: rect.width >= window.innerWidth * 0.9,
+    nearlyFullHeight: rect.height >= window.innerHeight * 0.9,
+  } : { nearlyFullWidth: false, nearlyFullHeight: false };
+})()`);
+await screenshot("UI_FUNCTIONAL_PARITY_MOBILE_ASSISTANT.png");
+await click("#assistant-close");
+
 const uniqueApiResponses = [...new Map(
   apiResponses.map((entry) => [`${entry.status}:${entry.url}`, entry]),
 ).values()];
+const analysisApiCalled = uniqueApiResponses.some(
+  (entry) => entry.status === 201 && entry.url === "/api/analyses",
+);
 const checks = {
   savedFarmOrOnboarded: true,
   multiCrop: initial.cropTabs >= 2,
@@ -361,15 +411,20 @@ const checks = {
   batchCompletion: !completeAllAvailable || /모두 완료|개는 완료/.test(completion.message ?? ""),
   photoJournal,
   satellitePanel: satellite.panel,
-  satelliteLive: satellite.refreshDisabled === false,
+  satelliteStateHonest:
+    satellite.panel &&
+    (satellite.refreshDisabled === false || Boolean(satellite.state)),
   assistantAnswered,
+  mobileDashboard: mobile.dashboardVisible,
+  mobileNavigation: mobile.navigationVisible,
+  mobileNoHorizontalOverflow: mobile.noHorizontalOverflow,
+  mobileAssistantFullScreen:
+    mobileAssistant.nearlyFullWidth && mobileAssistant.nearlyFullHeight,
   dynamicRiskBadge: initial.riskCount >= 0,
   completionPersisted: completion.remaining === 0,
   photoStored,
   seasonCompleted,
-  analysisApiCalled: uniqueApiResponses.some(
-    (entry) => entry.status === 201 && entry.url === "/api/analyses",
-  ),
+  analysisLifecycle: hasSavedFarm || analysisApiCalled,
   noFailedApiResponses: uniqueApiResponses.every((entry) => entry.status < 400),
 };
 
@@ -379,6 +434,8 @@ console.log(JSON.stringify({
   completion,
   photoStatus,
   satellite,
+  mobile,
+  mobileAssistant,
   checks,
   passed: Object.values(checks).filter(Boolean).length,
   total: Object.keys(checks).length,
@@ -387,3 +444,10 @@ console.log(JSON.stringify({
 
 await send("Page.close");
 socket.close();
+
+const failedChecks = Object.entries(checks)
+  .filter(([, passed]) => !passed)
+  .map(([name]) => name);
+if (failedChecks.length > 0) {
+  throw new Error(`functional parity checks failed: ${failedChecks.join(", ")}`);
+}

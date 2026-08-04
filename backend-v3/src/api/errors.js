@@ -250,6 +250,46 @@ const ERROR_DEFINITIONS = Object.freeze({
     message: "No backup exists for this account key.",
     retryable: false,
   },
+  KNOWLEDGE_IMAGE_INVALID_ID: {
+    status: 400,
+    message: "The knowledge image identifier is malformed.",
+    retryable: false,
+  },
+  KNOWLEDGE_IMAGE_NOT_FOUND: {
+    status: 404,
+    message: "The knowledge image is not registered.",
+    retryable: false,
+  },
+  KNOWLEDGE_IMAGE_NOT_CONNECTED: {
+    status: 503,
+    message: "No reviewed knowledge image source is connected.",
+    retryable: false,
+  },
+  KNOWLEDGE_IMAGE_HOST_NOT_ALLOWED: {
+    status: 503,
+    message: "The knowledge image host is not on the reviewed allowlist.",
+    retryable: false,
+  },
+  KNOWLEDGE_IMAGE_INVALID_TARGET: {
+    status: 503,
+    message: "The registered knowledge image target is not a usable HTTPS URL.",
+    retryable: false,
+  },
+  KNOWLEDGE_IMAGE_UNSUPPORTED_TYPE: {
+    status: 502,
+    message: "The knowledge image source returned an unsupported media type.",
+    retryable: false,
+  },
+  KNOWLEDGE_IMAGE_TOO_LARGE: {
+    status: 502,
+    message: "The knowledge image exceeds the allowed size.",
+    retryable: false,
+  },
+  KNOWLEDGE_IMAGE_UNAVAILABLE: {
+    status: 502,
+    message: "The knowledge image source did not return the image.",
+    retryable: true,
+  },
   BACKUP_NOT_CONFIGURED: {
     status: 503,
     message: "Device backup storage is not configured.",

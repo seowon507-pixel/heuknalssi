@@ -326,10 +326,12 @@ test("reviewed locations provide every P0 mapping and calculate ASOS distance fr
   assert.deepEqual(resolved.shortForecastGrid, { nx: 91, ny: 106 });
 });
 
-test("reviewed runtime exposes only rules, mappings, and the public frozen soil contract", async () => {
+test("reviewed runtime exposes only rules, mappings, knowledge assets, and the public frozen soil contract", async () => {
   const options = await createRuntimeOptions();
 
   assert.deepEqual(Object.keys(options).sort(), [
+    "knowledgeImages",
+    "knowledgePassages",
     "rules",
     "soilContract",
     "verifiedLocationMappings",

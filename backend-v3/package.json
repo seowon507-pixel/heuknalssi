@@ -16,6 +16,7 @@
     "verify:backtest:forecast-extended": "node --env-file-if-exists=../.env scripts/verify-forecast-extended.js",
     "verify:backtest:evidence": "node scripts/verify-evidence-backtests.js",
     "verify:live": "node --env-file-if-exists=../.env scripts/verify-live-providers.js",
-    "verify:flow": "node scripts/verify-natural-flow.js"
+    "verify:flow": "node scripts/verify-natural-flow.js",
+    "verify:knowledge-images": "node scripts/verify-knowledge-images.js"
   }
 }

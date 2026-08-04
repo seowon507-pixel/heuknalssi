@@ -327,6 +327,14 @@ class BackendApi {
     });
   }
 
+  /**
+   * 재배 참고 이미지의 프록시 주소. imageId는 서버 레지스트리 키이며 외부 URL이
+   * 아니다. 브라우저는 이 주소만 호출하고 외부 기관 서버에 직접 접속하지 않는다.
+   */
+  knowledgeImageUrl(imageId) {
+    return `${this.baseUrl}/api/knowledge-images/${encodeURIComponent(imageId)}`;
+  }
+
   async askAssistant(analysisId, question) {
     return this.request(
       `/api/analyses/${encodeURIComponent(analysisId)}/assistant`,
@@ -7322,6 +7330,7 @@ async function submitAssistantQuestion(rawQuestion) {
     pending?.remove();
     appendAssistantMessage(response?.answer ?? "설명할 근거를 찾지 못했습니다.", {
       note: assistantOutcomeNote(response?.outcome, response?.notice),
+      references: Array.isArray(response?.references) ? response.references : [],
     });
   } catch (error) {
     pending?.remove();
@@ -7444,17 +7453,103 @@ function assistantOutcomeNote(outcome, fallbackNotice) {
   return labels[outcome] ?? fallbackNotice;
 }
 
-function appendAssistantMessage(text, { user = false, note = null } = {}) {
+function appendAssistantMessage(
+  text,
+  { user = false, note = null, references = [] } = {},
+) {
   if (!assistantMessages) return null;
+  // 참고 자료 카드(figure)를 담을 수 있어야 하므로 p가 아니라 div를 쓴다.
+  // 스타일은 모두 .assistant-message 클래스 선택자라 태그 변경 영향이 없다.
   const message = element(
-    "p",
+    "div",
     `assistant-message${user ? " is-user" : ""}`,
     text,
   );
-  if (note && !user) message.append(element("small", "", note));
+  if (!user) {
+    for (const reference of references) {
+      const card = buildAssistantReference(reference);
+      if (card) message.append(card);
+    }
+    if (note) message.append(element("small", "", note));
+  }
   assistantMessages.append(message);
   assistantMessages.scrollTop = assistantMessages.scrollHeight;
   return message;
+}
+
+/**
+ * 재배 참고 문단 하나를 이미지 카드로 만든다.
+ *
+ * 이미지는 백엔드 프록시(/api/knowledge-images/{imageId})만 호출한다. 응답에
+ * 업스트림 URL이 없으므로 브라우저가 외부 기관 서버로 직접 요청하지 않고 CSP도
+ * img-src 'self'로 유지된다. image.available이 false면 자리만 비워 두고 왜
+ * 비었는지 적는다. 연결되지 않은 이미지를 <img>로 만들면 깨진 아이콘만 남는다.
+ */
+function buildAssistantReference(reference) {
+  if (!reference || typeof reference !== "object") return null;
+  const title = typeof reference.title === "string" ? reference.title : "";
+  if (!title) return null;
+  const figure = element("figure", "assistant-reference");
+  const image = reference.image;
+
+  if (image?.available && typeof image.imageId === "string") {
+    const picture = document.createElement("img");
+    picture.className = "assistant-reference-image";
+    picture.src = api.knowledgeImageUrl(image.imageId);
+    // 백엔드가 다른 오리진에 있으면 img 요청에도 세션 쿠키가 실려야 한다.
+    if (api.baseUrl) picture.crossOrigin = "use-credentials";
+    picture.alt = typeof image.alt === "string" ? image.alt : title;
+    picture.loading = "lazy";
+    picture.decoding = "async";
+    // 프록시가 실패하면 깨진 아이콘 대신 안내 문구로 바꾼다.
+    picture.addEventListener("error", () => {
+      picture.replaceWith(
+        element(
+          "p",
+          "assistant-reference-missing",
+          "참고 이미지를 불러오지 못했습니다.",
+        ),
+      );
+    });
+    figure.append(picture);
+  } else if (image) {
+    figure.append(
+      element(
+        "p",
+        "assistant-reference-missing",
+        "이미지 자료 미연결 — 설명으로만 표시합니다.",
+      ),
+    );
+  }
+
+  const caption = element("figcaption", "assistant-reference-caption");
+  caption.append(element("strong", "", title));
+  if (typeof image?.caption === "string" && image.caption) {
+    caption.append(element("span", "", image.caption));
+  }
+  if (reference.reviewState !== "REVIEWED") {
+    caption.append(
+      element("span", "assistant-reference-badge", "검수 대기 자료"),
+    );
+  }
+  const credit = [reference.sourceTitle, image?.credit, image?.licence]
+    .filter((value) => typeof value === "string" && value.trim())
+    .join(" · ");
+  if (credit) {
+    if (typeof reference.sourceUrl === "string" && reference.sourceUrl) {
+      const link = element("a", "assistant-reference-source", `출처: ${credit}`);
+      link.href = reference.sourceUrl;
+      link.target = "_blank";
+      link.rel = "noreferrer noopener";
+      caption.append(link);
+    } else {
+      caption.append(
+        element("span", "assistant-reference-source", `출처: ${credit}`),
+      );
+    }
+  }
+  figure.append(caption);
+  return figure;
 }
 
 function updateLocationSearchAvailability() {
