@@ -25,6 +25,8 @@ const DEFAULT_ENDPOINT =
   "https://dapi.kakao.com/v2/local/search/address.json";
 const DEFAULT_REVERSE_ENDPOINT =
   "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json";
+const DEFAULT_REVERSE_ADDRESS_ENDPOINT =
+  "https://dapi.kakao.com/v2/local/geo/coord2address.json";
 const MAX_CACHE_TTL_MS = 10 * 60 * 1000;
 
 function extractDocuments(payload) {
@@ -198,14 +200,95 @@ export function parseKakaoRegionCandidates(payload) {
       }
       return {
         displayName,
-        resolutionMode: "ADDRESS_RESOLVED",
+        resolutionMode: "ADMIN_AREA_BROAD",
         providerAddressType: "LEGAL_REGION_COORDINATE",
         legalDongCode10,
-        longitude,
-        latitude,
-        providerCoordinatesExcluded: false
+        longitude: null,
+        latitude: null,
+        providerCoordinatesExcluded: true,
+        administrativeRepresentative: {
+          longitude,
+          latitude,
+          purpose: "REGIONAL_FORECAST_ONLY"
+        }
       };
     });
+}
+
+/**
+ * Kakao's coordinate-to-address response contains a legal-dong code and a
+ * parcel number but no top-level coordinates. The coordinates are therefore
+ * the already validated browser coordinates supplied to the endpoint. Only
+ * candidates with a complete 19-digit PNU are treated as parcel-resolved.
+ */
+export function parseKakaoCurrentAddressCandidates(
+  payload,
+  { latitude, longitude, legalDongCode10 = null }
+) {
+  const normalizedLatitude = parseStrictFiniteNumber(latitude, {
+    field: "current address latitude",
+    min: 32,
+    max: 39.5
+  });
+  const normalizedLongitude = parseStrictFiniteNumber(longitude, {
+    field: "current address longitude",
+    min: 123,
+    max: 133
+  });
+  if (normalizedLatitude === null || normalizedLongitude === null) {
+    throw new TypeError("Current address coordinates are required.");
+  }
+  const verifiedLegalDongCode10 =
+    legalDongCode10 === null || legalDongCode10 === undefined
+      ? null
+      : String(legalDongCode10).trim();
+  if (
+    verifiedLegalDongCode10 !== null &&
+    !/^\d{10}$/u.test(verifiedLegalDongCode10)
+  ) {
+    throw new TypeError("Current address legal-dong code must be 10 digits.");
+  }
+
+  return extractDocuments(payload).flatMap((document, index) => {
+    if (!document || typeof document !== "object" || Array.isArray(document)) {
+      throw new SchemaChangedError(
+        `Kakao current-address documents[${index}] must be an object.`
+      );
+    }
+    if (!document.address || typeof document.address !== "object") return [];
+    const providerLegalDongCode10 = legalDongCode(document, index);
+    if (
+      providerLegalDongCode10 !== null &&
+      verifiedLegalDongCode10 !== null &&
+      providerLegalDongCode10 !== verifiedLegalDongCode10
+    ) {
+      throw new SchemaChangedError(
+        `Kakao current-address documents[${index}] legal-dong code conflicts with the verified region response.`
+      );
+    }
+    const candidateLegalDongCode10 =
+      providerLegalDongCode10 ?? verifiedLegalDongCode10;
+    const parcelLookupKey = fieldParcelLookupKey(
+      document,
+      index,
+      candidateLegalDongCode10
+    );
+    if (parcelLookupKey === null) return [];
+    const displayName = requireNonEmptyString(
+      document.road_address?.address_name ?? document.address.address_name,
+      `Kakao current-address documents[${index}].address_name`
+    );
+    return [{
+      displayName,
+      resolutionMode: "ADDRESS_RESOLVED",
+      providerAddressType: "CURRENT_COORDINATE_ADDRESS",
+      legalDongCode10: candidateLegalDongCode10,
+      longitude: normalizedLongitude,
+      latitude: normalizedLatitude,
+      providerCoordinatesExcluded: false,
+      fieldParcelLookupKey: parcelLookupKey
+    }];
+  });
 }
 
 export function createKakaoAdapter({
@@ -214,6 +297,7 @@ export function createKakaoAdapter({
   fetchImpl = globalThis.fetch,
   endpoint = DEFAULT_ENDPOINT,
   reverseEndpoint = DEFAULT_REVERSE_ENDPOINT,
+  reverseAddressEndpoint = DEFAULT_REVERSE_ADDRESS_ENDPOINT,
   timeoutMs = 3000,
   adapterVersion = "1",
   contractVersion = null,
@@ -276,11 +360,11 @@ export function createKakaoAdapter({
   };
   const reverseEnvelopeBase = {
     ...envelopeBase,
-    sourceUrl: providerDisclosureUrl(reverseEndpoint, "KAKAO"),
-    spatialLabel: "현재 위치의 법정동",
+    sourceUrl: providerDisclosureUrl(reverseAddressEndpoint, "KAKAO"),
+    spatialLabel: "현재 위치의 상세주소",
     provenance: {
       ...envelopeBase.provenance,
-      operationId: "reverse-region"
+      operationId: "reverse-address"
     }
   };
 
@@ -390,7 +474,7 @@ export function createKakaoAdapter({
       );
       const cacheKey = makeAdapterCacheKey({
         adapterVersion,
-        operationId: "reverse-region",
+        operationId: "reverse-address",
         verifiedLocationKey: null,
         requestedPeriod: null,
         providerIssueTime: null,
@@ -419,32 +503,66 @@ export function createKakaoAdapter({
           signal: upstreamSignal,
           deadlineAt: upstreamDeadlineAt
         }) => {
-          const url = new URL(reverseEndpoint);
-          url.searchParams.set("x", String(normalizedLongitude));
-          url.searchParams.set("y", String(normalizedLatitude));
-          const payload = await requestProviderJson({
+          const addressUrl = new URL(reverseAddressEndpoint);
+          addressUrl.searchParams.set("x", String(normalizedLongitude));
+          addressUrl.searchParams.set("y", String(normalizedLatitude));
+          const requestInit = {
+            headers: {
+              Authorization: `KakaoAK ${apiKey.trim()}`,
+              Accept: "application/json"
+            }
+          };
+          const addressPayload = await requestProviderJson({
             fetchImpl,
-            url,
+            url: addressUrl,
             provider: "KAKAO",
-            requestInit: {
-              headers: {
-                Authorization: `KakaoAK ${apiKey.trim()}`,
-                Accept: "application/json"
-              }
-            },
+            requestInit,
             signal: upstreamSignal,
             timeoutMs,
             deadlineAt: upstreamDeadlineAt,
             now: () => new Date(now()).getTime()
           });
-          const candidates = parseKakaoRegionCandidates(payload);
+          const regionUrl = new URL(reverseEndpoint);
+          regionUrl.searchParams.set("x", String(normalizedLongitude));
+          regionUrl.searchParams.set("y", String(normalizedLatitude));
+          const regionPayload = await requestProviderJson({
+            fetchImpl,
+            url: regionUrl,
+            provider: "KAKAO",
+            requestInit,
+            signal: upstreamSignal,
+            timeoutMs,
+            deadlineAt: upstreamDeadlineAt,
+            now: () => new Date(now()).getTime()
+          });
+          const candidates = parseKakaoRegionCandidates(regionPayload);
+          const addressCandidates = parseKakaoCurrentAddressCandidates(
+            addressPayload,
+            {
+              latitude: normalizedLatitude,
+              longitude: normalizedLongitude,
+              legalDongCode10: candidates[0]?.legalDongCode10 ?? null
+            }
+          );
+          if (addressCandidates.length > 0) {
+            return {
+              adapterState: "SUCCESS",
+              data: {
+                candidates: addressCandidates,
+                requiresSelection: true
+              },
+              qualityFlags: []
+            };
+          }
           return {
             adapterState: candidates.length === 0 ? "NO_DATA" : "SUCCESS",
             data: {
               candidates,
               requiresSelection: candidates.length > 0
             },
-            qualityFlags: []
+            qualityFlags: candidates.length > 0
+              ? ["CURRENT_LOCATION_PARCEL_ADDRESS_UNAVAILABLE"]
+              : []
           };
         }
       });

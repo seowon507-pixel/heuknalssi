@@ -32,25 +32,26 @@ function visibleMarkup(html) {
     .replaceAll(/<script[\s\S]*?<\/script>/gi, "");
 }
 
-test("첫 화면은 재배 중 생육 점검을 기본으로 하고 재배 전 분석은 예정 기능으로 구분한다", async () => {
+test("첫 화면은 재배 준비 진단과 재배 중 점검을 동등하게 제공한다", async () => {
   const html = await readProductUi();
   const markup = visibleMarkup(html);
 
   assert.match(markup, /분석할 위치와 목적을 선택해 주세요/);
   assert.match(
     markup,
-    /name="situation" value="planning" disabled/,
+    /name="situation" value="planning"/,
   );
   assert.match(
     markup,
     /name="situation" value="growing" checked/,
   );
-  assert.match(markup, /재배 전 환경 분석/);
-  assert.match(markup, /추후 업데이트 예정/);
+  assert.match(markup, /재배 준비 진단/);
+  assert.doesNotMatch(markup, /name="situation" value="planning" disabled/);
+  assert.doesNotMatch(markup, /추후 업데이트 예정/);
   assert.match(markup, /재배 중 생육 점검/);
-  assert.match(markup, /현재 재배 중인 농장의 위치·작물·재배 환경과 생육 상태를 확인합니다/);
+  assert.match(markup, /준비 중인 농지와 재배 중인 농장을 각각의 기준으로 확인합니다/);
   assert.match(markup, /현재 위치 사용/);
-  assert.match(markup, /시·도 이름을 입력하면 아래에 시·군·구 후보가 표시됩니다/);
+  assert.match(markup, /상세 지번·도로명 주소를 선택하면 해당 지점에서 이용 가능한 자료를 확인합니다/);
   assert.match(markup, /입력한 지역 확인/);
   assert.match(markup, /role="combobox"/);
   assert.match(markup, /aria-autocomplete="list"/);
@@ -63,7 +64,7 @@ test("첫 화면은 재배 중 생육 점검을 기본으로 하고 재배 전 �
   assert.doesNotMatch(markup, /상세 주소를 잘 모르겠어요/);
 });
 
-test("현재 제품 범위와 재배 전 분석 예정 상태를 구현 문서에 명시한다", async () => {
+test("재배 준비와 재배 중 상황을 제품 문서에서 구분한다", async () => {
   const projectRoot = path.resolve(import.meta.dirname, "..");
   const [readme, implementationPlan] = await Promise.all([
     readFile(path.join(projectRoot, "README.md"), "utf8"),
@@ -72,11 +73,23 @@ test("현재 제품 범위와 재배 전 분석 예정 상태를 구현 문서�
       "utf8",
     ),
   ]);
+  const databaseContract = await readFile(path.join(projectRoot, "DB.md"), "utf8");
 
-  assert.match(readme, /현재 제공 범위는 재배 중 생육 점검/);
-  assert.match(readme, /재배 전 환경 분석은 추후 업데이트 예정/);
-  assert.match(implementationPlan, /현재 제품은 `재배 중 생육 점검`만 제공/);
-  assert.match(implementationPlan, /재배 전 환경 분석.*추후 업데이트 예정/s);
+  assert.match(databaseContract, /`situation`은 `planning`과 `growing`을 지원/);
+  assert.match(databaseContract, /`cropSettings\[crop\]\.cycle`/);
+  assert.ok(readme.length > 0 && implementationPlan.length > 0);
+});
+
+test("상세 주소는 지점 분석, 시·군·구는 지역 참고 분석으로 선택 단계에서 구분한다", async () => {
+  const html = await readProductUi();
+  const client = await readFile(path.join(import.meta.dirname, "backend-client.mjs"), "utf8");
+  const markup = visibleMarkup(html);
+
+  assert.match(markup, /상세 주소를 선택하면 지점 분석/);
+  assert.match(markup, /시·군·구만 선택하면 지역 참고 분석/);
+  assert.match(client, /상세 주소 · 지점 분석/);
+  assert.doesNotMatch(client, /상세 주소 · 필지 분석/);
+  assert.match(client, /시·군·구 · 지역 참고 분석/);
 });
 
 test("직접 입력 주소는 행정구역 후보를 표시한 뒤 실제 위치 API로 확인한다", async () => {
@@ -93,6 +106,20 @@ test("직접 입력 주소는 행정구역 후보를 표시한 뒤 실제 위치
   assert.match(client, /event\.key === "ArrowDown"/);
   assert.match(client, /event\.key === "Escape"/);
   assert.match(client, /aria-expanded/);
+});
+
+test("현재 위치는 고정밀 좌표를 상세주소·필지 후보로 확인하고 넓은 위치는 자동 확정하지 않는다", async () => {
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(client, /enableHighAccuracy: true/);
+  assert.match(client, /maximumAge: 0/);
+  assert.match(client, /candidate\.resolutionMode === "ADDRESS_RESOLVED"/);
+  assert.match(client, /accuracyMeters <= 100/);
+  assert.match(client, /상세 지번 주소로 확인했습니다/);
+  assert.match(client, /필지 확정을 위해 지번 또는 도로명 주소를 확인해 주세요/);
 });
 
 test("온보딩은 복수 작물의 작기와 생육 상태를 사용자 확인값으로 받는다", async () => {
@@ -129,6 +156,59 @@ test("온보딩은 복수 작물의 작기와 생육 상태를 사용자 확인�
   );
 });
 
+test("재배 준비와 재배 중은 작물별 기준일을 저장하고 생육 단계 질문을 분리한다", async () => {
+  const html = await readProductUi();
+  const client = await readFile(path.join(import.meta.dirname, "backend-client.mjs"), "utf8");
+  const markup = visibleMarkup(html);
+
+  assert.match(markup, /id="crop-cycle-settings"/u);
+  assert.match(markup, /id="review-cycle"/u);
+  assert.match(markup, /재배 준비 진단은 현재 생육 단계를 묻지 않습니다/u);
+  assert.match(client, /cycle: readCropCycleForm\(crop\)/u);
+  assert.match(client, /cycleInput: setting\.cycle/u);
+  assert.match(client, /function cropSettingsComplete\(\)[\s\S]*?readCropCycleForm\(crop\)/u);
+  assert.match(client, /function growthSettingsComplete\(\)[\s\S]*?=== "planning"\)[\s\S]*?return true/u);
+  assert.match(client, /\["planning", "growing"\]\.includes\(profile\?\.situation\)/u);
+});
+
+test("수확 일정은 대시보드가 아닌 작물 관리에서 첫 수확과 장기 수확을 분리한다", async () => {
+  const html = await readProductUi();
+  const [client, css] = await Promise.all([
+    readFile(path.join(import.meta.dirname, "backend-client.mjs"), "utf8"),
+    readDashboardCss(),
+  ]);
+  const markup = visibleMarkup(html);
+
+  assert.match(markup, /id="dashboard-cycle-card"/u);
+  assert.match(markup, /id="view-crop-management"[\s\S]*?id="dashboard-cycle-card"/u);
+  assert.doesNotMatch(markup, /id="farm-overview-cycle-list"/u);
+  assert.match(markup, /첫 수확 준비도/u);
+  assert.match(markup, /id="crop-cycle-harvest-season"/u);
+  assert.match(markup, /id="crop-management-switcher"/u);
+  assert.match(markup, /id="harvest-photo-assess"/u);
+  assert.match(markup, /id="crop-cycle-edit"/u);
+  assert.match(markup, /id="crop-cycle-complete"/u);
+  assert.match(client, /async getCropCycle\(/u);
+  assert.match(client, /async putCropCycle\(/u);
+  assert.match(client, /\/crops\/\$\{encodeURIComponent\(cropId\)\}\/cycle/u);
+  assert.match(client, /입력 기준 예상/u);
+  assert.match(client, /buildHarvestForecast/u);
+  assert.match(css, /\.crop-cycle-facts/u);
+  assert.match(css, /@media \(max-width: 620px\)[\s\S]*?\.crop-cycle-progress-layout/u);
+});
+
+test("분석 범위 공지는 상단에 한 번만 표시하고 토양검정 CTA는 이력 없음 코드만 사용한다", async () => {
+  const html = await readProductUi();
+  const client = await readFile(path.join(import.meta.dirname, "backend-client.mjs"), "utf8");
+  const markup = visibleMarkup(html);
+
+  assert.equal((markup.match(/id="analysis-scope-notice"/gu) ?? []).length, 1);
+  assert.match(client, /analysis\?\.analysisScope\?\.summary\?\.commonNotice/u);
+  assert.match(client, /analysis\?\.analysisScope\?\.missingReasons/u);
+  assert.match(client, /code === "NO_FIELD_SOIL_EXAM_HISTORY"/u);
+  assert.doesNotMatch(client, /code === "FIELD_SOIL_EXAM_UNAVAILABLE"[\s\S]{0,180}무료 토양검정/u);
+});
+
 test("현재 재배 분석은 작기를 명시적으로 선택하고 모르면 unknown으로 전달한다", async () => {
   const html = await readProductUi();
   const client = await readFile(
@@ -144,10 +224,10 @@ test("현재 재배 분석은 작기를 명시적으로 선택하고 모르면 u
 test("완료한 농장 설정은 이 기기에 저장하고 다음 방문에 자동 복원한다", async () => {
   const html = await readProductUi();
   const shell = await readUiShell();
-  const client = await readFile(
-    path.join(import.meta.dirname, "backend-client.mjs"),
-    "utf8",
-  );
+  const [client, css] = await Promise.all([
+    readFile(path.join(import.meta.dirname, "backend-client.mjs"), "utf8"),
+    readDashboardCss(),
+  ]);
 
   assert.match(html, /data-profile-state="checking"/);
   assert.match(html, /id="onboarding"[^>]*hidden/);
@@ -155,13 +235,30 @@ test("완료한 농장 설정은 이 기기에 저장하고 다음 방문에 자
   assert.match(shell, /function openSavedFarmDashboard/);
   assert.match(shell, /if \(hasSavedFarmProfile\(\)\) openSavedFarmDashboard\(\)/);
   assert.match(client, /writeStoredSession\(formValues/);
+  assert.match(client, /writeAnalysisSnapshot\(completed\)/);
   assert.match(client, /if \(formValues\.saveConsent === true\)/);
   assert.match(client, /if \(!storage \|\| saveConsent\?\.checked !== true\) return/);
   assert.doesNotMatch(client, /rememberRegion\(candidate\.displayName\)/);
-  assert.match(client, /const restored = await submitAnalysis\(\)/);
-  assert.match(client, /if \(!restored\) throw new Error/);
-  assert.match(client, /저장한 농장 정보를 갱신하지 못했습니다/);
+  assert.match(client, /const restored = restoreAnalysisSnapshot\(saved\)/);
+  assert.match(client, /저장된 최근 분석을 불러왔습니다/);
+  const restoreStart = client.indexOf("async function restoreSavedSession(");
+  const restoreEnd = client.indexOf("function renderRuntimeState", restoreStart);
+  assert.doesNotMatch(client.slice(restoreStart, restoreEnd), /submitAnalysis\(/);
   assert.match(client, /const FARMS_STORAGE_KEY = "heuknalssi\.farms\.v1"/);
+  assert.match(client, /const ANALYSIS_SNAPSHOT_STORAGE_KEY = "heuknalssi\.analysisSnapshots\.v1"/);
+  assert.ok(
+    client.indexOf("restoreAnalysisSnapshot(savedSessionAtBoot)") <
+      client.indexOf("void connectBackend()"),
+  );
+  assert.match(client, /if \(!connected \|\| !analysisId \|\| pestGuidanceByAnalysis\.has\(analysisId\)\) \{/u);
+  assert.match(client, /error\?\.code === "ANALYSIS_NOT_FOUND"[\s\S]*?await submitAnalysis\(\)/u);
+  assert.match(client, /buildReviewedPestObservationFallback/u);
+  assert.match(client, /selectPestRecoveryAnalysis\([\s\S]*?currentAnalyses,[\s\S]*?requestedCrop/u);
+  assert.match(client, /activateCropAnalysis\(refreshedAnalysis\)/u);
+  const pestRefreshStart = client.indexOf("async function requestPestGuidance(");
+  const pestRefreshEnd = client.indexOf("function renderDashboardPriorityAction", pestRefreshStart);
+  assert.doesNotMatch(client.slice(pestRefreshStart, pestRefreshEnd), /errorMessage\(error\)/u);
+  assert.match(css, /\.integration-banner:is\(\.is-error, \.is-hold\)/u);
   assert.match(client, /function renderFarmList/);
   assert.match(client, /function selectStoredFarm/);
   assert.match(client, /function startNewFarm/);
@@ -177,9 +274,13 @@ test("완료한 농장 설정은 이 기기에 저장하고 다음 방문에 자
     client,
     /document\.addEventListener\("heuknalssi:new-farm-started", startNewFarm\)/u,
   );
+  assert.match(
+    client,
+    /syncStoredWorkspaceBackup\(\{ createIfMissing: true \}\)/u,
+  );
 });
 
-test("데스크톱에서도 농장 추가와 전환 진입점이 실제로 보인다", async () => {
+test("데스크톱 농장 박스를 누르면 전환 목록과 농장 추가 진입점이 열린다", async () => {
   const html = await readProductUi();
   const client = await readFile(
     path.join(import.meta.dirname, "backend-client.mjs"),
@@ -190,15 +291,20 @@ test("데스크톱에서도 농장 추가와 전환 진입점이 실제로 보�
   )?.[0];
 
   assert.ok(farmSection, "desktop farm list section must exist");
-  assert.doesNotMatch(farmSection, /\shidden(?:\s|>)/u);
+  assert.match(farmSection, /\shidden(?:\s|>)/u);
   assert.match(
     html,
-    /id="sidebar-farm-trigger"[^>]*aria-expanded="true"[^>]*aria-controls="sidebar-farm-list"/u,
+    /id="sidebar-farm-trigger"[^>]*aria-expanded="false"[^>]*aria-controls="sidebar-farm-list"/u,
   );
   assert.match(html, /data-view="services">추가 서비스<\/button>/u);
   assert.match(html, /data-view="mypage">마이페이지<\/button>/u);
   assert.match(client, /sidebarFarmList\.hidden = !expanding/u);
+  assert.match(client, /sidebarFarmList\.querySelector\("button"\)\?\.focus/u);
   assert.match(client, /add\.id = includeHeading \? "add-farm" : "add-farm-mobile"/u);
+  assert.match(
+    client,
+    /target\.replaceChildren\([\s\S]*?\[heading\][\s\S]*?add,[\s\S]*?farms\.length/u,
+  );
   assert.match(client, /creatingNewFarm \? null : farms\.find/u);
 });
 
@@ -269,6 +375,68 @@ test("생육점수는 백엔드 결과를 표시하고 세 축은 독립 값을 
     client,
     /\[\s*"\.overview-score",\s*"\.metric-strip"/,
   );
+});
+
+test("종합 대시보드는 모든 품목의 실제 점수·오늘 할 일·공통 날씨·주의사항을 분리해 표시한다", async () => {
+  const html = await readProductUi();
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+  const markup = visibleMarkup(html);
+
+  assert.match(markup, /id="farm-overview-dashboard"/u);
+  assert.match(markup, /전체 작물 관리 현황/u);
+  assert.match(markup, /id="farm-overview-action-list"/u);
+  assert.match(markup, /id="farm-overview-weather-strip"/u);
+  assert.match(markup, /id="farm-overview-crop-grid"/u);
+  assert.match(markup, /id="farm-overview-warning-list"/u);
+  assert.match(client, /function renderFarmOverview\(\)/u);
+  assert.match(client, /analyses\.map\(async \(analysis\).*loadActionPlan\(analysis\)/su);
+  assert.match(client, /dashboardMode = "overview"/u);
+  assert.match(client, /function activateCropAnalysis\(analysis\)/u);
+  assert.match(client, /section\.hidden = true/u);
+  assert.match(client, /section\.hidden = false/u);
+  assert.match(client, /CROP_LABELS\[crop\]/u);
+  assert.doesNotMatch(client, /farm-overview[^\n]*(mock|dummy|sample)/iu);
+});
+
+test("분석 결과와 할 일은 탭 사이에서 공유하고 사용자가 새로 분석할 때만 다시 계산한다", async () => {
+  const html = await readProductUi();
+  const [client, css] = await Promise.all([
+    readFile(path.join(import.meta.dirname, "backend-client.mjs"), "utf8"),
+    readDashboardCss(),
+  ]);
+
+  assert.match(html, /id="dashboard-refresh"[^>]*>↻ 새로 분석<\/button>/u);
+  assert.match(client, /const actionPlanCache = new Map\(\)/u);
+  assert.match(client, /const actionPlanRequests = new Map\(\)/u);
+  assert.match(client, /async syncRuleActions\(/u);
+  assert.match(client, /\/actions\/rules\/sync/u);
+  assert.match(client, /loadActionPlan\(analysis, \{ ensureRules: true, force: true \}\)/u);
+  assert.match(client, /async function refreshCurrentAnalysis\(button\)/u);
+  assert.match(client, /ANALYSIS_REFRESH_COOLDOWN_MS/u);
+  assert.match(client, /await prepareStoredLocationCandidate\(saved\?\.region\)/u);
+  assert.match(client, /const refreshed = await submitAnalysis\(\)/u);
+  assert.match(css, /@media[^}]*max-width:\s*760px[\s\S]*?\.topbar-update\s*\{[^}]*display:\s*inline-flex/u);
+  assert.doesNotMatch(
+    client,
+    /#dashboard-refresh"\)\?\.addEventListener\("click", \(\) => \{\s*window\.location\.reload/u,
+  );
+});
+
+test("주의사항은 최신 위험이 있을 때만 표시하고 위험이 없으면 영역과 알림을 만들지 않는다", async () => {
+  const projectRoot = path.resolve(import.meta.dirname, "..");
+  const [prd, implementationPlan] = await Promise.all([
+    readFile(path.join(projectRoot, "PRODUCT_FIRST_PRD.md"), "utf8"),
+    readFile(path.join(projectRoot, "13_흙날씨진단_구현기준_기획서.md"), "utf8"),
+  ]);
+
+  assert.match(prd, /행동 가능한 위험이 확인된 경우에만 생성되는 조건부 기능/u);
+  assert.match(prd, /주의사항.*영역과 알림을 모두 표시하지 않는다/u);
+  assert.match(prd, /동일 작물·동일 위험·동일 유효기간은 중복 발송하지 않는다/u);
+  assert.match(implementationPlan, /새 주의 신호가 확인된 경우에만 발송/u);
+  assert.match(implementationPlan, /새 위험이 없으면 알림을 보내지 않는다/u);
 });
 
 test("복수 작물 중 하나가 실패해도 완료된 분석은 보존한다", async () => {
@@ -382,8 +550,9 @@ test("무료 흙 검사는 추가 서비스로 분리하고 즉시 행동과 구
   );
 });
 
-test("농장 분석 도우미는 데스크톱 패널과 모바일 전체 화면으로 제공된다", async () => {
+test("흙톡 챗봇은 선택한 명칭과 데스크톱·모바일 화면으로 제공된다", async () => {
   const html = await readProductUi();
+  const css = await readDashboardCss();
   const client = await readFile(
     path.join(import.meta.dirname, "backend-client.mjs"),
     "utf8",
@@ -391,6 +560,12 @@ test("농장 분석 도우미는 데스크톱 패널과 모바일 전체 화면�
 
   assert.match(html, /id="assistant-launcher"/);
   assert.match(html, /id="assistant-panel"/);
+  assert.match(html, /id="sidebar-chatbot-trigger"/);
+  assert.match(html, /흙톡 <span>\(챗봇\)<\/span>/);
+  assert.doesNotMatch(html, /sidebar-chatbot-icon|sidebar-chatbot-text/);
+  assert.match(css, /\.chatbot-option\.is-text::before\s*\{[\s\S]*?mask-image:/);
+  assert.doesNotMatch(html, /상담 & 도움말|영농 가이드/);
+  assert.doesNotMatch(html, /sidebar-support-trigger|sidebar-guide-trigger/);
   assert.match(html, /width: clamp\(320px, 20vw, 380px\)/);
   assert.match(html, /height: clamp\(510px, 51vh, 660px\)/);
   assert.match(html, /max-height: calc\(100dvh - 128px\)/);
@@ -398,7 +573,99 @@ test("농장 분석 도우미는 데스크톱 패널과 모바일 전체 화면�
   assert.match(html, /height: 100dvh/);
   assert.match(client, /async askAssistant\(analysisId, question\)/);
   assert.match(client, /function submitAssistantQuestion/);
+  assert.match(client, /querySelectorAll\("\[data-open-assistant\]"\)/);
   assert.match(client, /현재 분석 근거를 확인하고 있습니다/);
+  assert.match(client, /사용자가 흙톡에서 직접 요청한 할 일입니다/);
+});
+
+test("만료된 분석의 챗봇 질문은 최신 분석으로 한 번만 복구하고 입력을 다시 활성화한다", async () => {
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(client, /error\?\.code !== "ANALYSIS_NOT_FOUND"/);
+  assert.match(client, /activeRequestAnalysisId = currentAnalysis\?\.analysisId/);
+  assert.match(client, /response = await api\.askAssistant\(activeRequestAnalysisId, question\)/);
+  assert.match(client, /if \(activeRequestAnalysisId === currentAnalysis\?\.analysisId\)/);
+});
+
+test("시즌 종료는 재배일정·행동·사진을 한 경로에서 정리하고 사진이 없어도 완료된다", async () => {
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(client, /async function finalizeCurrentSeasonRecords\(\)/);
+  assert.match(client, /cropCycleAdapter\.save/);
+  assert.match(client, /api\.listActions/);
+  assert.match(client, /closeCompletedSeasonActions/);
+  assert.match(client, /activeRuleIds: \[\]/);
+  assert.match(client, /action\.origin !== "RULE"/);
+  assert.match(client, /"SKIPPED"/);
+  assert.match(client, /if \(isCompletedCycle\(analysis\)\)/);
+  assert.match(client, /api\.completePhotoSeason/);
+  assert.match(client, /"SEASON_NOT_FOUND"/);
+  assert.match(client, /photoJournal\?\.completeSeason/);
+  assert.equal((client.match(/await finalizeCurrentSeasonRecords\(\)/gu) ?? []).length, 2);
+  assert.match(client, /let completed = false;/);
+  assert.match(client, /completed = true;/);
+  assert.match(client, /if \(completed\) \{\s*renderCropCycleCard\(currentAnalysis\);/);
+  assert.match(client, /projection\.status === "COMPLETED" \? "새 시즌 시작" : "시즌 종료"/);
+  assert.match(client, /function startNewCurrentCropCycle\(button\)/);
+  assert.match(client, /seasonId: createCropCycleSeasonId\(crop\)/);
+  assert.match(client, /renderCropCycleSettings\(\{ rememberExisting: false \}\)/);
+  assert.match(client, /pendingNewSeasonDraft = \{\s*crop,\s*previousInput: \{ \.\.\.context\.cycleInput \}/);
+  assert.match(client, /if \(saveConsent\) saveConsent\.checked = true/);
+  assert.match(client, /if \(pendingNewSeasonDraft\) \{[\s\S]*pendingNewSeasonDraft\.previousInput/);
+  assert.match(client, /이전 시즌 기록은 보존됩니다/);
+});
+
+test("재배 준비 농장과 큰 글자 설정은 다음 접속에도 복원된다", async () => {
+  const [shell, css] = await Promise.all([readUiShell(), readDashboardCss()]);
+
+  assert.match(shell, /\['planning', 'growing'\]\.includes\(farm\?\.situation\)/);
+  assert.match(shell, /heuknalssi\.fontSize\.v1/);
+  assert.match(shell, /getItem\(FONT_SIZE_STORAGE_KEY\)/);
+  assert.match(shell, /setItem\(FONT_SIZE_STORAGE_KEY/);
+  assert.match(css, /body\.large-text \.bottom-nav \.nav-button/);
+  assert.match(css, /body\.large-text \.crop-cycle-facts dd/);
+  assert.match(css, /body\.large-text \.forecast-risk-level-list time/);
+  assert.match(css, /body\.large-text \.dashboard-weekly-item p/);
+});
+
+test("다농장 토양검정은 농장별로 격리하고 기기 이관 범위를 정확히 안내한다", async () => {
+  const html = await readProductUi();
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(client, /heuknalssi\.soilTests\.v2/);
+  assert.match(client, /storage\.getItem\(ACTIVE_FARM_STORAGE_KEY\)/);
+  assert.match(client, /soilTestsByFarmId/);
+  assert.match(client, /restoreScopedSoilTests/);
+  assert.match(client, /const restoredSoilTests = payload\.soilTestsByFarmId \?\?/);
+  assert.match(client, /: \{\}\);\s*restoreScopedSoilTests\(/);
+  assert.match(client, /const storageKey = normalizedCropCode \? `\$\{farmId\}::\$\{normalizedCropCode\}` : farmId/);
+  assert.match(client, /if \(normalizedCropCode\) delete todos\[farmId\]/);
+  assert.match(client, /writeStoredTodoForActiveFarm\(null, safeStorage\(\), cropCode\)/);
+  assert.match(client, /writeStoredTodoForActiveFarm\(null, storage, cropCode\)/);
+  assert.doesNotMatch(client, /새 휴대폰에서 이 열쇠를 넣으면 그대로 이어서/);
+  assert.match(html, /새 휴대폰으로 농장 설정 옮기기/);
+  assert.match(html, /분석 결과·할 일 이력·사진·리포트/);
+});
+
+test("저장 분석의 로컬 재배일정도 챗봇 일정 답변에 즉시 사용한다", async () => {
+  const client = await readFile(
+    path.join(import.meta.dirname, "backend-client.mjs"),
+    "utf8",
+  );
+
+  assert.match(
+    client,
+    /cropCycleProjections\.get\(cropCode\) \?\?[\s\S]*currentUiContexts\.get\(cropCode\)\?\.cycleProjection/,
+  );
 });
 
 test("예보 시각화는 최고기온·강수확률·날짜별 작물 위험을 한 축으로 보여준다", async () => {
@@ -422,6 +689,9 @@ test("예보 시각화는 최고기온·강수확률·날짜별 작물 위험을
   assert.match(css, /\.is-favorable \.forecast-risk-chip/);
   assert.match(css, /\.is-normal \.forecast-risk-chip/);
   assert.match(css, /\.dashboard-priority-action h3/);
+  assert.match(client, /formatFarmWeatherDate\(day\.date, index\)/);
+  assert.match(client, /강수확률 \$\{rain\}/);
+  assert.match(css, /\.farm-weather-date,[\s\S]*font-size: 12px/);
 });
 
 test("행동과 주간 위험은 중복·모호한 날짜·과거 기한을 사용자 문구로 정리한다", async () => {
@@ -611,6 +881,8 @@ test("모바일 첫 화면은 가까운 예보보다 오늘의 점검 항목을 
   );
 
   assert.match(html, /id="dashboard-action-list"/);
+  assert.match(html, /id="farm-overview-action-list"/);
+  assert.match(css, /#farm-overview-action-list \.action-plan__card \{/);
   assert.match(css, /@media \(max-width: 620px\)/);
   assert.match(css, /\.dashboard-overview-grid,\s*\n\s*\.dashboard-content-grid \{\s*\n\s*display: contents;/);
   assert.match(css, /\.dashboard-actions \{\s*\n\s*order: 2;/);
@@ -631,7 +903,9 @@ test("본문과 주요 조작 요소는 고령 사용자를 위한 최소 크기
   assert.match(html, /\.crop-result-switcher button \{ min-height: 44px;/);
   assert.match(css, /\.dashboard-text-button \{[\s\S]*?min-height: 48px;/);
   assert.match(css, /#dashboard-action-list \.action-plan__controls button \{[\s\S]*?min-height: 48px;/);
+  assert.match(css, /\.topbar-update button \{[\s\S]*?width: 44px;[\s\S]*?min-width: 44px;[\s\S]*?min-height: 44px;/);
   assert.match(css, /\.dashboard-priority-action p,[\s\S]*?font-size: 18px;/);
+  assert.match(css, /body\.large-text[\s\S]*?\.action-plan__importance/);
   assert.doesNotMatch(html, /\.button \{ min-height: 4[0-3]px;/);
 });
 
@@ -714,6 +988,9 @@ test("배포 빌드는 브라우저에서 import하는 제품 기능 모듈을 �
     "action-plan.mjs",
     "action-projection.mjs",
     "assistant-action-request.mjs",
+    "assistant-cycle-answer.mjs",
+    "device-backup-payload.mjs",
+    "harvest-forecast.mjs",
     "local-photo-journal.mjs",
     "dashboard-workspace.css",
   ]) {

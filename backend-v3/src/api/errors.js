@@ -115,6 +115,101 @@ const ERROR_DEFINITIONS = Object.freeze({
     message: "The analysis was not found.",
     retryable: false,
   },
+  CROP_CYCLE_NOT_FOUND: {
+    status: 404,
+    message: "The crop cycle was not found.",
+    retryable: false,
+  },
+  CROP_CYCLE_UPDATE_CONFLICT: {
+    status: 409,
+    message: "The crop cycle changed before this update was applied.",
+    retryable: true,
+  },
+  CROP_CYCLE_COMPLETED: {
+    status: 409,
+    message: "The completed crop cycle cannot be changed.",
+    retryable: false,
+  },
+  CROP_CYCLE_COMPLETE_CONFIRMATION_REQUIRED: {
+    status: 409,
+    message: "Crop cycle completion requires explicit confirmation.",
+    retryable: false,
+  },
+  CROP_CYCLE_CONFIRMATION_INVALID: {
+    status: 409,
+    message: "The crop cycle state requires explicit confirmation.",
+    retryable: false,
+  },
+  CROP_CYCLE_ANCHOR_INVALID: {
+    status: 400,
+    message: "The crop cycle anchor type is invalid.",
+    retryable: false,
+  },
+  CROP_CYCLE_ACTIVE_DATE_INVALID: {
+    status: 400,
+    message: "An active crop cycle cannot begin in the future.",
+    retryable: false,
+  },
+  CROP_CYCLE_COMPLETION_DATE_INVALID: {
+    status: 400,
+    message: "The crop cycle completion date is invalid.",
+    retryable: false,
+  },
+  CROP_CYCLE_CROP_INVALID: {
+    status: 400,
+    message: "The crop cycle crop is not supported.",
+    retryable: false,
+  },
+  CROP_CYCLE_DATE_INVALID: {
+    status: 400,
+    message: "The crop cycle date is invalid.",
+    retryable: false,
+  },
+  CROP_CYCLE_REVISION_INVALID: {
+    status: 400,
+    message: "The crop cycle revision is invalid.",
+    retryable: false,
+  },
+  CROP_CYCLE_SCOPE_INVALID: {
+    status: 400,
+    message: "The crop cycle scope is invalid.",
+    retryable: false,
+  },
+  CROP_CYCLE_STATUS_INVALID: {
+    status: 400,
+    message: "The crop cycle status is invalid.",
+    retryable: false,
+  },
+  CROP_CYCLE_TIMESTAMP_INVALID: {
+    status: 400,
+    message: "The crop cycle timestamp is invalid.",
+    retryable: false,
+  },
+  HARVEST_ASSESSMENT_SCOPE_INVALID: {
+    status: 400,
+    message: "The harvest assessment scope is invalid.",
+    retryable: false,
+  },
+  HARVEST_ASSESSMENT_UNAVAILABLE: {
+    status: 503,
+    message: "Harvest photo assessment is temporarily unavailable.",
+    retryable: true,
+  },
+  HARVEST_CROP_INVALID: {
+    status: 400,
+    message: "The crop is not supported for harvest photo assessment.",
+    retryable: false,
+  },
+  HARVEST_PHOTO_INVALID: {
+    status: 400,
+    message: "The harvest photo is invalid.",
+    retryable: false,
+  },
+  HARVEST_PHOTO_TOO_LARGE: {
+    status: 413,
+    message: "The harvest photo exceeds the 6MB assessment limit.",
+    retryable: false,
+  },
   REPORT_NOT_FOUND: {
     status: 404,
     message: "The saved report was not found.",
@@ -343,6 +438,15 @@ const REQUEST_VALIDATION_CODES = new Set([
   "SEASON_NOT_CONFIRMED",
   "SEASON_REQUIRED",
   "UNVERIFIED_SEASON_PROFILE",
+  "CROP_CYCLE_ANCHOR_INVALID",
+  "CROP_CYCLE_ACTIVE_DATE_INVALID",
+  "CROP_CYCLE_COMPLETION_DATE_INVALID",
+  "CROP_CYCLE_CROP_INVALID",
+  "CROP_CYCLE_DATE_INVALID",
+  "CROP_CYCLE_REVISION_INVALID",
+  "CROP_CYCLE_SCOPE_INVALID",
+  "CROP_CYCLE_STATUS_INVALID",
+  "CROP_CYCLE_TIMESTAMP_INVALID",
 ]);
 
 const TRUSTED_SERVICE_CODES = new Set([
@@ -354,6 +458,11 @@ const TRUSTED_SERVICE_CODES = new Set([
   "REPORT_NOT_FOUND",
   "REPORT_NOT_READY",
   "REPORT_SCOPE_MISMATCH",
+  "CROP_CYCLE_NOT_FOUND",
+  "CROP_CYCLE_UPDATE_CONFLICT",
+  "CROP_CYCLE_COMPLETED",
+  "CROP_CYCLE_COMPLETE_CONFIRMATION_REQUIRED",
+  "CROP_CYCLE_CONFIRMATION_INVALID",
 ]);
 
 function cleanFieldErrors(fieldErrors) {

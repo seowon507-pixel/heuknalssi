@@ -417,6 +417,37 @@ test("위험 규칙 재조정은 사라진 OPEN 자동 행동만 해제한다", 
   assert.equal(repository.actions.get("done").status, "DONE");
 });
 
+test("여러 규칙 행동은 한 번의 동기화 명령으로 생성·재조정·조회한다", async () => {
+  const repository = createMemoryRepository();
+  const service = createActionPlanService({ repository });
+
+  const result = await service.syncRuleActions({
+    accountId: "account-a",
+    farmId: "farm-a",
+    cropId: "crop-apple-a",
+    seasonId: "season-a",
+    projections: [
+      { ruleId: "apple.rain.check.v1", draft: draft() },
+      {
+        ruleId: "apple.heat.check.v1",
+        draft: draft({
+          title: "차광 상태를 확인하세요",
+          dueAt: "2026-07-31T10:00:00.000Z",
+        }),
+      },
+    ],
+    idempotencyKey: "sync-1",
+  });
+
+  assert.equal(result.createdCount, 2);
+  assert.equal(result.cancelledCount, 0);
+  assert.equal(result.plan.today.length, 2);
+  assert.deepEqual(
+    result.plan.today.map(({ ruleId }) => ruleId).sort(),
+    ["apple.heat.check.v1", "apple.rain.check.v1"],
+  );
+});
+
 test("저장 어댑터 인터페이스는 통합자가 구현할 메서드를 고정한다", () => {
   assert.deepEqual(ACTION_PLAN_REPOSITORY_METHODS, [
     "listActions",

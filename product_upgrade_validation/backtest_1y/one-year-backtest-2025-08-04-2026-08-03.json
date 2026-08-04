@@ -1,0 +1,1441 @@
+{
+  "auditKind": "ONE_YEAR_WEATHER_RULE_AND_HARVEST_PACE_BACKTEST",
+  "generatedAt": "2026-08-04T05:16:33.642Z",
+  "state": "MECHANICAL_BACKTEST_READY_FORECAST_ACCURACY_BLOCKED",
+  "scope": {
+    "from": "2025-08-04",
+    "to": "2026-08-03",
+    "timezone": "Asia/Seoul",
+    "inclusiveDayCount": 365,
+    "reviewedLocationCount": 8,
+    "cropCount": 5,
+    "crops": [
+      "APPLE",
+      "PEAR",
+      "CUCUMBER",
+      "POTATO",
+      "LETTUCE"
+    ],
+    "observationGrain": "ASOS station-day",
+    "harvestSensitivityWindowDays": 90
+  },
+  "sources": [
+    {
+      "id": "kma-asos-daily",
+      "label": "기상청 ASOS 일자료 조회서비스",
+      "href": "https://www.data.go.kr/data/15059093/openapi.do"
+    },
+    {
+      "id": "kma-climate-normal-1991-2020",
+      "label": "기상청 기후평년 1991~2020",
+      "href": "https://data.kma.go.kr/climate/average30Years/selectAverage30YearsMonthList.do"
+    },
+    {
+      "id": "reviewed-crop-rules",
+      "label": "프로젝트 검수 작물 위험 규칙",
+      "path": "backend-v3/runtime/reviewed-crop-rules.js"
+    }
+  ],
+  "providerStates": {
+    "historicalAsos": {
+      "state": "SUCCESS",
+      "stationCount": 8,
+      "counts": {
+        "SUCCESS": 8
+      }
+    },
+    "historicalIssuedForecast": {
+      "state": "AUTH_ERROR",
+      "probeIssueDate": "2025-08-03",
+      "probeBaseTimeKst": "1700",
+      "stationLabel": "인천광역시 남동구",
+      "qualityFlags": [
+        "PROVIDER_AUTH_ERROR"
+      ],
+      "fullYearForecastMetricsCalculated": false,
+      "reason": "과거 발행 예보 접근이 불가해 관측과 예보의 오차지표를 계산하지 못함"
+    }
+  },
+  "dataQuality": {
+    "state": "READY_WITH_MINOR_GAPS",
+    "expectedStationDayCount": 2920,
+    "observedStationDayCount": 2920,
+    "coverageRatio": 1,
+    "completeTemperatureDayCount": 2914,
+    "completeTemperatureRatio": 0.9979,
+    "precipitationDayCount": 2920,
+    "precipitationCoverageRatio": 1,
+    "missingDayCount": 0,
+    "duplicateStationDateCount": 0,
+    "successfulStationCount": 8,
+    "byStation": [
+      {
+        "areaCode": "2820000000",
+        "displayName": "인천광역시 남동구",
+        "stationId": "112",
+        "stationName": "인천",
+        "providerState": "SUCCESS",
+        "expectedDayCount": 365,
+        "observedDayCount": 365,
+        "coverageRatio": 1,
+        "missingDayCount": 0,
+        "qualityFlags": [
+          "ASOS_DRY_DAY_BLANK_INTERPRETED_AS_ZERO"
+        ]
+      },
+      {
+        "areaCode": "4150000000",
+        "displayName": "경기도 이천시",
+        "stationId": "203",
+        "stationName": "이천",
+        "providerState": "SUCCESS",
+        "expectedDayCount": 365,
+        "observedDayCount": 365,
+        "coverageRatio": 1,
+        "missingDayCount": 0,
+        "qualityFlags": [
+          "ASOS_DRY_DAY_BLANK_INTERPRETED_AS_ZERO"
+        ]
+      },
+      {
+        "areaCode": "4717000000",
+        "displayName": "경상북도 안동시",
+        "stationId": "136",
+        "stationName": "안동",
+        "providerState": "SUCCESS",
+        "expectedDayCount": 365,
+        "observedDayCount": 365,
+        "coverageRatio": 1,
+        "missingDayCount": 0,
+        "qualityFlags": [
+          "ASOS_DRY_DAY_BLANK_INTERPRETED_AS_ZERO"
+        ]
+      },
+      {
+        "areaCode": "4476000000",
+        "displayName": "충청남도 부여군",
+        "stationId": "236",
+        "stationName": "부여",
+        "providerState": "SUCCESS",
+        "expectedDayCount": 365,
+        "observedDayCount": 365,
+        "coverageRatio": 1,
+        "missingDayCount": 0,
+        "qualityFlags": [
+          "ASOS_DRY_DAY_BLANK_INTERPRETED_AS_ZERO"
+        ]
+      },
+      {
+        "areaCode": "4721000000",
+        "displayName": "경상북도 영주시",
+        "stationId": "272",
+        "stationName": "영주",
+        "providerState": "SUCCESS",
+        "expectedDayCount": 365,
+        "observedDayCount": 365,
+        "coverageRatio": 1,
+        "missingDayCount": 0,
+        "qualityFlags": [
+          "ASOS_DRY_DAY_BLANK_INTERPRETED_AS_ZERO"
+        ]
+      },
+      {
+        "areaCode": "4728000000",
+        "displayName": "경상북도 문경시",
+        "stationId": "273",
+        "stationName": "문경",
+        "providerState": "SUCCESS",
+        "expectedDayCount": 365,
+        "observedDayCount": 365,
+        "coverageRatio": 1,
+        "missingDayCount": 0,
+        "qualityFlags": [
+          "ASOS_DRY_DAY_BLANK_INTERPRETED_AS_ZERO"
+        ]
+      },
+      {
+        "areaCode": "4773000000",
+        "displayName": "경상북도 의성군",
+        "stationId": "278",
+        "stationName": "의성",
+        "providerState": "SUCCESS",
+        "expectedDayCount": 365,
+        "observedDayCount": 365,
+        "coverageRatio": 1,
+        "missingDayCount": 0,
+        "qualityFlags": [
+          "ASOS_DRY_DAY_BLANK_INTERPRETED_AS_ZERO"
+        ]
+      },
+      {
+        "areaCode": "5176000000",
+        "displayName": "강원특별자치도 평창군",
+        "stationId": "100",
+        "stationName": "대관령",
+        "providerState": "SUCCESS",
+        "expectedDayCount": 365,
+        "observedDayCount": 365,
+        "coverageRatio": 1,
+        "missingDayCount": 0,
+        "qualityFlags": [
+          "ASOS_DRY_DAY_BLANK_INTERPRETED_AS_ZERO"
+        ]
+      }
+    ],
+    "missingDates": [],
+    "incompleteTemperatureDates": [
+      {
+        "stationId": "100",
+        "stationName": "대관령",
+        "date": "2025-10-30",
+        "missingMetrics": [
+          "meanTemperature"
+        ]
+      },
+      {
+        "stationId": "100",
+        "stationName": "대관령",
+        "date": "2025-10-31",
+        "missingMetrics": [
+          "meanTemperature",
+          "minTemperature",
+          "maxTemperature"
+        ]
+      },
+      {
+        "stationId": "100",
+        "stationName": "대관령",
+        "date": "2025-11-01",
+        "missingMetrics": [
+          "meanTemperature",
+          "minTemperature",
+          "maxTemperature"
+        ]
+      },
+      {
+        "stationId": "100",
+        "stationName": "대관령",
+        "date": "2025-11-02",
+        "missingMetrics": [
+          "meanTemperature",
+          "minTemperature",
+          "maxTemperature"
+        ]
+      },
+      {
+        "stationId": "100",
+        "stationName": "대관령",
+        "date": "2025-11-03",
+        "missingMetrics": [
+          "meanTemperature",
+          "minTemperature",
+          "maxTemperature"
+        ]
+      },
+      {
+        "stationId": "100",
+        "stationName": "대관령",
+        "date": "2025-11-04",
+        "missingMetrics": [
+          "meanTemperature",
+          "minTemperature",
+          "maxTemperature"
+        ]
+      }
+    ]
+  },
+  "riskReplay": {
+    "state": "READY",
+    "period": {
+      "from": "2025-08-04",
+      "to": "2026-08-03"
+    },
+    "stationCount": 8,
+    "ruleCount": 8,
+    "totalRuleEvaluationCount": 23320,
+    "totalRuleTriggerCount": 5547,
+    "byCrop": [
+      {
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 524,
+        "triggerRate": 0.1798,
+        "longestTriggerStreakDays": 25,
+        "stageScopedPotentialStationDayCount": 0,
+        "stageScopedPotentialRate": 0
+      },
+      {
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 185,
+        "triggerRate": 0.0635,
+        "longestTriggerStreakDays": 15,
+        "stageScopedPotentialStationDayCount": 733,
+        "stageScopedPotentialRate": 0.2515
+      },
+      {
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 1443,
+        "triggerRate": 0.495,
+        "longestTriggerStreakDays": 177,
+        "stageScopedPotentialStationDayCount": 0,
+        "stageScopedPotentialRate": 0
+      },
+      {
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 811,
+        "triggerRate": 0.2782,
+        "longestTriggerStreakDays": 33,
+        "stageScopedPotentialStationDayCount": 811,
+        "stageScopedPotentialRate": 0.2782
+      },
+      {
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 1040,
+        "triggerRate": 0.3568,
+        "longestTriggerStreakDays": 44,
+        "stageScopedPotentialStationDayCount": 0,
+        "stageScopedPotentialRate": 0
+      }
+    ],
+    "byRule": [
+      {
+        "ruleId": "apple.open-field.forecast.max-temperature-gte-30.v1",
+        "crop": "APPLE",
+        "stage": "ANY",
+        "metric": "maxTemperature",
+        "operator": "GTE",
+        "threshold": 30,
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 524,
+        "missingStationDayCount": 5,
+        "triggerRate": 0.1798
+      },
+      {
+        "ruleId": "pear.open-field.forecast.flowering-min-temperature-lte-minus-1_7.v1",
+        "crop": "PEAR",
+        "stage": "FLOWERING",
+        "metric": "minTemperature",
+        "operator": "LTE",
+        "threshold": -1.7,
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 733,
+        "missingStationDayCount": 5,
+        "triggerRate": 0.2515
+      },
+      {
+        "ruleId": "pear.open-field.forecast.max-temperature-gte-33.v1",
+        "crop": "PEAR",
+        "stage": "ANY",
+        "metric": "maxTemperature",
+        "operator": "GTE",
+        "threshold": 33,
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 185,
+        "missingStationDayCount": 5,
+        "triggerRate": 0.0635
+      },
+      {
+        "ruleId": "potato.open-field.forecast.tuber-bulking-max-temperature-gte-27.v1",
+        "crop": "POTATO",
+        "stage": "TUBER_BULKING",
+        "metric": "maxTemperature",
+        "operator": "GTE",
+        "threshold": 27,
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 811,
+        "missingStationDayCount": 5,
+        "triggerRate": 0.2782
+      },
+      {
+        "ruleId": "potato.open-field.forecast.max-temperature-gte-27-monitor.v1",
+        "crop": "POTATO",
+        "stage": "ANY",
+        "metric": "maxTemperature",
+        "operator": "GTE",
+        "threshold": 27,
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 811,
+        "missingStationDayCount": 5,
+        "triggerRate": 0.2782
+      },
+      {
+        "ruleId": "cucumber.open-field.forecast.min-temperature-lte-7.v1",
+        "crop": "CUCUMBER",
+        "stage": "ANY",
+        "metric": "minTemperature",
+        "operator": "LTE",
+        "threshold": 7,
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 1396,
+        "missingStationDayCount": 5,
+        "triggerRate": 0.4789
+      },
+      {
+        "ruleId": "cucumber.open-field.forecast.max-temperature-gte-35.v1",
+        "crop": "CUCUMBER",
+        "stage": "ANY",
+        "metric": "maxTemperature",
+        "operator": "GTE",
+        "threshold": 35,
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 47,
+        "missingStationDayCount": 5,
+        "triggerRate": 0.0161
+      },
+      {
+        "ruleId": "lettuce.open-field.forecast.max-temperature-gte-25.v1",
+        "crop": "LETTUCE",
+        "stage": "ANY",
+        "metric": "maxTemperature",
+        "operator": "GTE",
+        "threshold": 25,
+        "evaluatedStationDayCount": 2915,
+        "triggeredStationDayCount": 1040,
+        "missingStationDayCount": 5,
+        "triggerRate": 0.3568
+      }
+    ],
+    "generalRuleCount": 6,
+    "stageScopedRuleCount": 2,
+    "monthlyCropTriggerRate": [
+      {
+        "month": "2025-08",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 224,
+        "triggeredStationDayCount": 167,
+        "triggerRate": 0.7455
+      },
+      {
+        "month": "2025-08",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 224,
+        "triggeredStationDayCount": 21,
+        "triggerRate": 0.0938
+      },
+      {
+        "month": "2025-08",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 224,
+        "triggeredStationDayCount": 219,
+        "triggerRate": 0.9777
+      },
+      {
+        "month": "2025-08",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 224,
+        "triggeredStationDayCount": 79,
+        "triggerRate": 0.3527
+      },
+      {
+        "month": "2025-08",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 224,
+        "triggeredStationDayCount": 201,
+        "triggerRate": 0.8973
+      },
+      {
+        "month": "2025-09",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 56,
+        "triggerRate": 0.2333
+      },
+      {
+        "month": "2025-09",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 4,
+        "triggerRate": 0.0167
+      },
+      {
+        "month": "2025-09",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 163,
+        "triggerRate": 0.6792
+      },
+      {
+        "month": "2025-09",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 12,
+        "triggerRate": 0.05
+      },
+      {
+        "month": "2025-09",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 106,
+        "triggerRate": 0.4417
+      },
+      {
+        "month": "2025-10",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 247,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2025-10",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 247,
+        "triggeredStationDayCount": 50,
+        "triggerRate": 0.2024
+      },
+      {
+        "month": "2025-10",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 247,
+        "triggeredStationDayCount": 31,
+        "triggerRate": 0.1255
+      },
+      {
+        "month": "2025-10",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 247,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2025-10",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 247,
+        "triggeredStationDayCount": 7,
+        "triggerRate": 0.0283
+      },
+      {
+        "month": "2025-11",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 236,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2025-11",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 236,
+        "triggeredStationDayCount": 213,
+        "triggerRate": 0.9025
+      },
+      {
+        "month": "2025-11",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 236,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2025-11",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 236,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2025-11",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 236,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2025-12",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2025-12",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 248,
+        "triggerRate": 1
+      },
+      {
+        "month": "2025-12",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2025-12",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2025-12",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-01",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-01",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 248,
+        "triggerRate": 1
+      },
+      {
+        "month": "2026-01",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-01",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-01",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-02",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 224,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-02",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 224,
+        "triggeredStationDayCount": 224,
+        "triggerRate": 1
+      },
+      {
+        "month": "2026-02",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 224,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-02",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 224,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-02",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 224,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-03",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-03",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 235,
+        "triggerRate": 0.9476
+      },
+      {
+        "month": "2026-03",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-03",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-03",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-04",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-04",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 138,
+        "triggerRate": 0.575
+      },
+      {
+        "month": "2026-04",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 43,
+        "triggerRate": 0.1792
+      },
+      {
+        "month": "2026-04",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 0,
+        "triggerRate": 0
+      },
+      {
+        "month": "2026-04",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 19,
+        "triggerRate": 0.0792
+      },
+      {
+        "month": "2026-05",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 41,
+        "triggerRate": 0.1653
+      },
+      {
+        "month": "2026-05",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 33,
+        "triggerRate": 0.1331
+      },
+      {
+        "month": "2026-05",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 132,
+        "triggerRate": 0.5323
+      },
+      {
+        "month": "2026-05",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 4,
+        "triggerRate": 0.0161
+      },
+      {
+        "month": "2026-05",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 91,
+        "triggerRate": 0.3669
+      },
+      {
+        "month": "2026-06",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 83,
+        "triggerRate": 0.3458
+      },
+      {
+        "month": "2026-06",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 3,
+        "triggerRate": 0.0125
+      },
+      {
+        "month": "2026-06",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 192,
+        "triggerRate": 0.8
+      },
+      {
+        "month": "2026-06",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 6,
+        "triggerRate": 0.025
+      },
+      {
+        "month": "2026-06",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 240,
+        "triggeredStationDayCount": 148,
+        "triggerRate": 0.6167
+      },
+      {
+        "month": "2026-07",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 153,
+        "triggerRate": 0.6169
+      },
+      {
+        "month": "2026-07",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 12,
+        "triggerRate": 0.0484
+      },
+      {
+        "month": "2026-07",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 236,
+        "triggerRate": 0.9516
+      },
+      {
+        "month": "2026-07",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 64,
+        "triggerRate": 0.2581
+      },
+      {
+        "month": "2026-07",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 248,
+        "triggeredStationDayCount": 215,
+        "triggerRate": 0.8669
+      },
+      {
+        "month": "2026-08",
+        "crop": "APPLE",
+        "evaluatedStationDayCount": 24,
+        "triggeredStationDayCount": 24,
+        "triggerRate": 1
+      },
+      {
+        "month": "2026-08",
+        "crop": "CUCUMBER",
+        "evaluatedStationDayCount": 24,
+        "triggeredStationDayCount": 14,
+        "triggerRate": 0.5833
+      },
+      {
+        "month": "2026-08",
+        "crop": "LETTUCE",
+        "evaluatedStationDayCount": 24,
+        "triggeredStationDayCount": 24,
+        "triggerRate": 1
+      },
+      {
+        "month": "2026-08",
+        "crop": "PEAR",
+        "evaluatedStationDayCount": 24,
+        "triggeredStationDayCount": 20,
+        "triggerRate": 0.8333
+      },
+      {
+        "month": "2026-08",
+        "crop": "POTATO",
+        "evaluatedStationDayCount": 24,
+        "triggeredStationDayCount": 24,
+        "triggerRate": 1
+      }
+    ],
+    "interpretation": "일반 규칙의 실제 관측 임계값 초과일을 집계했다. 생육단계 전용 규칙은 잠재 조건으로 분리했으며, 당시 예보가 그 날짜를 맞혔다는 뜻은 아니다."
+  },
+  "harvestPace": {
+    "state": "READY",
+    "windowDays": 90,
+    "windowEndDates": [
+      "2025-11-30",
+      "2025-12-31",
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+      "2026-04-30",
+      "2026-05-31",
+      "2026-06-30",
+      "2026-07-31",
+      "2026-08-03"
+    ],
+    "evaluationCount": 400,
+    "inputSufficientCount": 400,
+    "inputSufficientRatio": 1,
+    "insufficientInputCount": 0,
+    "adjustmentAppliedCount": 334,
+    "thermallyEvaluableRatio": 0.835,
+    "thermallyInactiveBaselineCount": 66,
+    "capHitCount": 241,
+    "capHitRate": 0.7216,
+    "byCrop": [
+      {
+        "crop": "APPLE",
+        "evaluationCount": 80,
+        "appliedCount": 70,
+        "inputSufficientCount": 80,
+        "thermallyInactiveBaselineCount": 10,
+        "meanAdjustmentDays": -10.9,
+        "medianAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "advancedCount": 70,
+        "unchangedCount": 10,
+        "delayedCount": 0,
+        "capHitCount": 48,
+        "meanPaceRatio": 1.413
+      },
+      {
+        "crop": "PEAR",
+        "evaluationCount": 80,
+        "appliedCount": 70,
+        "inputSufficientCount": 80,
+        "thermallyInactiveBaselineCount": 10,
+        "meanAdjustmentDays": -10.9,
+        "medianAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "advancedCount": 70,
+        "unchangedCount": 10,
+        "delayedCount": 0,
+        "capHitCount": 48,
+        "meanPaceRatio": 1.413
+      },
+      {
+        "crop": "CUCUMBER",
+        "evaluationCount": 80,
+        "appliedCount": 54,
+        "inputSufficientCount": 80,
+        "thermallyInactiveBaselineCount": 26,
+        "meanAdjustmentDays": -9.18,
+        "medianAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "advancedCount": 54,
+        "unchangedCount": 26,
+        "delayedCount": 0,
+        "capHitCount": 47,
+        "meanPaceRatio": 1.518
+      },
+      {
+        "crop": "POTATO",
+        "evaluationCount": 80,
+        "appliedCount": 70,
+        "inputSufficientCount": 80,
+        "thermallyInactiveBaselineCount": 10,
+        "meanAdjustmentDays": -11.09,
+        "medianAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "advancedCount": 70,
+        "unchangedCount": 10,
+        "delayedCount": 0,
+        "capHitCount": 50,
+        "meanPaceRatio": 1.853
+      },
+      {
+        "crop": "LETTUCE",
+        "evaluationCount": 80,
+        "appliedCount": 70,
+        "inputSufficientCount": 80,
+        "thermallyInactiveBaselineCount": 10,
+        "meanAdjustmentDays": -10.9,
+        "medianAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "advancedCount": 70,
+        "unchangedCount": 10,
+        "delayedCount": 0,
+        "capHitCount": 48,
+        "meanPaceRatio": 1.413
+      }
+    ],
+    "monthlyCropAdjustment": [
+      {
+        "windowEnd": "2025-11-30",
+        "crop": "APPLE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -13.75,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -12,
+        "meanPaceRatio": 1.237
+      },
+      {
+        "windowEnd": "2025-12-31",
+        "crop": "APPLE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.363
+      },
+      {
+        "windowEnd": "2026-01-31",
+        "crop": "APPLE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -12.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 1.406
+      },
+      {
+        "windowEnd": "2026-02-28",
+        "crop": "APPLE",
+        "stationCount": 8,
+        "meanAdjustmentDays": 0,
+        "minimumAdjustmentDays": 0,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 0
+      },
+      {
+        "windowEnd": "2026-03-31",
+        "crop": "APPLE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -12.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 2.27
+      },
+      {
+        "windowEnd": "2026-04-30",
+        "crop": "APPLE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.515
+      },
+      {
+        "windowEnd": "2026-05-31",
+        "crop": "APPLE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.243
+      },
+      {
+        "windowEnd": "2026-06-30",
+        "crop": "APPLE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -9.88,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -6,
+        "meanPaceRatio": 1.117
+      },
+      {
+        "windowEnd": "2026-07-31",
+        "crop": "APPLE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -8.88,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -6,
+        "meanPaceRatio": 1.098
+      },
+      {
+        "windowEnd": "2026-08-03",
+        "crop": "APPLE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -10,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -7,
+        "meanPaceRatio": 1.114
+      },
+      {
+        "windowEnd": "2025-11-30",
+        "crop": "PEAR",
+        "stationCount": 8,
+        "meanAdjustmentDays": -13.75,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -12,
+        "meanPaceRatio": 1.237
+      },
+      {
+        "windowEnd": "2025-12-31",
+        "crop": "PEAR",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.363
+      },
+      {
+        "windowEnd": "2026-01-31",
+        "crop": "PEAR",
+        "stationCount": 8,
+        "meanAdjustmentDays": -12.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 1.406
+      },
+      {
+        "windowEnd": "2026-02-28",
+        "crop": "PEAR",
+        "stationCount": 8,
+        "meanAdjustmentDays": 0,
+        "minimumAdjustmentDays": 0,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 0
+      },
+      {
+        "windowEnd": "2026-03-31",
+        "crop": "PEAR",
+        "stationCount": 8,
+        "meanAdjustmentDays": -12.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 2.27
+      },
+      {
+        "windowEnd": "2026-04-30",
+        "crop": "PEAR",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.515
+      },
+      {
+        "windowEnd": "2026-05-31",
+        "crop": "PEAR",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.243
+      },
+      {
+        "windowEnd": "2026-06-30",
+        "crop": "PEAR",
+        "stationCount": 8,
+        "meanAdjustmentDays": -9.88,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -6,
+        "meanPaceRatio": 1.117
+      },
+      {
+        "windowEnd": "2026-07-31",
+        "crop": "PEAR",
+        "stationCount": 8,
+        "meanAdjustmentDays": -8.88,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -6,
+        "meanPaceRatio": 1.098
+      },
+      {
+        "windowEnd": "2026-08-03",
+        "crop": "PEAR",
+        "stationCount": 8,
+        "meanAdjustmentDays": -10,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -7,
+        "meanPaceRatio": 1.114
+      },
+      {
+        "windowEnd": "2025-11-30",
+        "crop": "CUCUMBER",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.49
+      },
+      {
+        "windowEnd": "2025-12-31",
+        "crop": "CUCUMBER",
+        "stationCount": 8,
+        "meanAdjustmentDays": -12.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 1.687
+      },
+      {
+        "windowEnd": "2026-01-31",
+        "crop": "CUCUMBER",
+        "stationCount": 8,
+        "meanAdjustmentDays": 0,
+        "minimumAdjustmentDays": 0,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 0
+      },
+      {
+        "windowEnd": "2026-02-28",
+        "crop": "CUCUMBER",
+        "stationCount": 8,
+        "meanAdjustmentDays": 0,
+        "minimumAdjustmentDays": 0,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 0
+      },
+      {
+        "windowEnd": "2026-03-31",
+        "crop": "CUCUMBER",
+        "stationCount": 8,
+        "meanAdjustmentDays": 0,
+        "minimumAdjustmentDays": 0,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 0
+      },
+      {
+        "windowEnd": "2026-04-30",
+        "crop": "CUCUMBER",
+        "stationCount": 8,
+        "meanAdjustmentDays": -12.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 2
+      },
+      {
+        "windowEnd": "2026-05-31",
+        "crop": "CUCUMBER",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.502
+      },
+      {
+        "windowEnd": "2026-06-30",
+        "crop": "CUCUMBER",
+        "stationCount": 8,
+        "meanAdjustmentDays": -13.88,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -13,
+        "meanPaceRatio": 1.226
+      },
+      {
+        "windowEnd": "2026-07-31",
+        "crop": "CUCUMBER",
+        "stationCount": 8,
+        "meanAdjustmentDays": -12.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -8,
+        "meanPaceRatio": 1.159
+      },
+      {
+        "windowEnd": "2026-08-03",
+        "crop": "CUCUMBER",
+        "stationCount": 8,
+        "meanAdjustmentDays": -13.13,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -10,
+        "meanPaceRatio": 1.182
+      },
+      {
+        "windowEnd": "2025-11-30",
+        "crop": "POTATO",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.271
+      },
+      {
+        "windowEnd": "2025-12-31",
+        "crop": "POTATO",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.441
+      },
+      {
+        "windowEnd": "2026-01-31",
+        "crop": "POTATO",
+        "stationCount": 8,
+        "meanAdjustmentDays": -12.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 2.013
+      },
+      {
+        "windowEnd": "2026-02-28",
+        "crop": "POTATO",
+        "stationCount": 8,
+        "meanAdjustmentDays": 0,
+        "minimumAdjustmentDays": 0,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 0
+      },
+      {
+        "windowEnd": "2026-03-31",
+        "crop": "POTATO",
+        "stationCount": 8,
+        "meanAdjustmentDays": -12.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 5.182
+      },
+      {
+        "windowEnd": "2026-04-30",
+        "crop": "POTATO",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.667
+      },
+      {
+        "windowEnd": "2026-05-31",
+        "crop": "POTATO",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.289
+      },
+      {
+        "windowEnd": "2026-06-30",
+        "crop": "POTATO",
+        "stationCount": 8,
+        "meanAdjustmentDays": -10.63,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -7,
+        "meanPaceRatio": 1.128
+      },
+      {
+        "windowEnd": "2026-07-31",
+        "crop": "POTATO",
+        "stationCount": 8,
+        "meanAdjustmentDays": -9.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -6,
+        "meanPaceRatio": 1.104
+      },
+      {
+        "windowEnd": "2026-08-03",
+        "crop": "POTATO",
+        "stationCount": 8,
+        "meanAdjustmentDays": -10.5,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -7,
+        "meanPaceRatio": 1.121
+      },
+      {
+        "windowEnd": "2025-11-30",
+        "crop": "LETTUCE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -13.75,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -12,
+        "meanPaceRatio": 1.237
+      },
+      {
+        "windowEnd": "2025-12-31",
+        "crop": "LETTUCE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.363
+      },
+      {
+        "windowEnd": "2026-01-31",
+        "crop": "LETTUCE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -12.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 1.406
+      },
+      {
+        "windowEnd": "2026-02-28",
+        "crop": "LETTUCE",
+        "stationCount": 8,
+        "meanAdjustmentDays": 0,
+        "minimumAdjustmentDays": 0,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 0
+      },
+      {
+        "windowEnd": "2026-03-31",
+        "crop": "LETTUCE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -12.25,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": 0,
+        "meanPaceRatio": 2.27
+      },
+      {
+        "windowEnd": "2026-04-30",
+        "crop": "LETTUCE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.515
+      },
+      {
+        "windowEnd": "2026-05-31",
+        "crop": "LETTUCE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -14,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -14,
+        "meanPaceRatio": 1.243
+      },
+      {
+        "windowEnd": "2026-06-30",
+        "crop": "LETTUCE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -9.88,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -6,
+        "meanPaceRatio": 1.117
+      },
+      {
+        "windowEnd": "2026-07-31",
+        "crop": "LETTUCE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -8.88,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -6,
+        "meanPaceRatio": 1.098
+      },
+      {
+        "windowEnd": "2026-08-03",
+        "crop": "LETTUCE",
+        "stationCount": 8,
+        "meanAdjustmentDays": -10,
+        "minimumAdjustmentDays": -14,
+        "maximumAdjustmentDays": -7,
+        "meanPaceRatio": 1.114
+      }
+    ],
+    "interpretation": "각 월말 90일 관측을 평년 적산온도와 비교한 일정 보정 민감도이며 실제 수확일 오차가 아니다."
+  },
+  "validationBoundaries": {
+    "forecastErrorMetrics": "BLOCKED_AUTH_ERROR",
+    "cropDamagePrecisionRecall": "BLOCKED_NO_HISTORICAL_DAMAGE_LABELS",
+    "harvestDateError": "BLOCKED_NO_ACTUAL_HARVEST_DATES",
+    "historicalSoilContribution": "EXCLUDED_NO_AS_OF_DATE_FIELD_SOIL_SNAPSHOT",
+    "interpretation": [
+      "관측 재생은 임계값 발동과 결측 방어를 검증하지만 미래 예측 정확도를 증명하지 않는다.",
+      "90일 적산온도 재생은 일정 보정의 안정성을 검증하지만 실제 수확일 정확도를 증명하지 않는다.",
+      "현재 토양값을 과거 시점에 소급 적용하지 않았다."
+    ]
+  },
+  "guarantees": {
+    "missingValuesImputed": false,
+    "currentForecastSubstitutedForHistoricalIssue": false,
+    "currentSoilSubstitutedForHistoricalSoil": false,
+    "duplicateCropRiskDaysDeduplicated": true,
+    "credentialsDisclosed": false
+  }
+}

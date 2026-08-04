@@ -8,7 +8,10 @@ import { createOpaqueId } from "./opaque-id.js";
 import { TtlMemoryStore } from "./ttl-memory-store.js";
 
 const DEFAULT_CSRF_TTL_MS = 60 * 60 * 1_000;
-const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1_000;
+// 비회원 농가도 한 작기를 수개월 추적한다. 세션을 하루 만에 바꾸면
+// 세션 소유권으로 격리한 재배일정·행동 기록을 다시 찾을 수 없으므로,
+// 저장 데이터의 2년 수명과 동일하게 유지한다.
+const DEFAULT_SESSION_TTL_MS = 2 * 365 * 24 * 60 * 60 * 1_000;
 const DEFAULT_MAX_SESSIONS = 10_000;
 const COOKIE_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 

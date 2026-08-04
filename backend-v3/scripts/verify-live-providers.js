@@ -22,12 +22,15 @@ const kmaApiHubKey = process.env.KMA_API_HUB_AUTH_KEY;
 const kakaoKey = process.env.KAKAO_REST_API_KEY;
 const SAMPLE_PNU = "4611010100101830025";
 const issues = providerIssueTimes(new Date());
-const common = { timeoutMs: 7_000 };
+// 운영 분석과 같은 공급자 제한을 사용해 7초와 10초 사이의 정상 응답을
+// 진단 실패로 잘못 분류하지 않는다.
+const common = { timeoutMs: 10_000 };
 
 const probes = await Promise.all([
   probeKakao(),
   probeKmaClimateNormal(),
   probeKmaAsos(),
+  probeKmaAsosSeasonRange(),
   probeSoil(),
   probeSoilExam(),
   probeSoilField(),
@@ -175,6 +178,31 @@ async function probeKmaAsos() {
   );
 }
 
+async function probeKmaAsosSeasonRange() {
+  if (!hasValue(publicDataKey)) {
+    return summary("kmaAsosSeasonRange", false, "NOT_CONFIGURED");
+  }
+  const adapter = createKmaAsosObservationAdapter({
+    ...common,
+    enabled: true,
+    apiKey: publicDataKey,
+    contractVersion: VERIFIED_KMA_ASOS_CONTRACT_VERSION,
+  });
+  const yesterday = seoulDateOffset(-1);
+  const result = await adapter.getDailyRange({
+    stationId: "136",
+    from: seoulDateOffset(-30),
+    to: yesterday,
+  });
+  return summary(
+    "kmaAsosSeasonRange",
+    true,
+    result.adapterState,
+    result.data?.readings?.length ?? 0,
+    result.qualityFlags,
+  );
+}
+
 async function probeSoil() {
   if (!hasValue(publicDataKey)) {
     return summary("soilV2", false, "NOT_CONFIGURED");
@@ -234,6 +262,12 @@ function summary(provider, configured, state, itemCount = 0, flags = []) {
 
 function hasValue(value) {
   return typeof value === "string" && value.trim() !== "";
+}
+
+function seoulDateOffset(offsetDays) {
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1_000);
+  now.setUTCDate(now.getUTCDate() + offsetDays);
+  return now.toISOString().slice(0, 10);
 }
 
 function providerIssueTimes(now) {

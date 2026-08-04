@@ -1215,6 +1215,15 @@ test("every approved request-validation DomainError becomes a safe structured HT
   assert.deepEqual(
     [...requestValidationCodes].sort(),
     [
+      "CROP_CYCLE_ACTIVE_DATE_INVALID",
+      "CROP_CYCLE_ANCHOR_INVALID",
+      "CROP_CYCLE_COMPLETION_DATE_INVALID",
+      "CROP_CYCLE_CROP_INVALID",
+      "CROP_CYCLE_DATE_INVALID",
+      "CROP_CYCLE_REVISION_INVALID",
+      "CROP_CYCLE_SCOPE_INVALID",
+      "CROP_CYCLE_STATUS_INVALID",
+      "CROP_CYCLE_TIMESTAMP_INVALID",
       "INVALID_CULTIVATION_MODE",
       "INVALID_GROWTH_STAGE",
       "INVALID_GROWTH_STAGE_CONTEXT",

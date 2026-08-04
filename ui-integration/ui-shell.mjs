@@ -24,9 +24,10 @@
   let wizardReturnProfileState = 'ready';
   const cropSettingsState = {};
   const cropGrowthState = {};
+  const FONT_SIZE_STORAGE_KEY = 'heuknalssi.fontSize.v1';
 
   const labels = {
-    situation: { planning: '재배 전 환경 분석', growing: '재배 중 생육 점검' },
+    situation: { planning: '재배 준비 진단', growing: '재배 중 생육 점검' },
     crop: { apple: '사과', pear: '배', cucumber: '오이', potato: '감자', lettuce: '상추' },
     cultivation: { outdoor: '노지', 'facility-soil': '시설흙', 'facility-water': '시설물', unknown: '잘 모름' },
     season: {
@@ -119,7 +120,7 @@
     const planning = selectedValue('situation') === 'planning';
     document.querySelector('#review-growth-row').hidden = planning;
     document.querySelector('#review-situation').textContent = planning
-      ? '재배 전 환경 분석'
+      ? '재배 준비 진단'
       : '재배 중 생육 점검';
     document.querySelector('#review-region').textContent =
       regionInput.dataset.candidateVerified === 'true'
@@ -130,7 +131,7 @@
     document.querySelector('#review-season').textContent =
       selectedCrops.map(cropSettingSummary).join(' · ') || '선택 전';
     document.querySelector('#review-growth').textContent = planning
-      ? '재배 전 환경 분석 · 생육 단계 입력 없음'
+      ? '재배 준비 진단 · 생육 단계 입력 없음'
       : `${selectedCrops.map(growthSettingSummary).join(' · ') || '단계 미선택'}${growthPhoto.files?.length ? ' · 사진 추가됨' : ''}`;
   }
 
@@ -332,7 +333,7 @@
     document.querySelector('#growth-planning-note').hidden = !planning;
     document.querySelector('#growth-photo-card').hidden = planning;
     document.querySelector('#growth-step-title').textContent = planning
-      ? '재배 전 환경 분석 조건을 확인해 주세요'
+      ? '재배 준비 진단 조건을 확인해 주세요'
       : '작물별 현재 상태를 확인해 주세요';
     document.querySelector('#growth-step-help').textContent = planning
       ? '재배 전에는 실제 생육 단계가 없으므로 별도로 묻지 않습니다.'
@@ -424,7 +425,7 @@
         if (Array.isArray(farms) && farms.some((farm) => (
           typeof farm?.region === 'string' &&
           farm.region.trim() !== '' &&
-          farm?.situation === 'growing' &&
+          ['planning', 'growing'].includes(farm?.situation) &&
           Array.isArray(farm?.crops) &&
           farm.crops.length > 0
         ))) return true;
@@ -435,7 +436,7 @@
       return (
         typeof saved?.region === 'string' &&
         saved.region.trim() !== '' &&
-        saved?.situation === 'growing' &&
+        ['planning', 'growing'].includes(saved?.situation) &&
         Array.isArray(saved?.crops) &&
         saved.crops.length > 0
       );
@@ -623,10 +624,33 @@
     });
   });
 
+  function applyFontSizeSetting(value, { announceChange = false } = {}) {
+    const large = value === 'large';
+    document.body.classList.toggle('large-text', large);
+    document.querySelectorAll('input[name="font-size-setting"]').forEach((radio) => {
+      radio.checked = radio.value === (large ? 'large' : 'normal');
+    });
+    try {
+      window.localStorage?.setItem(FONT_SIZE_STORAGE_KEY, large ? 'large' : 'normal');
+    } catch {
+      // 저장소가 막혀도 현재 화면의 확대 기능은 유지한다.
+    }
+    if (announceChange) announce(`글자 크기를 ${large ? '크게' : '보통으로'} 바꿨습니다.`);
+  }
+
+  let savedFontSize = 'normal';
+  try {
+    savedFontSize = window.localStorage?.getItem(FONT_SIZE_STORAGE_KEY) === 'large'
+      ? 'large'
+      : 'normal';
+  } catch {
+    savedFontSize = 'normal';
+  }
+  applyFontSizeSetting(savedFontSize);
+
   document.querySelectorAll('input[name="font-size-setting"]').forEach((radio) => {
     radio.addEventListener('change', () => {
-      document.body.classList.toggle('large-text', radio.value === 'large' && radio.checked);
-      announce(`글자 크기를 ${radio.value === 'large' ? '크게' : '보통으로'} 바꿨습니다.`);
+      if (radio.checked) applyFontSizeSetting(radio.value, { announceChange: true });
     });
   });
 

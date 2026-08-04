@@ -88,6 +88,23 @@ function completedDates(now, count) {
   );
 }
 
+function completedDateRange(now, from, to, { maximumDays = 366 } = {}) {
+  if (!isIsoDate(from) || !isIsoDate(to) || from > to) return [];
+  const lastCompletedDate = addIsoDays(isoKstDate(now()), -1);
+  if (to > lastCompletedDate) return [];
+  const dates = [];
+  for (let date = from; date <= to; date = addIsoDays(date, 1)) {
+    dates.push(date);
+    if (dates.length > maximumDays) return [];
+  }
+  return dates;
+}
+
+function isIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(String(value ?? ""))) return false;
+  return addIsoDays(value, 0) === value;
+}
+
 function localDayStart(date) {
   return new Date(`${date}T00:00:00+09:00`).toISOString();
 }
@@ -662,6 +679,113 @@ export function createKmaAsosObservationAdapter({
               stationName: parsed.stationName,
               readings: parsed.readings,
               monthlyNormals: [],
+            },
+          };
+        },
+      });
+    },
+    async getDailyRange(
+      { stationId, from, to } = {},
+      { signal, deadlineAt } = {},
+    ) {
+      const dates = completedDateRange(now, from, to);
+      const cacheKey = makeAdapterCacheKey({
+        adapterVersion,
+        operationId: "getWthrDataList:season-range",
+        verifiedLocationKey: { stationId: stationId ?? null },
+        requestedPeriod: {
+          from: dates[0] ?? null,
+          to: dates.at(-1) ?? null,
+        },
+        providerIssueTime: null,
+        normalizedParameters: { contractVersion, maximumDays: 366 },
+      });
+      return runCachedAdapterCall({
+        enabled,
+        credential: apiKey,
+        contractVersion,
+        allowedContractVersions: [VERIFIED_KMA_ASOS_CONTRACT_VERSION],
+        envelopeBase: {
+          ...base,
+          sourceName: "기상청 ASOS 재배기간 일관측",
+          provenance: {
+            ...base.provenance,
+            operationId: "getWthrDataList:season-range",
+          },
+        },
+        cache: control.cache,
+        singleFlight: control.singleFlight,
+        executionGuard: control.executionGuard,
+        cacheKey,
+        cacheFreshForMs,
+        signal,
+        deadlineAt,
+        now,
+        operation: async ({
+          signal: upstreamSignal,
+          deadlineAt: upstreamDeadlineAt,
+        }) => {
+          if (dates.length === 0) {
+            throw new TypeError(
+              "KMA ASOS season range must contain 1–366 completed days.",
+            );
+          }
+          const url = new URL(endpoint);
+          const query = {
+            serviceKey: apiKey.trim(),
+            pageNo: 1,
+            numOfRows: dates.length,
+            dataType: "JSON",
+            dataCd: "ASOS",
+            dateCd: "DAY",
+            startDt: compactDate(dates[0]),
+            endDt: compactDate(dates.at(-1)),
+            stnIds: String(stationId ?? "").trim(),
+          };
+          for (const [name, value] of Object.entries(query)) {
+            url.searchParams.set(name, String(value));
+          }
+          const payload = await requestProviderJson({
+            fetchImpl,
+            url,
+            provider: "KMA",
+            requestInit: { headers: { Accept: "application/json" } },
+            signal: upstreamSignal,
+            timeoutMs,
+            deadlineAt: upstreamDeadlineAt,
+            now: control.cacheClock,
+          });
+          const parsed = parseKmaAsosDaily(payload, {
+            stationId,
+            expectedDates: dates,
+          });
+          if (parsed.readings.length === 0) {
+            throw new NoDataError(
+              "KMA ASOS returned no completed season daily rows.",
+            );
+          }
+          return {
+            adapterState: "SUCCESS",
+            observedAt: localDayEnd(dates.at(-1)),
+            validFrom: localDayStart(dates[0]),
+            validTo: localDayEnd(dates.at(-1)),
+            qualityFlags: [
+              ...parsed.qualityFlags,
+              ...(parsed.missingDates.length > 0
+                ? ["ASOS_SEASON_WINDOW_INCOMPLETE"]
+                : []),
+            ],
+            data: {
+              dataRole: "OBSERVATION",
+              stationId: parsed.stationId,
+              stationName: parsed.stationName,
+              requestedRange: {
+                from: dates[0],
+                to: dates.at(-1),
+                expectedDayCount: dates.length,
+              },
+              readings: parsed.readings,
+              missingDates: parsed.missingDates,
             },
           };
         },

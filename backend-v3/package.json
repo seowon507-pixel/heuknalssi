@@ -11,8 +11,9 @@
     "start": "node server/index.js",
     "test": "node --test",
     "check": "node scripts/check-project.js",
-    "verify:backtest": "node scripts/verify-backtests.js",
-    "verify:live": "node scripts/verify-live-providers.js",
+    "verify:backtest": "node --env-file-if-exists=../.env scripts/verify-backtests.js",
+    "verify:backtest:1y": "node --env-file-if-exists=../.env scripts/verify-one-year-backtest.js",
+    "verify:live": "node --env-file-if-exists=../.env scripts/verify-live-providers.js",
     "verify:flow": "node scripts/verify-natural-flow.js"
   }
 }

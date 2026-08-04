@@ -18,6 +18,9 @@ import { createHttpHandler } from '../src/api/index.js';
 import {
   createActionPlanService,
   createApplicationServices,
+  createCropCycleService,
+  createHarvestAssessmentService,
+  createHarvestWeatherService,
   createPhotoSeasonService,
   createPestGuidanceService,
   createReportHistoryService,
@@ -26,6 +29,7 @@ import {
 import { createRuleRegistry } from '../src/domain/index.js';
 import {
   createActionPlanRepository,
+  createCropCycleRepository,
   createDeviceBackupStore,
   createPhotoSeasonRepository,
   createReportHistoryRepository,
@@ -176,6 +180,16 @@ export function createBackend({
     timeoutMs: Math.min(config.sourceTimeoutMs, 8_000),
     now: clock,
   });
+  const harvestAssessmentService = createHarvestAssessmentService({
+    assessor: assistant,
+    clock,
+  });
+  const deviceBackup = createDeviceBackupStore({
+    url: config.deviceBackupConfig.url,
+    serviceKey: config.deviceBackupConfig.secretKey,
+    fetchImpl,
+    now: clock,
+  });
   const services = createApplicationServices({
     adapters: activeAdapters,
     assistant,
@@ -194,6 +208,9 @@ export function createBackend({
           sharedStateProbe: sharedState.probe,
         }
       : {}),
+    ...(deviceBackup.configured
+      ? { deviceBackupProbe: deviceBackup.probe }
+      : {}),
     runtimeStatus: activeRuntimeStatus,
     capabilities: {
       ...config.capabilities,
@@ -208,12 +225,27 @@ export function createBackend({
   const actionStore = sharedState.configured
     ? sharedState.createTtlStore('farm_actions')
     : new TtlMemoryStore({ clock, capacityPolicy: 'reject' });
+  const cropCycleStore = sharedState.configured
+    ? sharedState.createTtlStore('crop_cycles')
+    : new TtlMemoryStore({ clock, capacityPolicy: 'reject' });
   const satelliteStore = sharedState.configured
     ? sharedState.createTtlStore('satellite')
     : new TtlMemoryStore({ clock, capacityPolicy: 'reject' });
   const actionPlanService = createActionPlanService({
     repository: createActionPlanRepository({ store: actionStore }),
     clock: () => new Date(clock()),
+  });
+  const cropCycleService = createCropCycleService({
+    repository: createCropCycleRepository({ store: cropCycleStore }),
+    clock: { now: () => new Date(clock()) },
+  });
+  const harvestWeatherService = createHarvestWeatherService({
+    cropCycleService,
+    getAnalysis: services.getAnalysis,
+    getAnalysisContext: services.getAnalysisContext,
+    observationAdapter: activeAdapters.observations,
+    climateAdapter: activeAdapters.climate,
+    clock,
   });
   const satelliteService = createSatelliteObservationService({
     adapter: activeAdapters.satellite,
@@ -244,6 +276,9 @@ export function createBackend({
     services,
     featureServices: {
       actionPlan: actionPlanService,
+      cropCycle: cropCycleService,
+      harvestAssessment: harvestAssessmentService,
+      harvestWeather: harvestWeatherService,
       pestGuidance: pestGuidanceService,
       satellite: satelliteService,
       ...(photoSeasonFeature ? { photoSeason: photoSeasonFeature } : {}),
@@ -277,12 +312,7 @@ export function createBackend({
     },
     clock,
     ...(randomBytes ? { randomBytes } : {}),
-    deviceBackup: createDeviceBackupStore({
-      url: config.deviceBackupConfig.url,
-      serviceKey: config.deviceBackupConfig.secretKey,
-      fetchImpl,
-      now: clock,
-    }),
+    deviceBackup,
   });
 
   return Object.freeze({

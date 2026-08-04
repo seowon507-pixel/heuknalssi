@@ -31,9 +31,14 @@ const DEFAULT_RATE_LIMITS = Object.freeze({
   "analyses.pestGuidance": { limit: 30, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
   "actions.list": { limit: 60, windowMs: 60_000 },
+  "actions.sync": { limit: 10, windowMs: 60_000 },
   "actions.create": { limit: 20, windowMs: 60_000 },
   "actions.reconcile": { limit: 20, windowMs: 60_000 },
   "actions.update": { limit: 30, windowMs: 60_000 },
+  "cropCycle.get": { limit: 60, windowMs: 60_000 },
+  "cropCycle.put": { limit: 20, windowMs: 60_000 },
+  "harvestWeather.get": { limit: 20, windowMs: 60_000 },
+  "harvestAssessment.create": { limit: 6, windowMs: 60_000 },
   "parcel.get": { limit: 60, windowMs: 60_000 },
   "parcel.put": { limit: 10, windowMs: 60_000 },
   "satellite.get": { limit: 30, windowMs: 60_000 },
@@ -61,9 +66,14 @@ const DEFAULT_IP_RATE_LIMITS = Object.freeze({
   "analyses.pestGuidance": { limit: 30, windowMs: 60_000 },
   "health.preflight": { limit: 30, windowMs: 60_000 },
   "actions.list": { limit: 60, windowMs: 60_000 },
+  "actions.sync": { limit: 10, windowMs: 60_000 },
   "actions.create": { limit: 20, windowMs: 60_000 },
   "actions.reconcile": { limit: 20, windowMs: 60_000 },
   "actions.update": { limit: 30, windowMs: 60_000 },
+  "cropCycle.get": { limit: 60, windowMs: 60_000 },
+  "cropCycle.put": { limit: 20, windowMs: 60_000 },
+  "harvestWeather.get": { limit: 20, windowMs: 60_000 },
+  "harvestAssessment.create": { limit: 6, windowMs: 60_000 },
   "parcel.get": { limit: 60, windowMs: 60_000 },
   "parcel.put": { limit: 10, windowMs: 60_000 },
   "satellite.get": { limit: 30, windowMs: 60_000 },
@@ -148,6 +158,12 @@ const ROUTES = Object.freeze([
     parameter: "farmId",
   },
   {
+    name: "actions.sync",
+    pattern: /^\/api\/farms\/([^/]+)\/actions\/rules\/sync$/,
+    methods: ["POST"],
+    parameter: "farmId",
+  },
+  {
     name: "actions.reconcile",
     pattern: /^\/api\/farms\/([^/]+)\/actions\/rules\/reconcile$/,
     methods: ["POST"],
@@ -158,6 +174,24 @@ const ROUTES = Object.freeze([
     pattern: /^\/api\/farms\/([^/]+)\/actions\/([^/]+)$/,
     methods: ["PATCH"],
     parameters: ["farmId", "actionId"],
+  },
+  {
+    name: "cropCycle.get",
+    pattern: /^\/api\/farms\/([^/]+)\/crops\/([^/]+)\/cycle$/,
+    methods: ["GET", "PUT"],
+    parameters: ["farmId", "cropId"],
+  },
+  {
+    name: "harvestWeather.get",
+    pattern: /^\/api\/farms\/([^/]+)\/crops\/([^/]+)\/harvest-weather$/,
+    methods: ["GET"],
+    parameters: ["farmId", "cropId"],
+  },
+  {
+    name: "harvestAssessment.create",
+    pattern: /^\/api\/farms\/([^/]+)\/harvest-assessments$/,
+    methods: ["POST"],
+    parameter: "farmId",
   },
   {
     name: "photoUploads.create",
@@ -284,6 +318,7 @@ function operationName(route, method) {
   if (!route) return "unmatched";
   const mutationNames = {
     "actions.list:POST": "actions.create",
+    "cropCycle.get:PUT": "cropCycle.put",
     "parcel.get:PUT": "parcel.put",
     "satellite.get:POST": "satellite.refresh",
     "photos.list:POST": "photos.create",
@@ -1180,6 +1215,24 @@ export function createHttpHandler({
         return;
       }
 
+      if (route.name === "actions.sync") {
+        const actionService = featureServices.actionPlan;
+        if (!actionService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        const idempotencyKey = requireIdempotencyHeader(req);
+        const result = await actionService.syncRuleActions({
+          accountId: session.id,
+          farmId: route.parameters.farmId,
+          cropId: body.cropId,
+          seasonId: body.seasonId,
+          projections: body.projections,
+          reconcile: body.reconcile !== false,
+          idempotencyKey,
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
       if (route.name === "actions.reconcile") {
         const actionService = featureServices.actionPlan;
         if (!actionService) throw new ApiError("FEATURE_NOT_CONFIGURED");
@@ -1221,6 +1274,118 @@ export function createHttpHandler({
               status: body.status,
             });
         sendJson(res, 200, result);
+        return;
+      }
+
+      if (route.name === "cropCycle.get") {
+        const cropCycleService = featureServices.cropCycle;
+        if (!cropCycleService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        if (req.method === "GET") {
+          const seasonIds = url.searchParams.getAll("seasonId");
+          const seasonId = seasonIds[0]?.trim();
+          if (seasonIds.length !== 1 || !seasonId) {
+            throw new ApiError("INVALID_INPUT", {
+              fieldErrors: {
+                seasonId: "Provide one non-empty seasonId value.",
+              },
+            });
+          }
+          const cycle = await cropCycleService.getCycle({
+            ownerSessionId: session.id,
+            farmId: route.parameters.farmId,
+            cropId: route.parameters.cropId,
+            seasonId,
+          });
+          if (!cycle) throw new ApiError("NOT_FOUND");
+          sendJson(res, 200, { cycle });
+          return;
+        }
+
+        const body = await readJsonBody(req, bodyLimitBytes, abortContext.signal);
+        const allowedKeys = new Set([
+          "seasonId",
+          "anchorType",
+          "anchorDate",
+          "status",
+          "userConfirmed",
+        ]);
+        if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+          throw new ApiError("INVALID_INPUT");
+        }
+        const cycle = await cropCycleService.putCycle({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          cropId: route.parameters.cropId,
+          seasonId: body.seasonId,
+          anchorType: body.anchorType,
+          anchorDate: body.anchorDate,
+          status: body.status,
+          userConfirmed: body.userConfirmed,
+        });
+        sendJson(res, 200, { cycle });
+        return;
+      }
+
+      if (route.name === "harvestAssessment.create") {
+        const harvestService = featureServices.harvestAssessment;
+        if (!harvestService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const body = await readJsonBody(
+          req,
+          config.photoBodyLimitBytes ?? DEFAULT_PHOTO_BODY_LIMIT_BYTES,
+          abortContext.signal,
+        );
+        const allowedKeys = new Set([
+          "cropId",
+          "seasonId",
+          "mimeType",
+          "dataBase64",
+        ]);
+        if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
+          throw new ApiError("INVALID_INPUT");
+        }
+        const assessment = await harvestService.assessPhoto({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          cropId: body.cropId,
+          seasonId: body.seasonId,
+          mimeType: body.mimeType,
+          dataBase64: body.dataBase64,
+          signal: abortContext.signal,
+        });
+        sendJson(res, 200, { assessment });
+        return;
+      }
+
+      if (route.name === "harvestWeather.get") {
+        const harvestWeatherService = featureServices.harvestWeather;
+        if (!harvestWeatherService) throw new ApiError("FEATURE_NOT_CONFIGURED");
+        const analysisIds = url.searchParams.getAll("analysisId");
+        const seasonIds = url.searchParams.getAll("seasonId");
+        const analysisId = analysisIds[0]?.trim();
+        const seasonId = seasonIds[0]?.trim();
+        if (
+          analysisIds.length !== 1 ||
+          seasonIds.length !== 1 ||
+          !analysisId ||
+          !seasonId
+        ) {
+          throw new ApiError("INVALID_INPUT", {
+            fieldErrors: {
+              analysisId: "Provide one non-empty analysisId value.",
+              seasonId: "Provide one non-empty seasonId value.",
+            },
+          });
+        }
+        const seasonWeather = await harvestWeatherService.getSeasonWeather({
+          ownerSessionId: session.id,
+          farmId: route.parameters.farmId,
+          cropId: route.parameters.cropId,
+          seasonId,
+          analysisId,
+          signal: abortContext.signal,
+        });
+        if (!seasonWeather) throw new ApiError("NOT_FOUND");
+        sendJson(res, 200, { seasonWeather });
         return;
       }
 
@@ -1467,6 +1632,7 @@ function validateFeatureServices(featureServices) {
     for (const method of [
       "listActions",
       "createAction",
+      "syncRuleActions",
       "reconcileRuleActions",
       "snoozeAction",
       "updateActionStatus",
@@ -1474,6 +1640,20 @@ function validateFeatureServices(featureServices) {
       if (typeof featureServices.actionPlan?.[method] !== "function") {
         throw new TypeError(`featureServices.actionPlan.${method} must be a function`);
       }
+    }
+  }
+  if (featureServices.cropCycle !== undefined) {
+    for (const method of ["getCycle", "putCycle"]) {
+      if (typeof featureServices.cropCycle?.[method] !== "function") {
+        throw new TypeError(`featureServices.cropCycle.${method} must be a function`);
+      }
+    }
+  }
+  if (featureServices.harvestWeather !== undefined) {
+    if (typeof featureServices.harvestWeather?.getSeasonWeather !== "function") {
+      throw new TypeError(
+        "featureServices.harvestWeather.getSeasonWeather must be a function",
+      );
     }
   }
   if (featureServices.pestGuidance !== undefined) {

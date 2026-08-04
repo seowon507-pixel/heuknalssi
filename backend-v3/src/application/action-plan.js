@@ -44,7 +44,7 @@ export function createActionPlanService({
     );
   }
 
-  return Object.freeze({
+  const service = {
     async listActions({ accountId, farmId, cropId = null, seasonId = null } = {}) {
       const scope = readScope({ accountId, farmId, cropId, seasonId });
       const actions = await repository.listActions(scope);
@@ -144,6 +144,82 @@ export function createActionPlanService({
       const saved = assertActionItem(result.action);
       assertStoredScope(saved, scope);
       return { action: saved, created: result.created };
+    },
+
+    async syncRuleActions({
+      accountId,
+      farmId,
+      cropId,
+      seasonId,
+      projections,
+      reconcile = true,
+      idempotencyKey,
+    } = {}) {
+      const scope = mutationScope({ accountId, farmId, idempotencyKey });
+      const normalizedCropId = identifier(cropId, "cropId");
+      const normalizedSeasonId = identifier(seasonId, "seasonId");
+      if (!Array.isArray(projections) || projections.length > 5) {
+        throw new DomainError(
+          "ACTION_RULE_SET_INVALID",
+          "projections must be an array with at most 5 rules",
+        );
+      }
+      const normalized = projections.map((entry, index) => {
+        if (!entry || typeof entry !== "object") {
+          throw new DomainError(
+            "ACTION_RULE_SET_INVALID",
+            "each projection must be an object",
+          );
+        }
+        const ruleId = identifier(entry.ruleId, "ruleId");
+        if (
+          entry.draft?.farmId !== scope.farmId ||
+          entry.draft?.cropId !== normalizedCropId ||
+          entry.draft?.seasonId !== normalizedSeasonId
+        ) {
+          throw new DomainError(
+            "ACTION_FARM_SCOPE_MISMATCH",
+            "projected action must match the requested farm, crop, and season",
+            { status: 403 },
+          );
+        }
+        return { ...entry, ruleId, index };
+      });
+      const created = [];
+      for (const entry of normalized) {
+        created.push(
+          await service.createAction({
+            accountId: scope.accountId,
+            farmId: scope.farmId,
+            draft: entry.draft,
+            ruleId: entry.ruleId,
+            projection: "SYSTEM_RULE",
+            idempotencyKey: `${scope.idempotencyKey}:create:${entry.index}`,
+          }),
+        );
+      }
+      const reconciled = reconcile
+        ? await service.reconcileRuleActions({
+            accountId: scope.accountId,
+            farmId: scope.farmId,
+            cropId: normalizedCropId,
+            seasonId: normalizedSeasonId,
+            activeRuleIds: normalized.map(({ ruleId }) => ruleId),
+            projection: "SYSTEM_RULE",
+            idempotencyKey: `${scope.idempotencyKey}:reconcile`,
+          })
+        : { cancelled: [] };
+      const plan = await service.listActions({
+        accountId: scope.accountId,
+        farmId: scope.farmId,
+        cropId: normalizedCropId,
+        seasonId: normalizedSeasonId,
+      });
+      return {
+        plan,
+        createdCount: created.filter((item) => item.created).length,
+        cancelledCount: reconciled.cancelled.length,
+      };
     },
 
     async reconcileRuleActions({
@@ -297,7 +373,8 @@ export function createActionPlanService({
       }
       return saved;
     },
-  });
+  };
+  return Object.freeze(service);
 }
 
 function assertRepository(repository) {

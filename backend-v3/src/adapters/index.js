@@ -83,6 +83,7 @@ export { ProviderExecutionGuard } from "./provider-control.js";
 export {
   createKakaoAdapter,
   parseKakaoCandidates,
+  parseKakaoCurrentAddressCandidates,
   parseKakaoRegionCandidates
 } from "./kakao.js";
 export {

@@ -76,7 +76,7 @@ export function renderActionPlanMarkup(plan = {}, options = {}) {
               firstId,
             )}</p>`;
       return `<section class="action-plan__section" data-horizon="${section.horizon}">
-        <h2>${section.heading}</h2>
+        <h3 class="action-plan__section-heading">${section.heading}</h3>
         ${content}
       </section>`;
     })

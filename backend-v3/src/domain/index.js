@@ -19,6 +19,17 @@ export {
   UsageMode,
 } from "./constants.js";
 export { DomainError, domainAssert } from "./errors.js";
+export {
+  CROP_CYCLE_EVIDENCE_VERSION,
+  CROP_CYCLE_RULE_VERSION,
+  createCropCycleRecord,
+  projectCropCycle,
+  updateCropCycleRecord,
+} from "./crop-cycle.js";
+export {
+  HARVEST_WEATHER_RULE_VERSION,
+  calculateHarvestWeatherPace,
+} from "./harvest-weather.js";
 export { expandSeasonMonths } from "./season.js";
 export {
   DEFAULT_VERIFIED_PROFILES,
@@ -31,6 +42,10 @@ export {
 export { classifySoilInterval, evaluateSoil } from "./soil.js";
 export { calculateGrowthScore } from "./growth-score.js";
 export { estimateFieldConditions } from "./field-condition-estimate.js";
+export {
+  analysisScopeContract,
+  projectAnalysisScope,
+} from "./analysis-scope.js";
 export {
   evaluateForecast,
   evaluateForecastRisks,

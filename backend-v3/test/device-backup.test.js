@@ -77,6 +77,9 @@ test('backup payload accepts the complete local farm workspace and rejects malfo
     ],
     alarm: { enabled: true, hour: 7 },
     todo: { title: '과원 상태 확인' },
+    soilTestsByFarmId: {
+      'farm-1': { ph: 6.2, sampledOn: '2026-07-10' },
+    },
   };
 
   assert.deepEqual(assertStorablePayload(payload), payload);
@@ -100,6 +103,104 @@ test('backup payload accepts the complete local farm workspace and rejects malfo
     (error) =>
       error instanceof DeviceBackupError &&
       error.code === 'INVALID_PAYLOAD',
+  );
+  assert.throws(
+    () =>
+      assertStorablePayload({
+        version: 2,
+        farms: payload.farms,
+        soilTestsByFarmId: {
+          'farm-other': { ph: 5.8, sampledOn: '2026-07-10' },
+        },
+      }),
+    (error) =>
+      error instanceof DeviceBackupError &&
+      error.code === 'INVALID_PAYLOAD',
+  );
+});
+
+test('backup payload preserves planning and crop-cycle fields without accepting arbitrary nested data', () => {
+  const farm = {
+    id: 'farm-planning',
+    name: '평창 감자 준비 농장',
+    updatedAt: '2026-08-04T00:00:00.000Z',
+    situation: 'planning',
+    crops: ['POTATO'],
+    cropSettings: {
+      potato: {
+        cultivation: 'open-field',
+        season: 'spring',
+        cycle: {
+          seasonId: 'potato-2027-spring',
+          anchorType: 'SOWING',
+          anchorDate: '2027-03-15',
+          status: 'PLANNING',
+          userConfirmed: true,
+        },
+      },
+    },
+    region: '강원특별자치도 평창군 진부면',
+  };
+
+  assert.deepEqual(
+    assertStorablePayload({ version: 2, farms: [farm] }).farms[0],
+    farm,
+  );
+  assert.throws(
+    () =>
+      assertStorablePayload({
+        version: 2,
+        farms: [
+          {
+            ...farm,
+            cropSettings: {
+              potato: {
+                ...farm.cropSettings.potato,
+                cycle: { ...farm.cropSettings.potato.cycle, secret: 'no' },
+              },
+            },
+          },
+        ],
+      }),
+    (error) =>
+      error instanceof DeviceBackupError &&
+      error.code === 'INVALID_PAYLOAD',
+  );
+});
+
+test('browser farm profiles preserve lowercase crop identifiers used by the UI', () => {
+  const farm = {
+    id: 'farm-browser',
+    name: '인천 남동구 · 사과',
+    updatedAt: '2026-08-04T00:00:00.000Z',
+    situation: 'growing',
+    crops: ['apple'],
+    cropSettings: {
+      apple: {
+        cultivation: 'open-field',
+        season: 'annual',
+        growth: 'middle',
+        cycle: {
+          seasonId: 'season-apple-browser',
+          anchorType: 'FLOWERING',
+          anchorDate: '2026-04-15',
+          status: 'ACTIVE',
+        },
+      },
+    },
+    region: '인천광역시 남동구',
+  };
+
+  assert.deepEqual(
+    assertStorablePayload({ version: 2, farms: [farm] }).farms[0],
+    farm,
+  );
+  assert.throws(
+    () => assertStorablePayload({
+      version: 2,
+      farms: [{ ...farm, crops: ['APPLE', 'apple'] }],
+    }),
+    (error) => error instanceof DeviceBackupError && error.code === 'INVALID_PAYLOAD',
   );
 });
 
@@ -154,6 +255,36 @@ test('configured backup store calls only the two hashed RPC contracts', async ()
   assert.equal(calls[0].init.body.includes('AAAA-AAAA-AAAA'), false);
   assert.equal(calls[0].init.headers.apikey, 'server-only-secret');
   assert.deepEqual(restored.payload, { region: '평창군' });
+});
+
+test('configured backup probe verifies a hashed roundtrip without exposing its id', async () => {
+  const calls = [];
+  const store = createDeviceBackupStore({
+    url: 'https://project.supabase.co',
+    serviceKey: 'sb_secret_server-test',
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return new Response('true', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
+    now: () => Date.parse('2026-08-03T00:00:00.000Z'),
+    probeId: () => 'private-probe-id',
+  });
+
+  assert.deepEqual(await store.probe(), {
+    ready: true,
+    state: 'READY',
+    verifiedAt: '2026-08-03T00:00:00.000Z',
+  });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /heuknalssi_device_backup_probe$/u);
+  const body = JSON.parse(calls[0].init.body);
+  assert.match(body.p_key_hash, /^[a-f0-9]{64}$/u);
+  assert.equal(calls[0].init.body.includes('private-probe-id'), false);
+  assert.equal(calls[0].init.headers.apikey, 'sb_secret_server-test');
+  assert.equal(Object.hasOwn(calls[0].init.headers, 'Authorization'), false);
 });
 
 test('provider failures are reduced to a stable backup error', async () => {

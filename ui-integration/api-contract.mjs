@@ -1,3 +1,5 @@
+import { normalizeCropCycleInput } from "./crop-cycle.mjs";
+
 const CROP_BY_UI_VALUE = Object.freeze({
   apple: "APPLE",
   pear: "PEAR",
@@ -82,6 +84,20 @@ export function buildAnalysisRequests(values, candidateToken) {
       candidateToken,
     );
   });
+}
+
+export function buildCropCycleRequests(values) {
+  const crops = Array.isArray(values?.crops)
+    ? [...new Set(values.crops.filter((crop) => typeof crop === "string"))]
+    : [];
+  return crops.map((crop) => ({
+    crop,
+    cropId: CROP_BY_UI_VALUE[crop],
+    input: normalizeCropCycleInput(values?.cropSettings?.[crop]?.cycle, {
+      crop,
+      situation: values?.situation,
+    }),
+  }));
 }
 
 export function buildAnalysisRequest(values, candidateToken) {

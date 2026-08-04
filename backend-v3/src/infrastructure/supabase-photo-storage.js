@@ -73,6 +73,10 @@ function storageUrl(baseUrl, bucket, objectPath) {
   return `${baseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${encoded}`;
 }
 
+function storageDeleteUrl(baseUrl, bucket) {
+  return `${baseUrl}/storage/v1/object/${encodeURIComponent(bucket)}`;
+}
+
 async function ensureOk(response, { allowNotFound = false } = {}) {
   if (!response || typeof response.ok !== "boolean") {
     throw new PhotoStorageError(
@@ -122,8 +126,9 @@ export function createSupabasePhotoStorage({
   }
 
   async function deletePath(objectPath) {
-    const response = await fetchImpl(storageUrl(baseUrl, bucket, objectPath), {
+    const response = await fetchImpl(storageDeleteUrl(baseUrl, bucket), {
       method: "DELETE",
+      body: JSON.stringify({ prefixes: [objectPath] }),
       headers: createSupabaseServerHeaders(serviceKey),
       redirect: "error",
     });

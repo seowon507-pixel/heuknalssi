@@ -2,6 +2,7 @@ import {
   ContractValidationError,
   buildAnalysisRequest,
   buildAnalysisRequests,
+  buildCropCycleRequests,
   createIdempotencyKey,
   requestFingerprint,
 } from "./api-contract.mjs";
@@ -23,25 +24,48 @@ import {
   reviewPhotoComparison,
 } from "./local-photo-journal.mjs";
 import { parseAssistantActionRequest } from "./assistant-action-request.mjs";
+import { buildAssistantCycleAnswer } from "./assistant-cycle-answer.mjs";
+import {
+  buildReviewedPestObservationFallback,
+  selectPestRecoveryAnalysis,
+} from "./pest-observation-guide.mjs";
+import {
+  sanitizeFarmForDeviceBackup,
+  sanitizeFarmsFromDeviceBackup,
+} from "./device-backup-payload.mjs";
 import {
   canReconcileProjectedActions,
   projectAnalysisAction,
 } from "./action-projection.mjs";
+import { mergeTodayActionPlans } from "./farm-overview.mjs";
+import {
+  createCropCycleAdapter,
+  createDefaultCropCycleInput,
+  cropCycleAnchorOptions,
+  normalizeCropCycleInput,
+  projectLocalCropCycle,
+} from "./crop-cycle.mjs";
+import { buildHarvestForecast } from "./harvest-forecast.mjs";
 
 window.__BACKEND_INTEGRATION_ENABLED__ = true;
 
 // ── 사용자 토양검정 결과 (이 기기에만 저장) ──────────────────────────
 const SOIL_TEST_STORAGE_KEY = "heuknalssi.soilTest.v1";
+const SOIL_TESTS_STORAGE_KEY = "heuknalssi.soilTests.v2";
 const REGION_STORAGE_KEY = "heuknalssi.region.v1";
 const ACCOUNT_KEY_STORAGE_KEY = "heuknalssi.accountKey.v1";
 const SESSION_STORAGE_KEY = "heuknalssi.session.v1";
 const FARMS_STORAGE_KEY = "heuknalssi.farms.v1";
 const ACTIVE_FARM_STORAGE_KEY = "heuknalssi.activeFarm.v1";
+const ANALYSIS_SNAPSHOT_STORAGE_KEY = "heuknalssi.analysisSnapshots.v1";
+const HARVEST_ASSESSMENTS_STORAGE_KEY = "heuknalssi.harvestAssessments.v1";
+const HARVEST_ASSESSMENTS_MAX_BYTES = 64 * 1024;
 const ALARM_STORAGE_KEY = "heuknalssi.alarm.v1";
 // 알림 모듈 상태는 초기화 중에 접근되므로 반드시 사용처보다 위에 둔다.
 let serviceWorkerReady = null;
 let alarmTimer = null;
 const TODO_STORAGE_KEY = "heuknalssi.todo.v1";
+const TODOS_STORAGE_KEY = "heuknalssi.todos.v2";
 const SOIL_TEST_NUMERIC_FIELDS = Object.freeze([
   "ph",
   "electricalConductivity",
@@ -62,6 +86,8 @@ const SOIL_TEST_LABELS = Object.freeze({
 });
 
 const REQUEST_TIMEOUT_MS = 14_000;
+const ANALYSIS_REFRESH_COOLDOWN_MS = 60_000;
+const ANALYSIS_SNAPSHOT_MAX_BYTES = 2_500_000;
 const REPORT_POLL_DELAYS_MS = Object.freeze([150, 250, 400, 650, 1_000, 1_000]);
 const ADDRESS_SUGGESTION_DELAY_MS = 180;
 let addressSuggestionTimer = null;
@@ -175,6 +201,9 @@ const ERROR_MESSAGES = Object.freeze({
   PHOTO_STORAGE_UNAVAILABLE: "사진 서버 저장소에 잠시 연결할 수 없습니다.",
   PHOTO_STORAGE_REJECTED: "사진 서버 저장소가 요청을 거절했습니다.",
   PHOTO_NOT_FOUND: "삭제할 사진 기록을 찾지 못했습니다.",
+  HARVEST_PHOTO_INVALID: "JPEG, PNG 또는 WebP 수확 사진을 다시 선택해 주세요.",
+  HARVEST_PHOTO_TOO_LARGE: "수확 판정 사진은 6MB 이하로 선택해 주세요.",
+  HARVEST_ASSESSMENT_UNAVAILABLE: "사진 수확 판정을 잠시 사용할 수 없습니다.",
   SEASON_NOT_ACTIVE: "이미 마무리한 시즌에는 사진을 추가할 수 없습니다.",
 });
 
@@ -231,6 +260,27 @@ class BackendApi {
 
   async getAnalysis(analysisId) {
     return this.request(`/api/analyses/${encodeURIComponent(analysisId)}`);
+  }
+
+  async getCropCycle(farmId, cropId, seasonId) {
+    const query = new URLSearchParams({ seasonId });
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/crops/${encodeURIComponent(cropId)}/cycle?${query}`,
+    );
+  }
+
+  async putCropCycle(farmId, cropId, payload) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/crops/${encodeURIComponent(cropId)}/cycle`,
+      { method: "PUT", body: payload, csrf: true },
+    );
+  }
+
+  async getHarvestWeather(farmId, cropId, { seasonId, analysisId }) {
+    const query = new URLSearchParams({ seasonId, analysisId });
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/crops/${encodeURIComponent(cropId)}/harvest-weather?${query}`,
+    );
   }
 
   async requestReport(analysisId) {
@@ -326,6 +376,22 @@ class BackendApi {
           activeRuleIds,
           projection: "SYSTEM_RULE",
         },
+        csrf: true,
+        headers: { "Idempotency-Key": idempotencyKey },
+      },
+    );
+  }
+
+  async syncRuleActions(
+    farmId,
+    { cropId, seasonId, projections, reconcile = true },
+    idempotencyKey,
+  ) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/actions/rules/sync`,
+      {
+        method: "POST",
+        body: { cropId, seasonId, projections, reconcile },
         csrf: true,
         headers: { "Idempotency-Key": idempotencyKey },
       },
@@ -428,6 +494,13 @@ class BackendApi {
     );
   }
 
+  async assessHarvestPhoto(farmId, payload) {
+    return this.request(
+      `/api/farms/${encodeURIComponent(farmId)}/harvest-assessments`,
+      { method: "POST", body: payload, csrf: true },
+    );
+  }
+
   async request(path, options = {}, canRefreshSession = true) {
     if (options.csrf && !this.csrfToken) await this.startSession();
     const controller = new AbortController();
@@ -479,6 +552,12 @@ class BackendApi {
 }
 
 const api = new BackendApi();
+const cropCycleAdapter = createCropCycleAdapter({
+  getCycle: (farmId, cropId, seasonId) =>
+    api.getCropCycle(farmId, cropId, seasonId),
+  putCycle: (farmId, cropId, payload) =>
+    api.putCropCycle(farmId, cropId, payload),
+});
 const form = document.querySelector("#onboarding-form");
 const onboarding = document.querySelector("#onboarding");
 const regionInput = document.querySelector("#region-input");
@@ -515,15 +594,29 @@ let preflight = null;
 let selectedCandidate = null;
 let currentAnalysis = null;
 let currentAnalyses = new Map();
+let dashboardMode = "overview";
 let currentUiContexts = new Map();
+const cropCycleProjections = new Map();
+const cropCycleDrafts = new Map();
+const harvestPhotoAssessments = new Map();
+const harvestSeasonWeather = new Map();
 const pestGuidanceByAnalysis = new Map();
+const pestGuidanceRequests = new Map();
 let pendingAttempt = null;
 let connectionPromise = null;
+let backupSyncPromise = null;
 let assistantAnalysisId = null;
 let creatingNewFarm = false;
+let pendingNewSeasonDraft = null;
 let disposeActionPlan = null;
+let disposeOverviewActionPlan = null;
 let currentActionPlan = null;
+const actionPlanCache = new Map();
+const actionPlanRequests = new Map();
+let overviewActionScopes = new Map();
+let overviewRequestVersion = 0;
 let actionPlanBusy = false;
+let lastAnalysisRequestAt = 0;
 let pendingParcelGeometry = null;
 const photoJournal = createLocalPhotoJournal();
 let photoObjectUrls = [];
@@ -534,6 +627,9 @@ setDashboardResultVisibility(false);
 resetDashboard();
 if (savedSessionAtBoot) renderStoredSessionLoading(savedSessionAtBoot);
 syncAssistantContext(null);
+if (savedSessionAtBoot && restoreAnalysisSnapshot(savedSessionAtBoot)) {
+  document.body.dataset.sessionRestore = "snapshot-local";
+}
 wireInteractions();
 void connectBackend();
 
@@ -545,8 +641,9 @@ function wireInteractions() {
     void connectBackend(true);
   });
   assistantLauncher?.addEventListener("click", openAssistant);
-  document.querySelector("#sidebar-support-trigger")?.addEventListener("click", openAssistant);
-  document.querySelector("#sidebar-guide-trigger")?.addEventListener("click", openAssistant);
+  document.querySelectorAll("[data-open-assistant]").forEach((button) => {
+    button.addEventListener("click", openAssistant);
+  });
   document.querySelector("#pest-assistant-trigger")?.addEventListener("click", openAssistant);
   const sidebarFarmTrigger = document.querySelector("#sidebar-farm-trigger");
   const sidebarFarmList = document.querySelector("#sidebar-farm-list");
@@ -563,8 +660,15 @@ function wireInteractions() {
       sidebarFarmList.querySelector("button")?.focus({ preventScroll: true });
     }
   });
-  document.querySelector("#dashboard-refresh")?.addEventListener("click", () => {
-    window.location.reload();
+  document.querySelector("#dashboard-refresh")?.addEventListener("click", (event) => {
+    void refreshCurrentAnalysis(event.currentTarget);
+  });
+  document.querySelector("#crop-cycle-edit")?.addEventListener("click", openCropCycleEditor);
+  document.querySelector("#crop-cycle-complete")?.addEventListener("click", (event) => {
+    const cropCode = currentAnalysis?.inputSummary?.crop;
+    const completed = currentUiContexts.get(cropCode)?.cycleInput?.status === "COMPLETED";
+    if (completed) startNewCurrentCropCycle(event.currentTarget);
+    else void completeCurrentCropCycle(event.currentTarget);
   });
   document.querySelectorAll("[data-dashboard-anchor]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -616,6 +720,14 @@ function wireInteractions() {
   document.addEventListener("heuknalssi:wizard-cancelled", () => {
     creatingNewFarm = false;
     pendingAttempt = null;
+    if (pendingNewSeasonDraft) {
+      cropCycleDrafts.set(
+        pendingNewSeasonDraft.crop,
+        pendingNewSeasonDraft.previousInput,
+      );
+      pendingNewSeasonDraft = null;
+      renderCropCycleSettings({ rememberExisting: false });
+    }
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && assistantPanel && !assistantPanel.hidden) {
@@ -646,8 +758,18 @@ function wireInteractions() {
       locationCandidates.querySelector("button")?.focus();
     }
   });
-  form.addEventListener("change", () => {
+  form.addEventListener("change", (event) => {
     pendingAttempt = null;
+    if (["situation", "crop"].includes(event.target?.name)) {
+      queueMicrotask(() => {
+        renderCropCycleSettings();
+        syncWizardNextState();
+      });
+    }
+    if (String(event.target?.name ?? "").startsWith("cycle-")) {
+      const error = document.querySelector("#cycle-error");
+      if (error) error.hidden = true;
+    }
     updateSubmitAvailability();
     syncWizardNextState();
   });
@@ -690,7 +812,11 @@ function wireInteractions() {
     });
   });
   form.addEventListener("reset", () => {
-    queueMicrotask(resetNewAnalysisState);
+    cropCycleDrafts.clear();
+    queueMicrotask(() => {
+      renderCropCycleSettings();
+      resetNewAnalysisState();
+    });
   });
   form.addEventListener(
     "submit",
@@ -708,6 +834,7 @@ function wireInteractions() {
       attributeFilter: ["hidden"],
     });
   });
+  renderCropCycleSettings();
   syncWizardNextState();
 }
 
@@ -800,22 +927,52 @@ async function restoreSavedSession(
           input.dispatchEvent(new Event("change", { bubbles: true }));
         }
       }
+      if (setting?.cycle) {
+        try {
+          const cycle = normalizeCropCycleInput(setting.cycle, {
+            crop,
+            situation: saved.situation,
+          });
+          cropCycleDrafts.set(crop, cycle);
+          for (const [field, value] of Object.entries(cycle)) {
+            const input = form.querySelector(`[name="cycle-${field}-${crop}"]`);
+            if (input) input.value = value;
+          }
+        } catch {
+          // 이전 저장값이 손상됐으면 현재 날짜 기본값을 보여 준다.
+        }
+      }
     }
 
     regionInput.value = saved.region;
-    await searchLocations();
-    const firstCandidate = locationCandidates.querySelector(
-      ".location-candidate",
-    );
-    if (!firstCandidate) throw new Error("saved region no longer resolves");
-    firstCandidate.click();
-
-    if (!selectedCandidate) throw new Error("candidate was not selected");
-    // 폼 이벤트를 흉내내지 않고 제출 함수를 직접 불러 완료까지 기다린다.
-    const restored = await submitAnalysis();
-    if (!restored) throw new Error("saved analysis refresh failed");
-    renderRuntimeState();
-    document.body.dataset.sessionRestore = "ok";
+    const restored = restoreAnalysisSnapshot(saved);
+    if (restored) {
+      setConnectionState("ready", "저장된 최근 분석을 불러왔습니다.");
+      document.body.dataset.sessionRestore = "snapshot";
+      void refreshCropCycleProjections(cropCycleRequestsForProfile(saved)).catch((error) => {
+        setServiceBanner(
+          "hold",
+          "저장한 재배일정을 서버에서 불러오지 못했습니다",
+          `이 기기의 저장 입력 기준 예상을 표시합니다. ${errorMessage(error)}`,
+        );
+        serviceBanner.hidden = false;
+      });
+    } else {
+      setConnectionState("ready", "최근 분석 결과가 없습니다.");
+      const dashboardTitle = document.querySelector("#dashboard-title");
+      if (dashboardTitle) dashboardTitle.textContent = farmDisplayName(saved);
+      setServiceBanner(
+        "hold",
+        "저장된 농장 설정을 불러왔습니다",
+        "처음 한 번만 ‘새로 분석’을 눌러 최신 결과를 저장해 주세요. 이후에는 페이지를 다시 열어도 저장된 결과가 먼저 표시됩니다.",
+      );
+      serviceBanner.hidden = false;
+      document.body.dataset.sessionRestore = "profile-only";
+    }
+    document.body.classList.remove("session-restoring", "session-restore-failed");
+    // 재분석 버튼을 누를 때 바로 사용할 수 있도록 위치 후보만 준비한다.
+    // 위치 준비 실패는 저장된 결과 표시를 막지 않는다.
+    void prepareStoredLocationCandidate(saved.region);
   } catch (error) {
     // 저장된 설정은 보존한다. 일시적인 API 장애 때문에 다시 입력시키지 않는다.
     document.body.dataset.sessionRestore = `failed:${error?.message ?? "unknown"}`;
@@ -824,13 +981,25 @@ async function restoreSavedSession(
     setConnectionState("error", "저장한 농장을 다시 불러오지 못했습니다.");
     setServiceBanner(
       "error",
-      "저장한 농장 정보를 갱신하지 못했습니다",
-      "입력한 농장 설정은 이 기기에 남아 있습니다. ‘다시 불러오기’를 눌러 최신 자료만 다시 확인해 주세요.",
+      "저장한 농장 결과를 불러오지 못했습니다",
+      "입력한 농장 설정은 이 기기에 남아 있습니다. ‘새로 분석’을 눌러 최신 결과를 다시 만들어 주세요.",
     );
     serviceBanner.hidden = false;
-    retryConnectionButton.textContent = "다시 불러오기";
-    retryConnectionButton.hidden = false;
+    retryConnectionButton.hidden = true;
   }
+}
+
+async function prepareStoredLocationCandidate(region) {
+  if (typeof region !== "string" || region.trim() === "") return false;
+  if (selectedCandidate?.displayName === region.trim()) return true;
+  regionInput.value = region.trim();
+  await searchLocations();
+  const firstCandidate = locationCandidates.querySelector(
+    ".location-candidate",
+  );
+  if (!firstCandidate) return false;
+  firstCandidate.click();
+  return Boolean(selectedCandidate);
 }
 
 function renderRuntimeState() {
@@ -1053,12 +1222,39 @@ async function useCurrentLocation() {
       return;
     }
     renderLocationCandidates(candidates);
-    const firstButton = locationCandidates.querySelector(".location-candidate");
-    selectLocationCandidate(candidates[0], firstButton);
-    setCurrentLocationStatus(
-      `${candidates[0].displayName}을(를) 현재 농장 지역으로 확인했습니다. 다르면 아래에서 직접 바꿀 수 있습니다.`,
-      "success",
+    const exactCandidate = candidates.find(
+      (candidate) => candidate.resolutionMode === "ADDRESS_RESOLVED",
     );
+    const rawAccuracy = Number(position.coords.accuracy);
+    const accuracyMeters = Number.isFinite(rawAccuracy)
+      ? Math.max(0, Math.round(rawAccuracy))
+      : null;
+    if (
+      exactCandidate &&
+      (accuracyMeters === null || accuracyMeters <= 100)
+    ) {
+      const exactIndex = candidates.indexOf(exactCandidate);
+      const exactButton = locationCandidates.querySelectorAll(
+        ".location-candidate",
+      )[exactIndex];
+      selectLocationCandidate(exactCandidate, exactButton);
+      setCurrentLocationStatus(
+        `${exactCandidate.displayName}을(를) 상세 지번 주소로 확인했습니다. 필지 토양과 가까운 기상 관측소를 자동으로 연결합니다.`,
+        "success",
+      );
+      return;
+    }
+    if (exactCandidate) {
+      setCurrentLocationStatus(
+        `현재 위치 오차가 약 ${accuracyMeters}m입니다. 아래 주소가 맞는지 선택해 주세요.`,
+      );
+      return;
+    }
+    setCurrentLocationStatus(
+      "현재 위치에서는 행정구역까지만 확인했습니다. 필지 확정을 위해 지번 또는 도로명 주소를 확인해 주세요.",
+      "error",
+    );
+    regionInput.focus();
   } catch (error) {
     const message = geolocationErrorMessage(error);
     setCurrentLocationStatus(message, "error");
@@ -1072,9 +1268,9 @@ async function useCurrentLocation() {
 function getCurrentPosition() {
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: false,
-      timeout: 10_000,
-      maximumAge: 5 * 60 * 1_000,
+      enableHighAccuracy: true,
+      timeout: 15_000,
+      maximumAge: 0,
     });
   });
 }
@@ -1135,7 +1331,7 @@ function selectLocationCandidate(candidate, button) {
       item === button ? "선택됨" : "선택";
   });
   setLocationStatus(
-    `${candidate.displayName} 후보를 분석 지역으로 확인했습니다.`,
+    `${candidate.displayName}을(를) ${locationResolutionLabel(candidate.resolutionMode)}으로 선택했습니다.`,
     "success",
   );
   document.querySelector("#region-error").hidden = true;
@@ -1217,14 +1413,35 @@ async function submitAnalysis({ refreshExpiredLocation = true } = {}) {
       completed.map((analysis) => [analysis?.inputSummary?.crop, analysis]),
     );
     currentAnalysis = completed[0];
+    const cycleRequests = buildCropCycleRequests(formValues);
+    seedLocalCropCycleProjections(cycleRequests);
+    let cropCycleSaveError = null;
     // 행동·사진·위성 기능이 첫 렌더부터 같은 농장 ID를 사용하도록
     // 사용자가 요청한 기기 저장을 기능 렌더링보다 먼저 확정한다.
     if (formValues.saveConsent === true) {
       writeStoredSession(formValues, selectedCandidate?.displayName ?? null);
+      lastAnalysisRequestAt = writeAnalysisSnapshot(completed) ?? Date.now();
+      try {
+        await refreshCropCycleProjections(cycleRequests, { save: true });
+      } catch (error) {
+        cropCycleSaveError = error;
+      }
+    } else {
+      lastAnalysisRequestAt = Date.now();
     }
+    actionPlanCache.clear();
+    actionPlanRequests.clear();
+    await Promise.allSettled(
+      completed.map((analysis) =>
+        loadActionPlan(analysis, { ensureRules: true, force: true })
+      ),
+    );
     renderAnalysis(currentAnalysis);
+    dashboardMode = "overview";
+    renderFarmOverview();
     renderCropResultSwitcher();
     pendingAttempt = null;
+    pendingNewSeasonDraft = null;
     closeWizardAfterAnalysis();
     if (failed.length > 0) {
       const failedCrops = failed.map(({ index }) =>
@@ -1236,6 +1453,15 @@ async function submitAnalysis({ refreshExpiredLocation = true } = {}) {
         `${failedCrops.join("·")} 분석은 완료하지 못했습니다. 완료된 결과는 그대로 보존했습니다.`,
       );
       serviceBanner.hidden = false;
+    } else if (cropCycleSaveError) {
+      setServiceBanner(
+        "hold",
+        "분석은 완료했지만 재배일정을 서버에 저장하지 못했습니다",
+        `입력한 기준일은 이 기기에 남아 있으며 미리보기로 표시합니다. ${errorMessage(cropCycleSaveError)}`,
+      );
+      serviceBanner.hidden = false;
+    } else {
+      serviceBanner.hidden = true;
     }
     if ((currentAnalysis?.report?.state ?? "NOT_REQUESTED") === "NOT_REQUESTED") {
       const automaticReportButton = document.querySelector("#backend-report-button");
@@ -1262,6 +1488,44 @@ async function submitAnalysis({ refreshExpiredLocation = true } = {}) {
     form.removeAttribute("aria-busy");
     setBusy(runAnalysisButton, false, "이 조건으로 분석하기");
     updateSubmitAvailability();
+  }
+}
+
+async function refreshCurrentAnalysis(button) {
+  if (!connected) {
+    announce("백엔드 연결을 먼저 확인해 주세요.");
+    return;
+  }
+  const elapsed = Date.now() - lastAnalysisRequestAt;
+  if (lastAnalysisRequestAt > 0 && elapsed < ANALYSIS_REFRESH_COOLDOWN_MS) {
+    const seconds = Math.max(
+      1,
+      Math.ceil((ANALYSIS_REFRESH_COOLDOWN_MS - elapsed) / 1_000),
+    );
+    announce(`최신 분석을 방금 완료했습니다. ${seconds}초 뒤 다시 시도해 주세요.`);
+    return;
+  }
+  const saved = readStoredSession();
+  if (
+    !selectedCandidate &&
+    !(await prepareStoredLocationCandidate(saved?.region))
+  ) {
+    announce("농장 위치를 다시 확인한 뒤 새로 분석해 주세요.");
+    return;
+  }
+  pendingAttempt = null;
+  actionPlanCache.clear();
+  actionPlanRequests.clear();
+  setBusy(button, true, "분석 중…");
+  try {
+    const refreshed = await submitAnalysis();
+    announce(
+      refreshed
+        ? "최신 날씨와 토양 자료로 다시 분석했습니다."
+        : "분석을 새로고침하지 못했습니다.",
+    );
+  } finally {
+    setBusy(button, false, "↻ 새로 분석");
   }
 }
 
@@ -1314,12 +1578,13 @@ function renderAnalysis(analysis) {
   document.querySelector("#dashboard-mode-copy").textContent =
     summary.usageMode === "ACTIVE_GROWING"
       ? "재배 중 생육 기준 날씨·토양·예보 분석"
-      : "재배 전 환경 기준 기후·토양·예보 분석";
+      : "재배 준비 기준 기후·토양·예보 분석";
   document.querySelector("#sidebar-mode-value").textContent =
     summary.usageMode === "ACTIVE_GROWING"
       ? "재배 중 생육 점검"
-      : "재배 전 환경 분석";
+      : "재배 준비 진단";
 
+  renderAnalysisScopeNotice(analysis);
   renderDashboardWorkspace(analysis);
   renderEvidenceDialog(analysis);
   renderTechnicalSettings(analysis);
@@ -1354,7 +1619,7 @@ function compactDashboardRegionLabel(value) {
     .trim();
 }
 
-async function refreshActionPlan(analysis, { ensureRules = true } = {}) {
+async function refreshActionPlan(analysis, { ensureRules = false } = {}) {
   const root = document.querySelector("#dashboard-action-list");
   const fallback = document.querySelector("#dashboard-priority-action");
   const scope = currentFeatureScope(analysis);
@@ -1365,36 +1630,13 @@ async function refreshActionPlan(analysis, { ensureRules = true } = {}) {
     root.replaceChildren(element("p", "backend-empty", "오늘 할 일을 준비하고 있습니다."));
   }
   try {
-    let plan = await api.listActions(scope.farmId, scope);
-    if (ensureRules) {
-      const drafts = actionDraftsFromAnalysis(analysis, scope);
-      await Promise.all(
-        drafts.map(({ draft, ruleId }) =>
-          api.createAction(
-            scope.farmId,
-            { draft, ruleId, projection: "SYSTEM_RULE" },
-            createIdempotencyKey(),
-          ),
-        ),
-      );
-      if (canReconcileProjectedActions(analysis)) {
-        await api.reconcileRuleActions(
-          scope.farmId,
-          {
-            cropId: scope.cropId,
-            seasonId: scope.seasonId,
-            activeRuleIds: [...new Set(drafts.map(({ ruleId }) => ruleId))],
-          },
-          createIdempotencyKey(),
-        );
-      }
-      plan = await api.listActions(scope.farmId, scope);
-    }
+    const plan = await loadActionPlan(analysis, { ensureRules });
     currentActionPlan = plan;
     disposeActionPlan?.();
     disposeActionPlan = mountActionPlan(root, plan, {
       onStatusChange: async ({ actionId, status }) => {
         await api.updateAction(scope.farmId, actionId, status, createIdempotencyKey());
+        invalidateActionPlan(analysis);
         await refreshActionPlan(analysis, { ensureRules: false });
         const message = document.querySelector("#dashboard-action-batch-status");
         if (message) {
@@ -1410,6 +1652,7 @@ async function refreshActionPlan(analysis, { ensureRules = true } = {}) {
           snoozedUntil,
           createIdempotencyKey(),
         );
+        invalidateActionPlan(analysis);
         await refreshActionPlan(analysis, { ensureRules: false });
         const message = document.querySelector("#dashboard-action-batch-status");
         if (message) {
@@ -1448,6 +1691,104 @@ async function refreshActionPlan(analysis, { ensureRules = true } = {}) {
   } finally {
     root.removeAttribute("aria-busy");
   }
+}
+
+function actionPlanCacheKey(scope) {
+  return [scope.farmId, scope.cropId ?? "", scope.seasonId ?? ""].join("::");
+}
+
+function invalidateActionPlan(analysis) {
+  const scope = currentFeatureScope(analysis);
+  if (!scope) return;
+  const key = actionPlanCacheKey(scope);
+  actionPlanCache.delete(key);
+  actionPlanRequests.delete(key);
+}
+
+async function loadActionPlan(
+  analysis,
+  { ensureRules = false, force = false } = {},
+) {
+  const scope = currentFeatureScope(analysis);
+  if (!scope) throw new ApiRequestError({ code: "INVALID_API_RESPONSE", status: 422 });
+  const key = actionPlanCacheKey(scope);
+  if (!force && actionPlanCache.has(key)) return actionPlanCache.get(key);
+  if (!force && actionPlanRequests.has(key)) return actionPlanRequests.get(key);
+  const request = (async () => {
+    if (isCompletedCycle(analysis)) {
+      const { plan } = await closeCompletedSeasonActions(scope);
+      return plan;
+    }
+    if (!ensureRules) return api.listActions(scope.farmId, scope);
+    const projections = actionDraftsFromAnalysis(analysis, scope);
+    const reconcile = canReconcileProjectedActions(analysis);
+    if (projections.length === 0 && !reconcile) {
+      return api.listActions(scope.farmId, scope);
+    }
+    const result = await api.syncRuleActions(
+      scope.farmId,
+      { cropId: scope.cropId, seasonId: scope.seasonId, projections, reconcile },
+      createIdempotencyKey(),
+    );
+    return result?.plan;
+  })();
+  actionPlanRequests.set(key, request);
+  try {
+    const plan = await request;
+    if (!plan || !Array.isArray(plan.today) || !Array.isArray(plan.upcoming)) {
+      throw new ApiRequestError({ code: "INVALID_API_RESPONSE", status: 502 });
+    }
+    actionPlanCache.set(key, plan);
+    return plan;
+  } finally {
+    if (actionPlanRequests.get(key) === request) actionPlanRequests.delete(key);
+  }
+}
+
+function isCompletedCycle(analysis) {
+  const crop = analysis?.inputSummary?.crop;
+  return currentUiContexts.get(crop)?.cycleInput?.status === "COMPLETED";
+}
+
+async function closeCompletedSeasonActions(scope) {
+  const before = await api.listActions(scope.farmId, scope);
+  const scoped = [
+    ...(before?.today ?? []),
+    ...(before?.upcoming ?? []),
+    ...(before?.archived ?? []),
+  ];
+  const unique = new Map(
+    scoped
+      .filter((action) => typeof action?.actionId === "string")
+      .map((action) => [action.actionId, action]),
+  );
+  const completedActionCount = [...unique.values()]
+    .filter((action) => action.status === "DONE").length;
+
+  await api.reconcileRuleActions(
+    scope.farmId,
+    { cropId: scope.cropId, seasonId: scope.seasonId, activeRuleIds: [] },
+    createIdempotencyKey(),
+  );
+  const userOpenActions = [...unique.values()].filter(
+    (action) => action.status === "OPEN" && action.origin !== "RULE",
+  );
+  const updates = await Promise.allSettled(
+    userOpenActions.map((action) =>
+      api.updateAction(
+        scope.farmId,
+        action.actionId,
+        "SKIPPED",
+        createIdempotencyKey(),
+      )
+    ),
+  );
+  const failed = updates.find((result) => result.status === "rejected");
+  if (failed) throw failed.reason;
+  return {
+    completedActionCount,
+    plan: await api.listActions(scope.farmId, scope),
+  };
 }
 
 function planItems(plan) {
@@ -1505,6 +1846,7 @@ async function completeAllOpenActions(button) {
     }
   }
   actionPlanBusy = false;
+  invalidateActionPlan(currentAnalysis);
   await refreshActionPlan(currentAnalysis, { ensureRules: false });
   if (status) {
     status.hidden = false;
@@ -1540,7 +1882,86 @@ function currentFeatureScope(analysis) {
   const farmId = stored?.id ?? `farm-${safeAnalysisId || "current"}`;
   const cropId = `crop-${String(summary.crop).toLowerCase()}`;
   const year = new Date(analysis?.createdAt ?? Date.now()).getUTCFullYear();
-  return { farmId, cropId, seasonId: `season-${year}-${String(summary.crop).toLowerCase()}` };
+  const seasonId = currentUiContexts.get(summary.crop)?.cycleInput?.seasonId ??
+    `season-${year}-${String(summary.crop).toLowerCase()}`;
+  return { farmId, cropId, seasonId };
+}
+
+function harvestAssessmentKey(analysis) {
+  const scope = currentFeatureScope(analysis);
+  if (!scope) return null;
+  return [scope.farmId, scope.cropId, scope.seasonId].join("::");
+}
+
+function readStoredHarvestAssessment(key) {
+  if (typeof key !== "string" || key === "") return null;
+  const raw = safeStorage()?.getItem(HARVEST_ASSESSMENTS_STORAGE_KEY);
+  if (!raw || raw.length > HARVEST_ASSESSMENTS_MAX_BYTES) return null;
+  try {
+    return normalizeStoredHarvestAssessment(JSON.parse(raw)?.assessments?.[key]);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredHarvestAssessment(key, assessment) {
+  const storage = safeStorage();
+  const safeAssessment = normalizeStoredHarvestAssessment(assessment);
+  if (!storage || typeof key !== "string" || key === "" || !safeAssessment) return;
+  let assessments = {};
+  try {
+    const raw = storage.getItem(HARVEST_ASSESSMENTS_STORAGE_KEY);
+    const parsed = raw && raw.length <= HARVEST_ASSESSMENTS_MAX_BYTES
+      ? JSON.parse(raw)
+      : null;
+    if (parsed?.version === 1 && parsed.assessments && typeof parsed.assessments === "object") {
+      assessments = parsed.assessments;
+    }
+  } catch {
+    assessments = {};
+  }
+  const serialized = JSON.stringify({
+    version: 1,
+    assessments: { ...assessments, [key]: safeAssessment },
+  });
+  if (serialized.length <= HARVEST_ASSESSMENTS_MAX_BYTES) {
+    storage.setItem(HARVEST_ASSESSMENTS_STORAGE_KEY, serialized);
+  }
+}
+
+function normalizeStoredHarvestAssessment(value) {
+  const state = String(value?.state ?? "").toUpperCase();
+  const quality = String(value?.quality ?? "").toUpperCase();
+  const confidence = Number(value?.confidence);
+  const suggestedDelayDays = Number(value?.suggestedDelayDays);
+  const recheckInDays = Number(value?.recheckInDays);
+  if (
+    !["READY", "NOT_READY", "UNCERTAIN"].includes(state) ||
+    !["USABLE", "UNUSABLE"].includes(quality) ||
+    !Number.isFinite(confidence) || confidence < 0 || confidence > 1 ||
+    !Number.isInteger(suggestedDelayDays) || suggestedDelayDays < 0 || suggestedDelayDays > 14 ||
+    !Number.isInteger(recheckInDays) || recheckInDays < 1 || recheckInDays > 7
+  ) {
+    return null;
+  }
+  const visibleReasons = Array.isArray(value.visibleReasons)
+    ? value.visibleReasons
+        .filter((reason) => typeof reason === "string" && reason.trim())
+        .map((reason) => reason.trim().slice(0, 120))
+        .slice(0, 3)
+    : [];
+  if (visibleReasons.length === 0) return null;
+  return {
+    state,
+    quality,
+    confidence,
+    suggestedDelayDays: state === "NOT_READY" && quality === "USABLE"
+      ? suggestedDelayDays
+      : 0,
+    recheckInDays,
+    visibleReasons,
+    assessedAt: typeof value.assessedAt === "string" ? value.assessedAt : null,
+  };
 }
 
 function actionDraftsFromAnalysis(analysis, scope) {
@@ -1806,6 +2227,7 @@ function dashboardRiskName(metric) {
 function renderCropManagementView(analysis) {
   const overview = document.querySelector("#crop-management-overview");
   if (!overview) return;
+  renderCropManagementSwitcher(analysis);
   const summary = analysis?.inputSummary ?? {};
   const uiContext = currentUiContexts.get(summary.crop);
   const cropLabel = CROP_LABELS[summary.crop] ?? summary.crop ?? "작물";
@@ -1866,6 +2288,30 @@ function renderCropManagementView(analysis) {
       return card;
     }),
   );
+  renderCropCycleCard(analysis);
+}
+
+function renderCropManagementSwitcher(activeAnalysis) {
+  const root = document.querySelector("#crop-management-switcher");
+  if (!root) return;
+  const analyses = [...currentAnalyses.values()].filter(Boolean);
+  root.hidden = analyses.length === 0;
+  root.replaceChildren(...analyses.map((analysis) => {
+    const crop = analysis?.inputSummary?.crop;
+    const button = element("button", "crop-management-switch-button");
+    button.type = "button";
+    button.textContent = CROP_LABELS[crop] ?? crop ?? "작물";
+    const active = analysis?.analysisId === activeAnalysis?.analysisId;
+    button.setAttribute("aria-pressed", String(active));
+    button.addEventListener("click", () => {
+      currentAnalysis = analysis;
+      renderCropManagementView(analysis);
+      renderPestInformationView(analysis);
+      syncAssistantContext(analysis);
+      document.querySelector("#crop-management-title")?.focus({ preventScroll: true });
+    });
+    return button;
+  }));
 }
 
 function managementChecklistItems(analysis) {
@@ -1995,9 +2441,28 @@ function renderPestInformationView(analysis, { requestGuidance = true } = {}) {
   }
 }
 
-async function refreshPestGuidance(analysis) {
+function refreshPestGuidance(analysis, options = {}) {
   const analysisId = analysis?.analysisId;
-  if (!analysisId || pestGuidanceByAnalysis.has(analysisId)) return;
+  if (!connected || !analysisId || pestGuidanceByAnalysis.has(analysisId)) {
+    return Promise.resolve();
+  }
+  const pending = pestGuidanceRequests.get(analysisId);
+  if (pending) return pending;
+  const request = requestPestGuidance(analysis, options).finally(() => {
+    if (pestGuidanceRequests.get(analysisId) === request) {
+      pestGuidanceRequests.delete(analysisId);
+    }
+  });
+  pestGuidanceRequests.set(analysisId, request);
+  return request;
+}
+
+async function requestPestGuidance(
+  analysis,
+  { refreshExpiredAnalysis = true } = {},
+) {
+  const analysisId = analysis.analysisId;
+  const requestedCrop = analysis?.inputSummary?.crop;
   try {
     const guidance = await api.getPestGuidance(analysisId);
     pestGuidanceByAnalysis.set(analysisId, guidance);
@@ -2006,11 +2471,49 @@ async function refreshPestGuidance(analysis) {
       renderCropManagementView(analysis);
     }
   } catch (error) {
-    const root = document.querySelector("#pest-observation-list");
-    if (root && currentAnalysis?.analysisId === analysisId) {
-      root.replaceChildren(
-        element("p", "feature-empty", `관찰 기준을 불러오지 못했습니다. ${errorMessage(error)}`),
+    if (
+      error?.code === "ANALYSIS_NOT_FOUND" &&
+      refreshExpiredAnalysis &&
+      currentAnalysis?.analysisId === analysisId
+    ) {
+      const saved = readStoredSession();
+      const locationReady = selectedCandidate ||
+        await prepareStoredLocationCandidate(saved?.region);
+      pendingAttempt = null;
+      const refreshed = locationReady && await submitAnalysis();
+      const refreshedAnalysis = selectPestRecoveryAnalysis(
+        currentAnalyses,
+        requestedCrop,
       );
+      if (
+        refreshed &&
+        refreshedAnalysis?.analysisId &&
+        refreshedAnalysis.analysisId !== analysisId
+      ) {
+        activateCropAnalysis(refreshedAnalysis);
+        await refreshPestGuidance(refreshedAnalysis, {
+          refreshExpiredAnalysis: false,
+        });
+        return;
+      }
+      if (currentAnalysis?.analysisId !== analysisId) {
+        currentAnalyses.set(String(requestedCrop).toUpperCase(), analysis);
+        activateCropAnalysis(analysis);
+      }
+    }
+
+    const activeAnalysis = currentAnalysis?.analysisId === analysisId
+      ? currentAnalysis
+      : analysis;
+    const fallback = buildReviewedPestObservationFallback(
+      activeAnalysis?.inputSummary?.crop,
+      { analysisId: activeAnalysis?.analysisId ?? analysisId },
+    );
+    if (!fallback) return;
+    pestGuidanceByAnalysis.set(fallback.analysisId, fallback);
+    if (currentAnalysis?.analysisId === fallback.analysisId) {
+      renderPestInformationView(currentAnalysis, { requestGuidance: false });
+      renderCropManagementView(currentAnalysis);
     }
   }
 }
@@ -2320,7 +2823,7 @@ function renderDashboardSoil(analysis) {
     );
   }
   root.querySelector(".dashboard-soil-test-link")?.remove();
-  if (hasMissingSoilExamHistory(analysis)) {
+  if (analysisHasMissingSoilExamHistory(analysis)) {
     const serviceButton = element(
       "button",
       "button button-secondary dashboard-soil-test-link",
@@ -2406,7 +2909,7 @@ function dashboardSoilMetricItems(analysis) {
 function renderFarmConditionGuide(analysis, idSuffix = "dashboard") {
   const guide = element("section", "farm-condition-guide");
   const titleId = `farm-condition-guide-title-${idSuffix}`;
-  const missingSoilExamHistory = hasMissingSoilExamHistory(analysis);
+  const missingSoilExamHistory = analysisHasMissingSoilExamHistory(analysis);
   guide.setAttribute("aria-labelledby", titleId);
   const weather = forecastRiskGuide(analysis);
   const soil = soilConditionGuide(analysis);
@@ -3067,21 +3570,631 @@ function formatNullableTemperature(value) {
   return Number.isFinite(value) ? `${formatNumber(value)}℃` : "—";
 }
 
+function renderFarmOverview() {
+  const root = document.querySelector("#farm-overview-dashboard");
+  const detail = document.querySelector("#dashboard-workspace");
+  const analyses = [...currentAnalyses.values()].filter(Boolean);
+  if (!root || analyses.length === 0) return;
+  dashboardMode = "overview";
+  if (detail) detail.hidden = true;
+  root.hidden = false;
+
+  const representative = analyses[0];
+  currentAnalysis = representative;
+  const planning = representative?.inputSummary?.usageMode === "LAND_SEARCH";
+  const region = compactDashboardRegionLabel(
+    representative?.inputSummary?.regionLabel ?? selectedCandidate?.displayName ?? "현재 농장",
+  );
+  const title = document.querySelector("#dashboard-title");
+  const topbar = document.querySelector("#topbar-context-value");
+  const sidebar = document.querySelector("#sidebar-context-value");
+  if (title) title.textContent = `${region} 농장 종합`;
+  if (topbar) topbar.textContent = `${region} 농장 종합`;
+  if (sidebar) sidebar.textContent = `${region} · ${analyses.length}개 품목`;
+  const summary = document.querySelector("#farm-overview-summary");
+  if (summary) {
+    summary.textContent = planning
+      ? `${analyses.map(cropLabelForAnalysis).join(" · ")} · 재배 전 적합도와 준비 일정 분석`
+      : `${analyses.map(cropLabelForAnalysis).join(" · ")} · 오늘 할 일과 7일 위험 통합 분석`;
+  }
+  setText("#farm-overview-title", planning ? "전체 작물 재배 준비도" : "전체 작물 관리 현황");
+  setText("#farm-overview-crops-title", planning ? "품목별 적합도" : "품목별 점수");
+  setText("#farm-overview-crop-count", `${analyses.length}종`);
+  renderFarmOverviewWeather(representative);
+  renderFarmOverviewCrops(analyses);
+  renderFarmOverviewWarnings(analyses);
+  renderCropManagementView(representative);
+  renderPestInformationView(representative);
+  syncAssistantContext(representative);
+  void refreshFarmOverviewActions(analyses);
+}
+
+function cropLabelForAnalysis(analysis) {
+  const crop = analysis?.inputSummary?.crop;
+  return CROP_LABELS[crop] ?? crop ?? "작물";
+}
+
+function setText(selector, value) {
+  const node = document.querySelector(selector);
+  if (node) node.textContent = value;
+}
+
+function renderAnalysisScopeNotice(analysis) {
+  const notice = document.querySelector("#analysis-scope-notice");
+  if (!notice) return;
+  const commonNotice = analysis?.analysisScope?.summary?.commonNotice;
+  const title = String(commonNotice?.title ?? "").trim();
+  const message = String(commonNotice?.message ?? "").trim();
+  notice.hidden = message === "";
+  notice.textContent = [title, message].filter(Boolean).join(" · ");
+}
+
+function seedLocalCropCycleProjections(requests) {
+  for (const request of requests) {
+    const cropCode = request.crop.toUpperCase();
+    const projection = projectLocalCropCycle({
+      crop: request.crop,
+      input: request.input,
+    });
+    cropCycleProjections.set(cropCode, projection);
+    const context = currentUiContexts.get(cropCode);
+    if (context) {
+      context.cycleInput = request.input;
+      context.cycleProjection = projection;
+    }
+  }
+}
+
+async function refreshCropCycleProjections(requests, { save = false } = {}) {
+  const farm = readStoredSession();
+  if (!farm?.id) return;
+  await Promise.all(requests.map(async (request) => {
+    const projection = await cropCycleAdapter[save ? "save" : "load"]({
+      farmId: farm.id,
+      cropId: request.cropId,
+      crop: request.crop,
+      input: request.input,
+    });
+    const cropCode = request.crop.toUpperCase();
+    cropCycleProjections.set(cropCode, projection);
+    const context = currentUiContexts.get(cropCode);
+    if (context) {
+      context.cycleInput = request.input;
+      context.cycleProjection = projection;
+    }
+  }));
+  await refreshHarvestSeasonWeather();
+  if (currentAnalysis) renderCropCycleCard(currentAnalysis);
+}
+
+async function refreshHarvestSeasonWeather(
+  analyses = [...currentAnalyses.values()].filter(Boolean),
+) {
+  if (!connected || analyses.length === 0) return;
+  await Promise.allSettled(analyses.map(async (analysis) => {
+    const scope = currentFeatureScope(analysis);
+    const cropId = String(analysis?.inputSummary?.crop ?? "").toUpperCase();
+    const key = harvestAssessmentKey(analysis);
+    if (!scope || !cropId || !key || !analysis?.analysisId) return;
+    try {
+      const response = await api.getHarvestWeather(scope.farmId, cropId, {
+        seasonId: scope.seasonId,
+        analysisId: analysis.analysisId,
+      });
+      if (response?.seasonWeather && typeof response.seasonWeather === "object") {
+        harvestSeasonWeather.set(key, response.seasonWeather);
+      }
+    } catch (error) {
+      if (!["NOT_FOUND", "ANALYSIS_NOT_FOUND", "FEATURE_NOT_CONFIGURED"].includes(error?.code)) {
+        throw error;
+      }
+    }
+  }));
+}
+
+function cropCycleProjectionFor(analysis) {
+  const cropCode = analysis?.inputSummary?.crop;
+  const context = currentUiContexts.get(cropCode);
+  const projection = cropCycleProjections.get(cropCode) ?? context?.cycleProjection;
+  if (projection) return projection;
+  const crop = String(cropCode ?? "").toLowerCase();
+  const profile = readStoredSession();
+  const input = storedCropCycleInput(
+    profile,
+    crop,
+    profile?.cropSettings?.[crop]?.cycle,
+  );
+  return projectLocalCropCycle({
+    crop,
+    input,
+    sourceLabel: hasStoredCropCycle(profile?.cropSettings?.[crop]?.cycle)
+      ? "입력 기준 예상"
+      : "날짜 기준 AI 예상",
+  });
+}
+
+function renderCropCycleCard(analysis) {
+  const card = document.querySelector("#dashboard-cycle-card");
+  if (!card) return;
+  const projection = cropCycleProjectionFor(analysis);
+  const cropCode = String(analysis?.inputSummary?.crop ?? "").toUpperCase();
+  const assessmentKey = harvestAssessmentKey(analysis);
+  const photoAssessment = assessmentKey
+    ? harvestPhotoAssessments.get(assessmentKey) ?? readStoredHarvestAssessment(assessmentKey)
+    : null;
+  const seasonWeather = assessmentKey
+    ? harvestSeasonWeather.get(assessmentKey) ?? null
+    : null;
+  if (assessmentKey && photoAssessment && !harvestPhotoAssessments.has(assessmentKey)) {
+    harvestPhotoAssessments.set(assessmentKey, photoAssessment);
+  }
+  const harvestForecast = buildHarvestForecast({
+    crop: cropCode,
+    projection,
+    seasonWeather,
+    forecastDays: forecastDisplayDays(analysis),
+    photoAssessment,
+  });
+  const progressPercent = harvestForecast.progressPercent;
+  setText("#crop-cycle-progress-value", `${progressPercent}%`);
+  setText("#crop-cycle-source", harvestForecast.sourceLabel);
+  setText("#crop-cycle-current", displayCurrentCropStage(analysis, projection));
+  setText("#crop-cycle-next", milestoneLabel(projection.nextMilestone));
+  setText("#crop-cycle-harvest", formatCycleDateRange(harvestForecast.firstHarvestWindow));
+  setText("#crop-cycle-harvest-season", formatCycleDateRange(harvestForecast.harvestSeasonWindow));
+  setText("#crop-cycle-preparation", formatCycleDateRange(harvestForecast.preparationWindow));
+  setText(
+    "#crop-cycle-weather-adjustment",
+    `${harvestForecast.history.summary} · ${harvestForecast.weather.summary}`,
+  );
+  const source = document.querySelector("#crop-cycle-source");
+  source?.classList.toggle("is-preview", projection.source === "LOCAL_PREVIEW");
+  const track = document.querySelector("#crop-cycle-progress-track");
+  if (track) {
+    track.setAttribute("aria-valuenow", String(progressPercent));
+    track.setAttribute("aria-valuetext", `첫 수확 준비도 ${progressPercent}%`);
+  }
+  const bar = document.querySelector("#crop-cycle-progress-bar");
+  if (bar) bar.style.width = `${progressPercent}%`;
+  const complete = document.querySelector("#crop-cycle-complete");
+  if (complete) {
+    complete.hidden = projection.status === "PLANNING";
+    complete.disabled = false;
+    complete.textContent = projection.status === "COMPLETED" ? "새 시즌 시작" : "시즌 종료";
+    complete.setAttribute(
+      "aria-label",
+      projection.status === "COMPLETED"
+        ? "이전 기록을 보존하고 새 재배 시즌 등록"
+        : "현재 재배 시즌 종료",
+    );
+  }
+  const status = document.querySelector("#crop-cycle-status");
+  if (status) {
+    status.textContent = [
+      projection.source === "LOCAL_PREVIEW"
+        ? "입력한 기준일로 첫 수확 시점을 계산했습니다."
+        : "저장한 기준일과 작물 규칙으로 첫 수확 시점을 계산했습니다.",
+      harvestForecast.history.summary,
+      harvestForecast.weather.summary,
+      harvestForecast.photo.summary,
+    ].join(" ");
+  }
+  renderHarvestPhotoAssessment(photoAssessment, harvestForecast);
+}
+
+function renderHarvestPhotoAssessment(assessment, harvestForecast) {
+  const status = document.querySelector("#harvest-photo-status");
+  if (!status) return;
+  status.className = "harvest-photo-status";
+  if (!assessment) {
+    status.textContent = "수확 시기가 가까우면 과실·잎·줄기가 함께 보이는 사진으로 한 번 더 확인할 수 있습니다.";
+    return;
+  }
+  const label = ({
+    READY: "수확 가능 신호",
+    NOT_READY: "아직 이른 상태",
+    UNCERTAIN: "사진 판단 보류",
+  })[assessment.state] ?? "사진 확인 결과";
+  status.classList.add(`is-${String(assessment.state ?? "uncertain").toLowerCase()}`);
+  const reasons = Array.isArray(assessment.visibleReasons)
+    ? assessment.visibleReasons.join(" · ")
+    : "보이는 생육 상태를 확인했습니다.";
+  status.textContent = `${label} · ${reasons} ${harvestForecast.photo.summary}`;
+}
+
+function milestoneLabel(milestone) {
+  const labels = Array.isArray(milestone?.candidates)
+    ? milestone.candidates.map(({ label }) => String(label ?? "").trim()).filter(Boolean)
+    : [];
+  return labels.length ? labels.join(" 또는 ") : "다음 단계 미정";
+}
+
+function displayCurrentCropStage(analysis, projection) {
+  const context = currentUiContexts.get(analysis?.inputSummary?.crop);
+  const growth = String(context?.growthLabel ?? "").trim();
+  if (
+    analysis?.inputSummary?.usageMode === "ACTIVE_GROWING" &&
+    growth &&
+    !["잘 모름", "생육 상태 확인"].includes(growth)
+  ) {
+    return context?.growthRecommended
+      ? `${growth} · 자동 예상 기본값`
+      : `${growth} · 사용자 선택`;
+  }
+  return milestoneLabel(projection.currentMilestone);
+}
+
+function formatCycleDateRange(range) {
+  const earliest = range?.earliest;
+  const latest = range?.latest;
+  if (!earliest || !latest) return "확인 필요";
+  if (earliest === latest) return formatCycleDate(earliest);
+  return `${formatCycleDate(earliest)} ~ ${formatCycleDate(latest)}`;
+}
+
+function formatCycleDate(value) {
+  const date = new Date(`${value}T00:00:00`);
+  if (!Number.isFinite(date.getTime())) return String(value ?? "확인 필요");
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function openCropCycleEditor() {
+  document.querySelector("#open-new-analysis")?.click();
+  requestAnimationFrame(() => {
+    document.querySelector('[data-edit-step="3"]')?.click();
+    document.querySelector("#crop-cycle-settings input, #crop-cycle-settings select")?.focus();
+  });
+}
+
+function startNewCurrentCropCycle(button) {
+  const cropCode = currentAnalysis?.inputSummary?.crop;
+  const context = currentUiContexts.get(cropCode);
+  if (!cropCode || context?.cycleInput?.status !== "COMPLETED" || !button) return;
+  if (!globalThis.confirm?.("새 재배 시즌을 등록할까요? 완료한 이전 시즌의 기록은 그대로 남습니다.")) {
+    return;
+  }
+  const crop = cropCode.toLowerCase();
+  const profile = readStoredSession();
+  const situation = profile?.situation === "planning" ? "planning" : "growing";
+  const freshCycle = {
+    ...createDefaultCropCycleInput({
+      crop,
+      situation,
+      growth: "unknown",
+      seasonId: createCropCycleSeasonId(crop),
+    }),
+    anchorDate: seoulDateKey(new Date()),
+    status: situation === "planning" ? "PLANNING" : "ACTIVE",
+  };
+  pendingNewSeasonDraft = {
+    crop,
+    previousInput: { ...context.cycleInput },
+  };
+  cropCycleDrafts.set(crop, freshCycle);
+  document.querySelector("#open-new-analysis")?.click();
+  const saveConsent = document.querySelector("#save-consent");
+  if (saveConsent) saveConsent.checked = true;
+  renderCropCycleSettings({ rememberExisting: false });
+  requestAnimationFrame(() => {
+    document.querySelector('[data-edit-step="3"]')?.click();
+    document.querySelector(
+      `[name="cycle-anchorType-${crop}"], [name="cycle-anchorDate-${crop}"]`,
+    )?.focus();
+    announce("새 시즌의 기준일을 확인해 주세요. 이전 시즌 기록은 보존됩니다.");
+  });
+}
+
+async function completeCurrentCropCycle(button) {
+  const cropCode = currentAnalysis?.inputSummary?.crop;
+  const context = currentUiContexts.get(cropCode);
+  if (!cropCode || !context?.cycleInput || !button) return;
+  if (!globalThis.confirm?.("이 시즌을 종료할까요? 저장한 날짜와 기록은 남아 있습니다.")) return;
+  let completed = false;
+  setBusy(button, true, "종료 저장 중…");
+  try {
+    const result = await finalizeCurrentSeasonRecords();
+    completed = true;
+    announce(
+      result.syncWarnings.length
+        ? "재배 시즌은 종료했습니다. 일부 기록 동기화는 다음 접속 때 자동으로 다시 확인합니다."
+        : "재배 일정과 사진 기록을 한 시즌으로 마무리했습니다.",
+    );
+  } catch (error) {
+    const status = document.querySelector("#crop-cycle-status");
+    if (status) status.textContent = `시즌을 종료하지 못했습니다. ${errorMessage(error)}`;
+    announce(status?.textContent ?? "시즌을 종료하지 못했습니다.");
+  } finally {
+    button.setAttribute("aria-busy", "false");
+    if (completed) {
+      renderCropCycleCard(currentAnalysis);
+    } else {
+      setBusy(button, false, "시즌 종료");
+    }
+  }
+}
+
+async function finalizeCurrentSeasonRecords() {
+  const cropCode = currentAnalysis?.inputSummary?.crop;
+  const context = currentUiContexts.get(cropCode);
+  const scope = currentFeatureScope(currentAnalysis);
+  if (!cropCode || !context?.cycleInput || !scope) {
+    throw new ApiRequestError({ code: "INVALID_INPUT" });
+  }
+  const crop = cropCode.toLowerCase();
+  const input = { ...context.cycleInput, status: "COMPLETED" };
+  const farm = readStoredSession();
+  const projection = farm?.id
+    ? await cropCycleAdapter.save({
+        farmId: farm.id,
+        cropId: cropCode,
+        crop,
+        input,
+      })
+    : projectLocalCropCycle({ crop, input });
+
+  let completedActionCount = 0;
+  let actionSyncWarning = null;
+  if (connected) {
+    try {
+      const result = await closeCompletedSeasonActions(scope);
+      completedActionCount = result.completedActionCount;
+    } catch (error) {
+      // 작기는 이미 종료됐다. 다음 조회에서도 같은 정리를 재시도한다.
+      actionSyncWarning = error;
+    }
+  }
+
+  let photoSyncWarning = null;
+  if (connected) {
+    try {
+      await api.completePhotoSeason(scope.farmId, scope);
+    } catch (error) {
+      if (!["FEATURE_NOT_CONFIGURED", "SEASON_NOT_FOUND", "SEASON_NOT_ACTIVE"].includes(error?.code)) {
+        photoSyncWarning = error;
+      }
+    }
+  }
+  await photoJournal?.completeSeason(scope, { completedActionCount });
+  updateStoredCropCycle(crop, input);
+  context.cycleInput = input;
+  context.cycleProjection = projection;
+  cropCycleProjections.set(cropCode, projection);
+  writeStoredTodoForActiveFarm(null, safeStorage(), cropCode);
+  currentActionPlan = null;
+  invalidateActionPlan(currentAnalysis);
+  renderCropCycleCard(currentAnalysis);
+  await refreshActionPlan(currentAnalysis, { ensureRules: false });
+  await refreshPhotoJournal(currentAnalysis);
+  return {
+    projection,
+    photoSyncWarning,
+    actionSyncWarning,
+    syncWarnings: [actionSyncWarning, photoSyncWarning].filter(Boolean),
+  };
+}
+
+function updateStoredCropCycle(crop, input) {
+  const storage = safeStorage();
+  if (!storage) return;
+  const farms = readStoredFarms();
+  const activeId = storage.getItem(ACTIVE_FARM_STORAGE_KEY);
+  const farm = farms.find(({ id }) => id === activeId);
+  if (!farm) return;
+  farm.cropSettings = {
+    ...farm.cropSettings,
+    [crop]: { ...farm.cropSettings?.[crop], cycle: input },
+  };
+  farm.updatedAt = new Date().toISOString();
+  storage.setItem(FARMS_STORAGE_KEY, JSON.stringify(farms));
+  const { id, name, updatedAt, ...profile } = farm;
+  storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(profile));
+  void syncStoredWorkspaceBackup();
+}
+
+function renderFarmOverviewWeather(analysis) {
+  const root = document.querySelector("#farm-overview-weather-strip");
+  if (!root) return;
+  const days = forecastDisplayDays(analysis).slice(0, 7);
+  const today = days[0];
+  setText(
+    "#farm-overview-weather-now",
+    Number.isFinite(today?.maxTemperature)
+      ? `오늘 ${formatNumber(today.maxTemperature)}℃`
+      : "예보 확인 중",
+  );
+  if (days.length === 0) {
+    root.replaceChildren(element("p", "dashboard-loading-copy", "현재 표시할 7일 예보가 없습니다."));
+    return;
+  }
+  root.replaceChildren(
+    ...days.map((day, index) => {
+      const item = element("article", "farm-weather-day");
+      const rain = Number.isFinite(day.precipitationProbability)
+        ? `${formatNumber(day.precipitationProbability)}%`
+        : "—";
+      item.append(
+        element("span", "farm-weather-date", formatFarmWeatherDate(day.date, index)),
+        element("strong", "farm-weather-temperature", formatNullableTemperature(day.maxTemperature)),
+        element("span", "farm-weather-rain", `비 ${rain}`),
+      );
+      item.setAttribute(
+        "aria-label",
+        `${formatExplicitForecastDate(day.date)} 최고 ${formatNullableTemperature(day.maxTemperature)}, 강수확률 ${rain}`,
+      );
+      return item;
+    }),
+  );
+}
+
+function formatFarmWeatherDate(value, index) {
+  if (index === 0) return "오늘";
+  if (index === 1) return "내일";
+  const date = new Date(`${value}T00:00:00`);
+  if (!Number.isFinite(date.getTime())) return String(value ?? "—");
+  return `${date.getMonth() + 1}.${date.getDate()}`;
+}
+
+function renderFarmOverviewCrops(analyses) {
+  const root = document.querySelector("#farm-overview-crop-grid");
+  if (!root) return;
+  root.replaceChildren(
+    ...analyses.map((analysis) => {
+      const status = farmStatusSummary(analysis);
+      const indicators = dashboardStatusIndicators(analysis);
+      const card = element("button", `farm-crop-score-card is-${status.tone}`);
+      card.type = "button";
+      card.setAttribute("aria-label", `${cropLabelForAnalysis(analysis)} 상세 분석 보기`);
+      const score = Number.isFinite(status.score) ? `${status.score}` : "—";
+      const scoreUnit = Number.isFinite(status.score) ? "점" : "";
+      const axis = element("dl", "farm-crop-axis");
+      indicators.axes.forEach((item) => {
+        const row = element("div", "");
+        row.append(element("dt", "", item.title), element("dd", "", item.value));
+        axis.append(row);
+      });
+      const heading = element("div", "farm-crop-score-heading");
+      heading.append(
+        element("strong", "farm-crop-name", cropLabelForAnalysis(analysis)),
+        element("span", `farm-crop-state is-${status.tone}`, status.label),
+      );
+      const scoreWrap = element("div", "farm-crop-score-value");
+      scoreWrap.append(element("strong", "", score), element("span", "", scoreUnit));
+      card.append(heading, scoreWrap, axis, element("span", "farm-crop-detail-link", "상세 분석 보기 →"));
+      card.addEventListener("click", () => activateCropAnalysis(analysis));
+      return card;
+    }),
+  );
+}
+
+function renderFarmOverviewWarnings(analyses) {
+  const root = document.querySelector("#farm-overview-warning-list");
+  const section = document.querySelector("#farm-overview-warnings");
+  if (!root || !section) return;
+  const warningItems = analyses
+    .map((analysis) => ({
+      analysis,
+      status: farmStatusSummary(analysis),
+      action: resolveDisplayAction(analysis),
+    }))
+    .filter(({ status }) => status.tone !== "good");
+  setText("#farm-overview-warning-count", `${warningItems.length}종`);
+  if (warningItems.length === 0) {
+    root.replaceChildren();
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  root.replaceChildren(
+    ...warningItems.map(({ analysis, status, action }) => {
+      const item = element("button", `farm-warning-item is-${status.tone}`);
+      item.type = "button";
+      item.append(
+        element("span", "farm-warning-crop", cropLabelForAnalysis(analysis)),
+        element("strong", "", action.title),
+        element("p", "", action.detail || status.detail),
+        element("span", "farm-warning-link", "자세히 보기 →"),
+      );
+      item.addEventListener("click", () => activateCropAnalysis(analysis));
+      return item;
+    }),
+  );
+}
+
+async function refreshFarmOverviewActions(analyses) {
+  const root = document.querySelector("#farm-overview-action-list");
+  if (!root || !connected) return;
+  const requestVersion = ++overviewRequestVersion;
+  root.setAttribute("aria-busy", "true");
+  root.replaceChildren(element("p", "dashboard-loading-copy", "품목별 할 일을 모으고 있습니다."));
+  try {
+    const results = await Promise.allSettled(
+      analyses.map(async (analysis) => ({
+        analysis,
+        scope: currentFeatureScope(analysis),
+        plan: await loadActionPlan(analysis),
+      })),
+    );
+    if (requestVersion !== overviewRequestVersion || dashboardMode !== "overview") return;
+    const completed = results
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value);
+    const merged = mergeTodayActionPlans(completed);
+    overviewActionScopes = merged.actionTargets;
+    const today = merged.plan.today;
+    root.closest(".farm-overview-actions")?.classList.toggle("is-empty", today.length === 0);
+    disposeOverviewActionPlan?.();
+    disposeOverviewActionPlan = mountActionPlan(root, merged.plan, {
+      onStatusChange: async ({ actionId, status }) => {
+        const target = overviewActionScopes.get(actionId);
+        if (!target?.scope) return;
+        await api.updateAction(target.scope.farmId, actionId, status, createIdempotencyKey());
+        invalidateActionPlan(target.analysis);
+        await refreshFarmOverviewActions(analyses);
+      },
+      onSnooze: async ({ actionId, snoozedUntil }) => {
+        const target = overviewActionScopes.get(actionId);
+        if (!target?.scope) return;
+        await api.snoozeAction(target.scope.farmId, actionId, snoozedUntil, createIdempotencyKey());
+        invalidateActionPlan(target.analysis);
+        await refreshFarmOverviewActions(analyses);
+      },
+      onStatusError: ({ error }) => {
+        const status = document.querySelector("#farm-overview-action-status");
+        if (!status) return;
+        status.hidden = false;
+        status.classList.add("is-error");
+        status.textContent = `할 일을 저장하지 못했습니다. ${errorMessage(error)}`;
+      },
+    });
+    const openCount = today.filter((item) => item.status === "OPEN").length;
+    setText("#farm-overview-action-count", `${openCount}개`);
+    setText("#farm-overview-open-count", openCount ? `${openCount}개 남음` : "모두 완료");
+    const failedCount = results.length - completed.length;
+    if (failedCount > 0) {
+      const status = document.querySelector("#farm-overview-action-status");
+      if (status) {
+        status.hidden = false;
+        status.classList.add("is-error");
+        status.textContent = `${failedCount}개 품목의 할 일을 불러오지 못했습니다. 나머지 결과만 표시합니다.`;
+      }
+    }
+  } catch (error) {
+    root.replaceChildren(element("p", "backend-empty", `오늘 할 일을 불러오지 못했습니다. ${errorMessage(error)}`));
+    setText("#farm-overview-action-count", "—");
+    setText("#farm-overview-open-count", "불러오기 실패");
+  } finally {
+    root.removeAttribute("aria-busy");
+  }
+}
+
+function activateCropAnalysis(analysis) {
+  dashboardMode = "crop";
+  overviewRequestVersion += 1;
+  document.querySelector("#farm-overview-dashboard")?.setAttribute("hidden", "");
+  currentAnalysis = analysis;
+  renderAnalysis(analysis);
+  renderCropResultSwitcher();
+  if ((analysis?.report?.state ?? "NOT_REQUESTED") === "NOT_REQUESTED") {
+    const reportButton = document.querySelector("#backend-report-button");
+    if (reportButton) void requestAndPollReport(reportButton, { automatic: true });
+  }
+}
+
 function renderCropResultSwitcher() {
   const switcher = document.querySelector("#crop-result-switcher");
   if (!switcher) return;
   const analyses = [...currentAnalyses.values()];
-  const activate = (analysis) => {
-    currentAnalysis = analysis;
-    renderAnalysis(analysis);
+  const overviewButton = element("button", "", "종합");
+  overviewButton.type = "button";
+  overviewButton.setAttribute("aria-pressed", String(dashboardMode === "overview"));
+  overviewButton.addEventListener("click", () => {
+    renderFarmOverview();
     renderCropResultSwitcher();
-    if ((analysis?.report?.state ?? "NOT_REQUESTED") === "NOT_REQUESTED") {
-      const reportButton = document.querySelector("#backend-report-button");
-      if (reportButton) {
-        void requestAndPollReport(reportButton, { automatic: true });
-      }
-    }
-  };
+  });
   const cropButton = (analysis) => {
       const crop = analysis?.inputSummary?.crop;
       const button = element(
@@ -3092,13 +4205,13 @@ function renderCropResultSwitcher() {
       button.type = "button";
       button.setAttribute(
         "aria-pressed",
-        String(analysis?.analysisId === currentAnalysis?.analysisId),
+        String(dashboardMode === "crop" && analysis?.analysisId === currentAnalysis?.analysisId),
       );
-      button.addEventListener("click", () => activate(analysis));
+      button.addEventListener("click", () => activateCropAnalysis(analysis));
       return button;
   };
   if (analyses.length <= 2) {
-    switcher.replaceChildren(...analyses.map(cropButton));
+    switcher.replaceChildren(overviewButton, ...analyses.map(cropButton));
   } else {
     const active = analyses.find(
       (analysis) => analysis?.analysisId === currentAnalysis?.analysisId,
@@ -3116,9 +4229,9 @@ function renderCropResultSwitcher() {
     });
     select.addEventListener("change", () => {
       const analysis = others[Number(select.value)];
-      if (analysis) activate(analysis);
+      if (analysis) activateCropAnalysis(analysis);
     });
-    switcher.replaceChildren(cropButton(active), select);
+    switcher.replaceChildren(overviewButton, cropButton(active), select);
   }
   switcher.hidden = analyses.length === 0;
 }
@@ -3141,6 +4254,7 @@ function renderSummaryPanel(analysis, regionLabel, cropLabel) {
     element("span", "meta-value", formatDateTime(analysis?.createdAt)),
   );
   const contextList = element("div", "summary-context-list");
+  const planning = summary.usageMode === "LAND_SEARCH";
   contextList.append(
     element(
       "span",
@@ -3151,12 +4265,14 @@ function renderSummaryPanel(analysis, regionLabel, cropLabel) {
         "미설정"
       }`,
     ),
-    element(
-      "span",
-      "summary-context-chip",
-      `생육 상태 · ${uiContext?.growthLabel ?? "단계 공통 안내"}`,
-    ),
-    ...(uiContext?.growthRecommended
+    ...(planning
+      ? [element("span", "summary-context-chip", "진단 목적 · 재배 전 준비")]
+      : [element(
+          "span",
+          "summary-context-chip",
+          `생육 상태 · ${uiContext?.growthLabel ?? "단계 공통 안내"}`,
+        )]),
+    ...(!planning && uiContext?.growthRecommended
       ? [element("span", "summary-context-chip is-ai", "날짜 기준 AI 예상")]
       : []),
   );
@@ -3195,7 +4311,8 @@ function renderStateOverview(analysis) {
   const overview = document.querySelector(".overview-score");
   const inner = element("div", "overview-score-inner");
   const heading = element("div", "overview-heading");
-  const title = element("h2", "", "오늘의 작물 상태");
+  const planning = analysis?.inputSummary?.usageMode === "LAND_SEARCH";
+  const title = element("h2", "", planning ? "재배 준비 상태" : "오늘의 작물 상태");
   title.id = "readiness-title";
   heading.append(
     element("span", "overview-kicker", "현재 상태"),
@@ -3210,7 +4327,7 @@ function renderStateOverview(analysis) {
   stateRing.setAttribute("role", "img");
   stateRing.setAttribute(
     "aria-label",
-    `오늘의 작물 상태 ${status.label}`,
+    `${planning ? "재배 준비 상태" : "오늘의 작물 상태"} ${status.label}`,
   );
   stateRing.append(element("strong", "", status.label));
   const stateCopy = element("div", "current-state-copy");
@@ -3347,6 +4464,7 @@ function soilConditionHelp(analysis) {
 
 function farmStatusSummary(analysis) {
   const growthScore = analysis?.growthScore;
+  const planning = analysis?.inputSummary?.usageMode === "LAND_SEARCH";
   if (Number.isFinite(growthScore?.score)) {
     const tone = growthScore.score < 50
       ? "danger"
@@ -3359,8 +4477,12 @@ function farmStatusSummary(analysis) {
       tone,
       detail:
         growthScore.state === "READY"
-          ? "기상·토양·예보의 영향도와 자료 신뢰도를 반영한 생육점수입니다."
-          : "현재 확인된 환경자료로 계산했으며, 사진을 더하면 정확도를 높일 수 있습니다.",
+          ? planning
+            ? "희망 지역의 기상·토양·예보와 작물 기준을 비교한 재배 적합도입니다."
+            : "기상·토양·예보의 영향도와 자료 신뢰도를 반영한 생육점수입니다."
+          : planning
+            ? "현재 확인된 지역 환경자료로 계산한 재배 전 참고 적합도입니다."
+            : "현재 확인된 환경자료로 계산한 생육점수입니다. 더 정확한 상태 확인에는 작물 사진을 함께 활용할 수 있습니다.",
     };
   }
   const weather = forecastRiskGuide(analysis);
@@ -3909,6 +5031,7 @@ function storeUpdatedAnalysis(analysis, expectedAnalysisId) {
   const crop = analysis?.inputSummary?.crop;
   if (crop) currentAnalyses.set(crop, analysis);
   if (isCurrentAnalysis(expectedAnalysisId)) currentAnalysis = analysis;
+  writeAnalysisSnapshot([...currentAnalyses.values()]);
   renderCropResultSwitcher();
 }
 
@@ -4190,7 +5313,7 @@ function forecastRiskCause(analysis, action = null) {
 
 function soilConditionGuide(analysis) {
   const soil = analysis?.soil;
-  const missingSoilExamHistory = hasMissingSoilExamHistory(analysis);
+  const missingSoilExamHistory = analysisHasMissingSoilExamHistory(analysis);
   if (soil?.state === "NOT_APPLICABLE") {
     return {
       ready: true,
@@ -4694,7 +5817,7 @@ function renderStoredSessionLoading(saved) {
   document.querySelector("#sidebar-mode-value").textContent =
     saved.situation === "growing"
       ? "재배 중 생육 점검"
-      : "재배 전 환경 분석";
+      : "재배 준비 진단";
   document.querySelector("#dashboard-title").textContent =
     `${context} 최신 자료 확인 중`;
   document.querySelector("#dashboard-mode-copy").textContent =
@@ -4737,6 +5860,7 @@ function initializeDashboardSurfaces() {
   setupReportHistory();
   setupSatelliteService();
   setupPhotoJournal();
+  setupHarvestPhotoAssessment();
   renderDashboardSoilTest();
   const legacyDetailPanel = document
     .querySelector("#detail-map-title")
@@ -5030,6 +6154,63 @@ function setupPhotoJournal() {
   }
 }
 
+function setupHarvestPhotoAssessment() {
+  const button = document.querySelector("#harvest-photo-assess");
+  button?.addEventListener("click", () => void assessCurrentHarvestPhoto());
+}
+
+async function assessCurrentHarvestPhoto() {
+  const input = document.querySelector("#harvest-photo-input");
+  const button = document.querySelector("#harvest-photo-assess");
+  const status = document.querySelector("#harvest-photo-status");
+  const file = input?.files?.[0] ?? null;
+  const scope = currentFeatureScope(currentAnalysis);
+  if (!scope || !currentAnalysis) {
+    if (status) status.textContent = "먼저 작물 분석을 완료해 주세요.";
+    return;
+  }
+  if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    if (status) status.textContent = "JPEG, PNG 또는 WebP 수확 사진을 선택해 주세요.";
+    return;
+  }
+  if (file.size > 6 * 1024 * 1024) {
+    if (status) status.textContent = "수확 판정 사진은 6MB 이하로 선택해 주세요.";
+    return;
+  }
+  setBusy(button, true, "AI 확인 중…");
+  if (status) status.textContent = "사진의 초점과 수확할 부분을 먼저 확인하고 있습니다.";
+  try {
+    const quality = assessPhotoQuality(await analyzePhotoSignals(file));
+    if (!quality.ready) {
+      if (status) status.textContent = quality.message;
+      return;
+    }
+    const response = await api.assessHarvestPhoto(scope.farmId, {
+      cropId: String(currentAnalysis.inputSummary.crop).toUpperCase(),
+      seasonId: scope.seasonId,
+      mimeType: file.type,
+      dataBase64: await fileToBase64(file),
+    });
+    const assessment = response?.assessment;
+    if (!assessment || !["READY", "NOT_READY", "UNCERTAIN"].includes(assessment.state)) {
+      throw new TypeError("invalid harvest assessment");
+    }
+    const assessmentKey = harvestAssessmentKey(currentAnalysis);
+    if (!assessmentKey) throw new TypeError("invalid harvest assessment scope");
+    harvestPhotoAssessments.set(assessmentKey, assessment);
+    writeStoredHarvestAssessment(assessmentKey, assessment);
+    renderCropCycleCard(currentAnalysis);
+    if (input) input.value = "";
+  } catch (error) {
+    if (status) {
+      status.className = "harvest-photo-status is-uncertain";
+      status.textContent = errorMessage(error);
+    }
+  } finally {
+    setBusy(button, false, "수확 상태 확인");
+  }
+}
+
 async function savePhotoJournalEntry(event) {
   event.preventDefault();
   const scope = currentFeatureScope(currentAnalysis);
@@ -5061,6 +6242,13 @@ async function savePhotoJournalEntry(event) {
   }
   setBusy(button, true, "사진 확인 중…");
   try {
+    if (isCompletedCycle(currentAnalysis)) {
+      setPhotoJournalStatus(
+        "마무리한 시즌에는 사진을 추가할 수 없습니다. 새 재배 조건으로 분석해 주세요.",
+        "error",
+      );
+      return;
+    }
     const season = await photoJournal.getSeason(scope);
     if (season?.status === "COMPLETED") {
       setPhotoJournalStatus(
@@ -5144,22 +6332,13 @@ async function completeCurrentSeason() {
   const button = document.querySelector("#season-complete");
   setBusy(button, true, "정리 중…");
   try {
-    let completedActionCount = 0;
-    if (connected) {
-      const plan = await api.listActions(scope.farmId, scope);
-      const actions = [...(plan?.today ?? []), ...(plan?.upcoming ?? [])];
-      completedActionCount = actions.filter((action) => action.status === "DONE").length;
-    }
-    if (connected) {
-      try {
-        await api.completePhotoSeason(scope.farmId, scope);
-      } catch (error) {
-        if (error?.code !== "FEATURE_NOT_CONFIGURED") throw error;
-      }
-    }
-    await photoJournal.completeSeason(scope, { completedActionCount });
-    setPhotoJournalStatus("이번 시즌의 사진과 완료 기록을 정리했습니다.", "success");
-    await refreshPhotoJournal(currentAnalysis);
+    const result = await finalizeCurrentSeasonRecords();
+    setPhotoJournalStatus(
+      result.syncWarnings.length
+        ? "시즌은 마무리했습니다. 일부 기록 동기화는 다음 접속 때 자동으로 다시 확인합니다."
+        : "재배 일정과 사진·완료 기록을 한 시즌으로 정리했습니다.",
+      result.syncWarnings.length ? "error" : "success",
+    );
   } catch {
     setPhotoJournalStatus("시즌 기록을 정리하지 못했습니다. 다시 시도해 주세요.", "error");
   } finally {
@@ -5196,7 +6375,9 @@ async function refreshPhotoJournal(analysis) {
     }
     renderPhotoJournalGallery(gallery, photos, scope);
     const completed =
-      season?.status === "COMPLETED" || serverSummary?.status === "COMPLETED";
+      isCompletedCycle(analysis) ||
+      season?.status === "COMPLETED" ||
+      serverSummary?.status === "COMPLETED";
     document.querySelector("#season-complete").disabled = completed;
     document.querySelector("#journal-save").disabled = completed;
     document.querySelector("#season-summary-title").textContent = completed
@@ -5652,13 +6833,44 @@ async function submitAssistantQuestion(rawQuestion) {
     assistantInput.focus();
     return;
   }
+  const cropCode = currentAnalysis?.inputSummary?.crop;
+  const cycleAnswer = buildAssistantCycleAnswer(question, {
+    cropLabel: CROP_LABELS[cropCode],
+    projection:
+      cropCycleProjections.get(cropCode) ??
+      currentUiContexts.get(cropCode)?.cycleProjection,
+  });
+  if (cycleAnswer) {
+    appendAssistantMessage(cycleAnswer);
+    assistantInput.focus();
+    return;
+  }
   assistantInput.disabled = true;
   assistantSend.disabled = true;
   assistantSend.textContent = "확인 중";
-  const pending = appendAssistantMessage("현재 분석 근거를 확인하고 있습니다.");
+  let pending = appendAssistantMessage("현재 분석 근거를 확인하고 있습니다.");
+  let activeRequestAnalysisId = expectedAnalysisId;
   try {
-    const response = await api.askAssistant(expectedAnalysisId, question);
-    if (expectedAnalysisId !== currentAnalysis?.analysisId) return;
+    let response;
+    try {
+      response = await api.askAssistant(activeRequestAnalysisId, question);
+    } catch (error) {
+      if (error?.code !== "ANALYSIS_NOT_FOUND") throw error;
+      pending?.remove();
+      const saved = readStoredSession();
+      const locationReady = selectedCandidate ||
+        await prepareStoredLocationCandidate(saved?.region);
+      pendingAttempt = null;
+      const refreshed = locationReady && await submitAnalysis();
+      activeRequestAnalysisId = currentAnalysis?.analysisId;
+      if (!refreshed || !activeRequestAnalysisId) throw error;
+      // 새 분석 ID로 컨텍스트가 교체되며 대화 로그도 초기화된다.
+      // 사용자의 질문을 다시 표시한 뒤 같은 질문을 한 번만 재시도한다.
+      appendAssistantMessage(question, { user: true });
+      pending = appendAssistantMessage("최신 분석 근거를 확인하고 있습니다.");
+      response = await api.askAssistant(activeRequestAnalysisId, question);
+    }
+    if (activeRequestAnalysisId !== currentAnalysis?.analysisId) return;
     pending?.remove();
     appendAssistantMessage(response?.answer ?? "설명할 근거를 찾지 못했습니다.", {
       note: assistantOutcomeNote(response?.outcome, response?.notice),
@@ -5667,7 +6879,7 @@ async function submitAssistantQuestion(rawQuestion) {
     pending?.remove();
     appendAssistantMessage(assistantErrorMessage(error));
   } finally {
-    if (expectedAnalysisId === currentAnalysis?.analysisId) {
+    if (activeRequestAnalysisId === currentAnalysis?.analysisId) {
       assistantInput.disabled = false;
       assistantSend.disabled = false;
       assistantSend.textContent = "전송";
@@ -5697,7 +6909,7 @@ function buildAssistantActionProposal(question, analysis) {
       ...scope,
       title,
       instruction: `${title}을(를) 확인하고 완료 여부를 기록합니다.`,
-      reason: "사용자가 농장 분석 도우미에서 직접 요청한 할 일입니다.",
+      reason: "사용자가 흙톡에서 직접 요청한 할 일입니다.",
       horizon: tomorrow ? "UPCOMING" : "TODAY",
       dueAt: due.toISOString(),
       recheckAt: due.toISOString(),
@@ -5738,6 +6950,7 @@ function renderAssistantActionProposal(proposal, analysis) {
         { draft: proposal.draft, ruleId: null, confirmed: true },
         createIdempotencyKey(),
       );
+      invalidateActionPlan(analysis);
       card.replaceChildren(
         element("strong", "", "할 일에 추가했습니다."),
         element("span", "", `${proposal.dueLabel} · ${proposal.title}`),
@@ -5977,24 +7190,237 @@ function safeStorage() {
   }
 }
 
-function readStoredSoilTest() {
-  const raw = safeStorage()?.getItem(SOIL_TEST_STORAGE_KEY);
-  if (!raw) return null;
+function isStoredAnalysisResult(analysis) {
+  const crop = analysis?.inputSummary?.crop;
+  return (
+    typeof analysis?.analysisId === "string" &&
+    analysis.analysisId !== "" &&
+    typeof crop === "string" &&
+    Object.hasOwn(CROP_LABELS, crop)
+  );
+}
+
+function readAnalysisSnapshot(farmId) {
+  if (typeof farmId !== "string" || farmId === "") return null;
+  const raw = safeStorage()?.getItem(ANALYSIS_SNAPSHOT_STORAGE_KEY);
+  if (!raw || raw.length > ANALYSIS_SNAPSHOT_MAX_BYTES) return null;
   try {
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" && Number.isFinite(parsed.ph)
-      ? parsed
-      : null;
+    const snapshot = parsed?.version === 1 ? parsed.farms?.[farmId] : null;
+    const analyses = Array.isArray(snapshot?.analyses)
+      ? snapshot.analyses.filter(isStoredAnalysisResult).slice(0, 5)
+      : [];
+    if (analyses.length === 0) return null;
+    return {
+      savedAt: snapshot.savedAt,
+      analyses,
+      uiContexts:
+        snapshot.uiContexts && typeof snapshot.uiContexts === "object"
+          ? snapshot.uiContexts
+          : {},
+    };
   } catch {
     return null;
   }
 }
 
+function writeAnalysisSnapshot(analyses) {
+  const storage = safeStorage();
+  const farmId = storage?.getItem(ACTIVE_FARM_STORAGE_KEY);
+  const safeAnalyses = Array.isArray(analyses)
+    ? analyses.filter(isStoredAnalysisResult).slice(0, 5)
+    : [];
+  if (!storage || !farmId || safeAnalyses.length === 0) return null;
+  const newestAnalysisTime = Math.max(
+    0,
+    ...safeAnalyses
+      .map((analysis) => Date.parse(analysis.createdAt))
+      .filter(Number.isFinite),
+  );
+  const savedAt = new Date(newestAnalysisTime || Date.now()).toISOString();
+  try {
+    let parsed = { version: 1, farms: {} };
+    const previous = storage.getItem(ANALYSIS_SNAPSHOT_STORAGE_KEY);
+    if (previous && previous.length <= ANALYSIS_SNAPSHOT_MAX_BYTES) {
+      const candidate = JSON.parse(previous);
+      if (candidate?.version === 1 && candidate.farms && typeof candidate.farms === "object") {
+        parsed = candidate;
+      }
+    }
+    parsed.farms[farmId] = {
+      savedAt,
+      analyses: safeAnalyses,
+      uiContexts: Object.fromEntries(currentUiContexts),
+    };
+    const allowedFarmIds = new Set(readStoredFarms().map(({ id }) => id));
+    parsed.farms = Object.fromEntries(
+      Object.entries(parsed.farms)
+        .filter(([id]) => allowedFarmIds.has(id))
+        .sort(([, left], [, right]) =>
+          String(right?.savedAt ?? "").localeCompare(String(left?.savedAt ?? ""))
+        )
+        .slice(0, 12),
+    );
+    let serialized = JSON.stringify(parsed);
+    while (
+      new TextEncoder().encode(serialized).byteLength > ANALYSIS_SNAPSHOT_MAX_BYTES &&
+      Object.keys(parsed.farms).length > 1
+    ) {
+      const oldestFarmId = Object.keys(parsed.farms).at(-1);
+      if (!oldestFarmId || oldestFarmId === farmId) {
+        const nextOldestFarmId = Object.keys(parsed.farms).at(-2);
+        if (!nextOldestFarmId) break;
+        delete parsed.farms[nextOldestFarmId];
+      } else {
+        delete parsed.farms[oldestFarmId];
+      }
+      serialized = JSON.stringify(parsed);
+    }
+    if (new TextEncoder().encode(serialized).byteLength > ANALYSIS_SNAPSHOT_MAX_BYTES) {
+      serialized = JSON.stringify({
+        version: 1,
+        farms: { [farmId]: parsed.farms[farmId] },
+      });
+    }
+    if (new TextEncoder().encode(serialized).byteLength > ANALYSIS_SNAPSHOT_MAX_BYTES) {
+      return null;
+    }
+    storage.setItem(ANALYSIS_SNAPSHOT_STORAGE_KEY, serialized);
+    return Date.parse(savedAt);
+  } catch {
+    // 분석 결과 저장이 불가능해도 현재 화면의 분석은 계속 제공한다.
+    return null;
+  }
+}
+
+function restoreAnalysisSnapshot(profile) {
+  const snapshot = readAnalysisSnapshot(profile?.id);
+  if (!snapshot) return false;
+  const expectedCrops = new Set(
+    (profile.crops ?? []).map((crop) => String(crop).toUpperCase()),
+  );
+  const analyses = snapshot.analyses.filter((analysis) =>
+    expectedCrops.has(analysis.inputSummary.crop)
+  );
+  if (analyses.length === 0) return false;
+  currentAnalyses = new Map(
+    analyses.map((analysis) => [analysis.inputSummary.crop, analysis]),
+  );
+  currentAnalysis = analyses[0];
+  currentUiContexts = new Map(
+    analyses.map((analysis) => {
+      const crop = analysis.inputSummary.crop;
+      const cropValue = crop.toLowerCase();
+      const setting = profile.cropSettings?.[cropValue] ?? {};
+      const storedContext = snapshot.uiContexts?.[crop] ?? {};
+      const cycleInput = storedCropCycleInput(profile, cropValue, setting.cycle);
+      return [
+        crop,
+        {
+          cultivationLabel:
+            storedContext.cultivationLabel ??
+            CULTIVATION_LABELS[analysis.inputSummary.cultivationMode] ??
+            "재배 환경 확인",
+          growthLabel:
+            storedContext.growthLabel ??
+            GROWTH_LABELS[setting.growth] ??
+            "생육 상태 확인",
+          growthRecommended: storedContext.growthRecommended === true,
+          cycleInput,
+          cycleProjection: projectLocalCropCycle({
+            crop: cropValue,
+            input: cycleInput,
+            sourceLabel: hasStoredCropCycle(setting.cycle)
+              ? "입력 기준 예상"
+              : "날짜 기준 AI 예상",
+          }),
+        },
+      ];
+    }),
+  );
+  actionPlanCache.clear();
+  actionPlanRequests.clear();
+  currentActionPlan = null;
+  const savedTime = Date.parse(snapshot.savedAt);
+  lastAnalysisRequestAt = Number.isFinite(savedTime) ? savedTime : 0;
+  renderAnalysis(currentAnalysis);
+  dashboardMode = "overview";
+  renderFarmOverview();
+  renderCropResultSwitcher();
+  closeWizardAfterAnalysis();
+  announce("저장된 최근 분석 결과를 불러왔습니다.");
+  return true;
+}
+
+function readStoredSoilTest() {
+  const storage = safeStorage();
+  const farmId = storage?.getItem(ACTIVE_FARM_STORAGE_KEY);
+  if (!storage || !farmId) return readLegacySoilTest(storage);
+  const tests = readStoredSoilTests(storage);
+  if (isStoredSoilTest(tests[farmId])) return tests[farmId];
+  const legacy = readLegacySoilTest(storage);
+  if (!legacy) return null;
+  tests[farmId] = legacy;
+  storage.setItem(SOIL_TESTS_STORAGE_KEY, JSON.stringify(tests));
+  storage.removeItem(SOIL_TEST_STORAGE_KEY);
+  return legacy;
+}
+
 function writeStoredSoilTest(value) {
   const storage = safeStorage();
   if (!storage) return;
-  if (value === null) storage.removeItem(SOIL_TEST_STORAGE_KEY);
-  else storage.setItem(SOIL_TEST_STORAGE_KEY, JSON.stringify(value));
+  const farmId = storage.getItem(ACTIVE_FARM_STORAGE_KEY);
+  if (!farmId) {
+    if (value === null) storage.removeItem(SOIL_TEST_STORAGE_KEY);
+    else storage.setItem(SOIL_TEST_STORAGE_KEY, JSON.stringify(value));
+    return;
+  }
+  const tests = readStoredSoilTests(storage);
+  if (value === null) delete tests[farmId];
+  else if (isStoredSoilTest(value)) tests[farmId] = value;
+  storage.setItem(SOIL_TESTS_STORAGE_KEY, JSON.stringify(tests));
+  storage.removeItem(SOIL_TEST_STORAGE_KEY);
+}
+
+function readStoredSoilTests(storage = safeStorage()) {
+  if (!storage) return {};
+  try {
+    const value = JSON.parse(storage.getItem(SOIL_TESTS_STORAGE_KEY) ?? "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(
+      Object.entries(value).filter(([farmId, soilTest]) =>
+        typeof farmId === "string" && farmId.length <= 160 && isStoredSoilTest(soilTest)
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function readLegacySoilTest(storage = safeStorage()) {
+  if (!storage) return null;
+  try {
+    const value = JSON.parse(storage.getItem(SOIL_TEST_STORAGE_KEY) ?? "null");
+    return isStoredSoilTest(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function isStoredSoilTest(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && Number.isFinite(value.ph));
+}
+
+function restoreScopedSoilTests(value, allowedFarmIds, storage = safeStorage()) {
+  if (!storage || !value || typeof value !== "object" || Array.isArray(value)) return;
+  const allowed = new Set(allowedFarmIds);
+  const tests = Object.fromEntries(
+    Object.entries(value).filter(([farmId, soilTest]) =>
+      allowed.has(farmId) && isStoredSoilTest(soilTest)
+    ),
+  );
+  storage.setItem(SOIL_TESTS_STORAGE_KEY, JSON.stringify(tests));
+  storage.removeItem(SOIL_TEST_STORAGE_KEY);
 }
 
 function rememberRegion(displayName) {
@@ -6043,6 +7469,7 @@ function writeStoredSession(values, region) {
     storage.setItem(REGION_STORAGE_KEY, profile.region);
     creatingNewFarm = false;
     renderFarmLists();
+    void syncStoredWorkspaceBackup({ createIfMissing: true });
   } catch {
     // 저장소가 가득 찼거나 막혀 있으면 복원 없이 계속 쓴다.
   }
@@ -6082,6 +7509,7 @@ function clearStoredSession() {
   storage?.removeItem(SESSION_STORAGE_KEY);
   storage?.removeItem(FARMS_STORAGE_KEY);
   storage?.removeItem(ACTIVE_FARM_STORAGE_KEY);
+  storage?.removeItem(ANALYSIS_SNAPSHOT_STORAGE_KEY);
 }
 
 function readStoredFarms() {
@@ -6103,10 +7531,50 @@ function isStoredFarmProfile(profile) {
   return (
     typeof profile?.region === "string" &&
     profile.region.trim() !== "" &&
-    profile?.situation === "growing" &&
+    ["planning", "growing"].includes(profile?.situation) &&
     Array.isArray(profile?.crops) &&
     profile.crops.length > 0
   );
+}
+
+function storedCropCycleInput(profile, crop, value) {
+  try {
+    return normalizeCropCycleInput(value, {
+      crop,
+      situation: profile?.situation ?? "growing",
+    });
+  } catch {
+    return createDefaultCropCycleInput({
+      crop,
+      situation: profile?.situation ?? "growing",
+      growth: profile?.cropSettings?.[crop]?.growth ?? "unknown",
+    });
+  }
+}
+
+function hasStoredCropCycle(value) {
+  return value !== null && typeof value === "object" &&
+    typeof value.seasonId === "string" &&
+    typeof value.anchorDate === "string";
+}
+
+function cropCycleRequestsForProfile(profile) {
+  const crops = Array.isArray(profile?.crops) ? profile.crops : [];
+  return buildCropCycleRequests({
+    situation: profile?.situation ?? "growing",
+    crops,
+    cropSettings: Object.fromEntries(crops.map((crop) => [
+      crop,
+      {
+        ...profile?.cropSettings?.[crop],
+        cycle: storedCropCycleInput(
+          profile,
+          crop,
+          profile?.cropSettings?.[crop]?.cycle,
+        ),
+      },
+    ])),
+  });
 }
 
 function createFarmId() {
@@ -6153,7 +7621,7 @@ function renderFarmList(
       element(
         "span",
         "",
-        farm.situation === "growing" ? "재배 관리" : "재배 전 진단",
+        farm.situation === "growing" ? "재배 관리" : "재배 준비 진단",
       ),
     );
     button.addEventListener("click", () => selectStoredFarm(farm));
@@ -6167,10 +7635,10 @@ function renderFarmList(
   if (includeHeading) heading.id = "sidebar-recent-title";
   target.replaceChildren(
     ...(includeHeading ? [heading] : []),
+    add,
     ...(farms.length
       ? [list]
       : [element("p", "recent-analysis", "저장된 농장이 없습니다.")]),
-    add,
   );
 }
 
@@ -6249,13 +7717,11 @@ function writeStoredTodo(analysis) {
     null;
   const decision = analysis?.decision?.headline ?? null;
   const crop = analysis?.inputSummary?.cropLabel ?? null;
+  const cropCode = analysis?.inputSummary?.crop ?? null;
   const region = analysis?.inputSummary?.regionLabel ?? readStoredRegion();
   if (!headline) return;
   try {
-    storage.setItem(
-      TODO_STORAGE_KEY,
-      JSON.stringify({ headline, decision, crop, region }),
-    );
+    writeStoredTodoForActiveFarm({ headline, decision, crop, region }, storage, cropCode);
     void syncStoredWorkspaceBackup();
   } catch {
     /* 저장소가 막혀 있으면 알림 본문만 일반 문구가 된다. */
@@ -6267,24 +7733,22 @@ function writeStoredTodoFromPlan(plan, analysis) {
   const saveConsent = document.querySelector("#save-consent");
   if (!storage || saveConsent?.checked !== true) return;
   const action = plan?.firstAction;
+  const cropCode = analysis?.inputSummary?.crop ?? null;
   try {
     if (!action || action.status !== "OPEN") {
-      storage.removeItem(TODO_STORAGE_KEY);
+      writeStoredTodoForActiveFarm(null, storage, cropCode);
       void syncStoredWorkspaceBackup();
       return;
     }
     const crop = analysis?.inputSummary?.cropLabel ?? null;
     const region = analysis?.inputSummary?.regionLabel ?? readStoredRegion();
-    storage.setItem(
-      TODO_STORAGE_KEY,
-      JSON.stringify({
-        headline: action.title,
-        decision: action.instruction,
-        dueAt: action.dueAt,
-        crop,
-        region,
-      }),
-    );
+    writeStoredTodoForActiveFarm({
+      headline: action.title,
+      decision: action.instruction,
+      dueAt: action.dueAt,
+      crop,
+      region,
+    }, storage, cropCode);
     void syncStoredWorkspaceBackup();
   } catch {
     /* 저장소가 막혀 있어도 실제 행동 계획 조회와 저장은 계속 사용할 수 있다. */
@@ -6292,12 +7756,63 @@ function writeStoredTodoFromPlan(plan, analysis) {
 }
 
 function readStoredTodo() {
-  const raw = safeStorage()?.getItem(TODO_STORAGE_KEY);
-  if (!raw) return null;
+  const storage = safeStorage();
+  const farmId = storage?.getItem(ACTIVE_FARM_STORAGE_KEY);
+  if (!storage) return null;
   try {
-    return JSON.parse(raw);
+    const todos = JSON.parse(storage.getItem(TODOS_STORAGE_KEY) ?? "{}");
+    if (farmId && todos && typeof todos === "object" && !Array.isArray(todos)) {
+      const scoped = Object.entries(todos)
+        .filter(([key, todo]) =>
+          (key === farmId || key.startsWith(`${farmId}::`)) &&
+          todo && typeof todo === "object" && !Array.isArray(todo) && todo.headline
+        )
+        .map(([, todo]) => todo)
+        .sort((left, right) => todoDueTime(left) - todoDueTime(right));
+      if (scoped.length > 0) return scoped[0];
+    }
+    const legacy = JSON.parse(storage.getItem(TODO_STORAGE_KEY) ?? "null");
+    if (farmId && legacy && typeof legacy === "object" && !Array.isArray(legacy)) {
+      writeStoredTodoForActiveFarm(legacy, storage);
+      storage.removeItem(TODO_STORAGE_KEY);
+      return legacy;
+    }
+    return null;
   } catch {
     return null;
+  }
+}
+
+function writeStoredTodoForActiveFarm(todo, storage = safeStorage(), cropCode = todo?.cropCode ?? null) {
+  const farmId = storage?.getItem(ACTIVE_FARM_STORAGE_KEY);
+  if (!storage || !farmId) return;
+  let todos = {};
+  try {
+    const parsed = JSON.parse(storage.getItem(TODOS_STORAGE_KEY) ?? "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) todos = parsed;
+  } catch {
+    todos = {};
+  }
+  const normalizedCropCode = String(cropCode ?? "").trim().toUpperCase();
+  const storageKey = normalizedCropCode ? `${farmId}::${normalizedCropCode}` : farmId;
+  if (normalizedCropCode) delete todos[farmId];
+  if (todo === null) delete todos[storageKey];
+  else todos[storageKey] = { ...todo, cropCode: normalizedCropCode || null };
+  storage.setItem(TODOS_STORAGE_KEY, JSON.stringify(todos));
+}
+
+function todoDueTime(todo) {
+  const dueAt = Date.parse(todo?.dueAt ?? "");
+  return Number.isFinite(dueAt) ? dueAt : Number.POSITIVE_INFINITY;
+}
+
+function readStoredTodos(storage = safeStorage()) {
+  if (!storage) return {};
+  try {
+    const value = JSON.parse(storage.getItem(TODOS_STORAGE_KEY) ?? "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
   }
 }
 
@@ -6751,27 +8266,32 @@ function renderDashboardSoilTest() {
 }
 
 // ── 계정 열쇠(기기 이관) ─────────────────────────────────────────────
+function renderAccountKeyValue(key, statusMessage = null) {
+  const valueLabel = document.querySelector("#account-key-value");
+  const hint = document.querySelector("#account-key-hint");
+  const copyButton = document.querySelector("#account-key-copy");
+  const status = document.querySelector("#account-key-status");
+  if (valueLabel) valueLabel.textContent = key ?? "—";
+  if (hint) {
+    hint.textContent = key
+      ? "다른 기기에서 농장 설정을 복원하려면 이 열쇠를 따로 보관해 주세요."
+      : "아직 만들지 않았습니다.";
+  }
+  if (copyButton) copyButton.hidden = !key;
+  if (statusMessage && status) status.textContent = statusMessage;
+}
+
 function setupAccountKeyPanel() {
   const createButton = document.querySelector("#account-key-create");
   const restoreButton = document.querySelector("#account-key-restore");
   if (!createButton && !restoreButton) return;
 
-  const valueLabel = document.querySelector("#account-key-value");
-  const hint = document.querySelector("#account-key-hint");
   const status = document.querySelector("#account-key-status");
   const copyButton = document.querySelector("#account-key-copy");
   const errorLine = document.querySelector("#account-key-error");
   const storage = safeStorage();
 
-  const showKey = (key) => {
-    if (valueLabel) valueLabel.textContent = key ?? "—";
-    if (hint) {
-      hint.textContent = key
-        ? "이 열쇠를 종이에 적어 두세요."
-        : "아직 만들지 않았습니다.";
-    }
-    if (copyButton) copyButton.hidden = !key;
-  };
+  const showKey = (key) => renderAccountKeyValue(key);
   showKey(storage?.getItem(ACCOUNT_KEY_STORAGE_KEY) ?? null);
 
   createButton?.addEventListener("click", async () => {
@@ -6791,7 +8311,7 @@ function setupAccountKeyPanel() {
       showKey(result.accountKey);
       if (status) {
         status.textContent =
-          "보관했습니다. 새 휴대폰에서 이 열쇠를 넣으면 그대로 이어서 쓰실 수 있습니다.";
+          "농장 위치·작물·재배 기준일과 설정을 보관했습니다. 분석 결과·할 일 기록·사진·리포트는 이관되지 않습니다.";
       }
     } catch (error) {
       if (status) {
@@ -6830,14 +8350,21 @@ function setupAccountKeyPanel() {
     try {
       const result = await api.restoreDeviceBackup(typed);
       const payload = result.payload ?? {};
-      if (payload.soilTest) writeStoredSoilTest(payload.soilTest);
       if (payload.region) rememberRegion(payload.region);
-      restoreFarmWorkspace(payload, storage);
+      const restoredWorkspace = restoreFarmWorkspace(payload, storage);
+      if (restoredWorkspace) {
+        const restoredSoilTests = payload.soilTestsByFarmId ??
+          (payload.soilTest && restoredWorkspace.active?.id
+            ? { [restoredWorkspace.active.id]: payload.soilTest }
+            : {});
+        restoreScopedSoilTests(
+          restoredSoilTests,
+          restoredWorkspace.farms.map(({ id }) => id),
+          storage,
+        );
+      }
       if (payload.alarm) {
         storage?.setItem(ALARM_STORAGE_KEY, JSON.stringify(payload.alarm));
-      }
-      if (payload.todo) {
-        storage?.setItem(TODO_STORAGE_KEY, JSON.stringify(payload.todo));
       }
       storage?.setItem(ACCOUNT_KEY_STORAGE_KEY, typed.toUpperCase());
       showKey(typed.toUpperCase());
@@ -6847,7 +8374,7 @@ function setupAccountKeyPanel() {
       renderFarmLists();
       renderNotificationState();
       scheduleAlarm();
-      if (status) status.textContent = "불러왔습니다. 이 기기에도 저장했습니다.";
+      if (status) status.textContent = "농장 설정을 불러와 이 기기에 저장했습니다.";
     } catch (error) {
       showError(
         error?.code === "BACKUP_NOT_FOUND"
@@ -6861,14 +8388,23 @@ function setupAccountKeyPanel() {
 }
 
 function buildDeviceBackupPayload(storage = safeStorage()) {
-  const soilTest = readStoredSoilTest();
+  // 이전 단일 토양검정 저장값이 있으면 현재 농장 범위로 먼저 이관한다.
+  readStoredSoilTest();
   const region = readStoredRegion();
-  const farms = readStoredFarms();
+  const farms = readStoredFarms()
+    .map((farm) => sanitizeFarmForDeviceBackup(farm))
+    .filter(Boolean);
   const activeFarmId = storage?.getItem(ACTIVE_FARM_STORAGE_KEY) ?? null;
   const alarm = readStoredJson(ALARM_STORAGE_KEY);
-  const todo = readStoredJson(TODO_STORAGE_KEY);
   const payload = { version: 2, savedAt: new Date().toISOString() };
-  if (soilTest) payload.soilTest = soilTest;
+  const farmIds = new Set(farms.map(({ id }) => id));
+  const soilTestsByFarmId = Object.fromEntries(
+    Object.entries(readStoredSoilTests(storage))
+      .filter(([farmId]) => farmIds.has(farmId)),
+  );
+  if (Object.keys(soilTestsByFarmId).length) {
+    payload.soilTestsByFarmId = soilTestsByFarmId;
+  }
   if (region) payload.region = region;
   if (farms.length) {
     payload.farms = farms;
@@ -6877,20 +8413,45 @@ function buildDeviceBackupPayload(storage = safeStorage()) {
       : farms[0].id;
   }
   if (alarm) payload.alarm = alarm;
-  if (todo) payload.todo = todo;
   return payload;
 }
 
-async function syncStoredWorkspaceBackup() {
+async function performStoredWorkspaceBackup({ createIfMissing }) {
   const storage = safeStorage();
-  const accountKey = storage?.getItem(ACCOUNT_KEY_STORAGE_KEY) ?? null;
-  if (!connected || !accountKey) return false;
+  let accountKey = storage?.getItem(ACCOUNT_KEY_STORAGE_KEY) ?? null;
+  const available = ["READY", "AVAILABLE"].includes(
+    preflight?.capabilities?.deviceBackup,
+  );
+  if (!connected || !available || (!accountKey && !createIfMissing)) {
+    return false;
+  }
   try {
-    await api.saveDeviceBackup(buildDeviceBackupPayload(storage), accountKey);
+    const result = await api.saveDeviceBackup(
+      buildDeviceBackupPayload(storage),
+      accountKey,
+    );
+    if (!accountKey && typeof result?.accountKey === "string") {
+      accountKey = result.accountKey;
+      storage?.setItem(ACCOUNT_KEY_STORAGE_KEY, accountKey);
+      renderAccountKeyValue(
+        accountKey,
+        "농장 위치·작물·재배 기준일과 설정을 보관했습니다. 분석·행동·사진·리포트 기록은 이관되지 않습니다.",
+      );
+    }
     return true;
   } catch {
-    // 로컬 알림·할 일은 유지한다. 다음 명시적 백업이나 설정 변경 때 재시도한다.
+    // 로컬 농장·알림·할 일은 유지한다. 다음 설정 변경 때 다시 시도한다.
     return false;
+  }
+}
+
+async function syncStoredWorkspaceBackup({ createIfMissing = false } = {}) {
+  if (backupSyncPromise) return backupSyncPromise;
+  backupSyncPromise = performStoredWorkspaceBackup({ createIfMissing });
+  try {
+    return await backupSyncPromise;
+  } finally {
+    backupSyncPromise = null;
   }
 }
 
@@ -6911,10 +8472,10 @@ function restoreFarmWorkspace(payload, storage) {
   if (!storage || !Array.isArray(payload?.farms) || payload.farms.length === 0) {
     return;
   }
-  const farms = payload.farms.filter(
-    (farm) => typeof farm?.id === "string" && isStoredFarmProfile(farm),
+  const farms = sanitizeFarmsFromDeviceBackup(payload.farms).filter(
+    (farm) => isStoredFarmProfile(farm),
   );
-  if (farms.length === 0) return;
+  if (farms.length === 0) return null;
   const active =
     farms.find(({ id }) => id === payload.activeFarmId) ?? farms[0];
   const { id, name, updatedAt, ...profile } = active;
@@ -6922,6 +8483,118 @@ function restoreFarmWorkspace(payload, storage) {
   storage.setItem(ACTIVE_FARM_STORAGE_KEY, id);
   storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(profile));
   storage.setItem(REGION_STORAGE_KEY, profile.region);
+  return { farms, active };
+}
+
+function renderCropCycleSettings({ rememberExisting = true } = {}) {
+  const root = document.querySelector("#crop-cycle-settings");
+  if (!root) return;
+  if (rememberExisting) rememberCropCycleDrafts();
+  const crops = selectedCheckboxValues("crop");
+  const situation = selectedRadioValue("situation") || "growing";
+  const cards = crops.map((crop) => {
+    let cycle = cropCycleDrafts.get(crop);
+    if (!cycle) {
+      cycle = createDefaultCropCycleInput({
+        crop,
+        situation,
+        growth: selectedRadioValue(`growth-${crop}`) ?? "unknown",
+        seasonId: createCropCycleSeasonId(crop),
+      });
+      cropCycleDrafts.set(crop, cycle);
+    } else if (situation === "growing" && cycle.status === "PLANNING") {
+      // 준비 진단에서 실제 재배로 전환해도 같은 시즌의 일정과 기록을 잇는다.
+      cycle = { ...cycle, status: "ACTIVE" };
+      cropCycleDrafts.set(crop, cycle);
+    } else if (situation === "planning" && cycle.status !== "PLANNING") {
+      const planning = createDefaultCropCycleInput({
+        crop,
+        situation,
+        seasonId: cycle.seasonId,
+      });
+      cycle = { ...planning, seasonId: cycle.seasonId };
+      cropCycleDrafts.set(crop, cycle);
+    }
+
+    const card = element("section", "crop-cycle-input-card");
+    const heading = element("div", "crop-cycle-input-heading");
+    heading.append(
+      element("h3", "", `${CROP_LABELS[crop.toUpperCase()] ?? crop} 재배 기준일`),
+      element(
+        "p",
+        "",
+        situation === "planning"
+          ? "예정 시작일로 준비·수확 일정 범위를 미리 봅니다."
+          : "파종·정식·개화 중 기억하는 날짜 하나를 선택해 주세요.",
+      ),
+    );
+
+    const fields = element("div", "crop-cycle-input-grid");
+    const anchorField = element("label", "crop-cycle-field");
+    anchorField.append(element("span", "", situation === "planning" ? "일정 기준" : "기준일 종류"));
+    const anchor = element("select");
+    anchor.name = `cycle-anchorType-${crop}`;
+    anchor.setAttribute("aria-label", `${CROP_LABELS[crop.toUpperCase()] ?? crop} 기준일 종류`);
+    for (const optionValue of cropCycleAnchorOptions(crop, situation)) {
+      const option = element("option", "", optionValue.label);
+      option.value = optionValue.value;
+      option.selected = optionValue.value === cycle.anchorType;
+      anchor.append(option);
+    }
+    anchorField.append(anchor);
+
+    const dateField = element("label", "crop-cycle-field");
+    dateField.append(element("span", "", situation === "planning" ? "예정 시작일" : "기준 날짜"));
+    const date = element("input");
+    date.type = "date";
+    date.name = `cycle-anchorDate-${crop}`;
+    date.value = cycle.anchorDate;
+    date.required = true;
+    date.setAttribute("aria-label", `${CROP_LABELS[crop.toUpperCase()] ?? crop} ${situation === "planning" ? "예정 시작일" : "재배 기준 날짜"}`);
+    dateField.append(date);
+
+    const seasonId = element("input");
+    seasonId.type = "hidden";
+    seasonId.name = `cycle-seasonId-${crop}`;
+    seasonId.value = cycle.seasonId;
+    const status = element("input");
+    status.type = "hidden";
+    status.name = `cycle-status-${crop}`;
+    status.value = cycle.status;
+    fields.append(anchorField, dateField, seasonId, status);
+    card.append(heading, fields);
+    return card;
+  });
+  root.replaceChildren(...cards);
+}
+
+function rememberCropCycleDrafts() {
+  for (const crop of selectedCheckboxValues("crop")) {
+    try {
+      cropCycleDrafts.set(crop, readCropCycleForm(crop));
+    } catch {
+      // 작물 선택 직후에는 필드가 아직 그려지지 않을 수 있다.
+    }
+  }
+}
+
+function readCropCycleForm(crop, situation = selectedRadioValue("situation") || "growing") {
+  return normalizeCropCycleInput(
+    {
+      seasonId: form.querySelector(`[name="cycle-seasonId-${crop}"]`)?.value,
+      anchorType: form.querySelector(`[name="cycle-anchorType-${crop}"]`)?.value,
+      anchorDate: form.querySelector(`[name="cycle-anchorDate-${crop}"]`)?.value,
+      status: form.querySelector(`[name="cycle-status-${crop}"]`)?.value,
+    },
+    { crop, situation },
+  );
+}
+
+function createCropCycleSeasonId(crop) {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  return uuid
+    ? `season-${uuid}`
+    : `season-${new Date().getFullYear()}-${crop}-${Date.now()}`;
 }
 
 function readFormValues() {
@@ -6937,6 +8610,7 @@ function readFormValues() {
           season: selectedRadioValue(`season-${crop}`) ||
             (["apple", "pear"].includes(crop) ? "annual" : "unknown"),
           growth: selectedRadioValue(`growth-${crop}`),
+          cycle: readCropCycleForm(crop),
         },
       ]),
     ),
@@ -6965,6 +8639,11 @@ function collectUiAnalysisContexts(values, payloads) {
               ?.closest(".choice-card")
               ?.querySelector(".choice-recommendation"),
           ),
+          cycleInput: setting.cycle,
+          cycleProjection: projectLocalCropCycle({
+            crop: cropValue,
+            input: setting.cycle,
+          }),
         },
       ];
     }),
@@ -6984,9 +8663,14 @@ function selectedCheckboxValues(name) {
 function cropSettingsComplete() {
   return selectedCheckboxValues("crop").every((crop) => {
     if (crop === "cucumber" || crop === "lettuce") {
-      return Boolean(selectedRadioValue(`cultivation-${crop}`));
+      if (!selectedRadioValue(`cultivation-${crop}`)) return false;
     }
-    return true;
+    try {
+      readCropCycleForm(crop);
+      return true;
+    } catch {
+      return false;
+    }
   });
 }
 
@@ -7014,6 +8698,28 @@ function syncVerifiedReview() {
   if (region) {
     region.textContent = selectedCandidate?.displayName ?? "위치 확인 필요";
   }
+  const situation = selectedRadioValue("situation") || "growing";
+  const situationReview = document.querySelector("#review-situation");
+  if (situationReview) {
+    situationReview.textContent = situation === "planning"
+      ? "재배 준비 진단"
+      : "재배 중 생육 점검";
+  }
+  const cycleReview = document.querySelector("#review-cycle");
+  if (cycleReview) {
+    cycleReview.textContent = selectedCheckboxValues("crop")
+      .map((crop) => {
+        try {
+          const cycle = readCropCycleForm(crop, situation);
+          const anchor = cropCycleAnchorOptions(crop, situation)
+            .find(({ value }) => value === cycle.anchorType)?.label ?? "기준일";
+          return `${CROP_LABELS[crop.toUpperCase()] ?? crop} · ${anchor} ${formatCycleDate(cycle.anchorDate)}`;
+        } catch {
+          return `${CROP_LABELS[crop.toUpperCase()] ?? crop} · 확인 필요`;
+        }
+      })
+      .join(" · ");
+  }
 }
 
 function collectEvidence(analysis) {
@@ -7030,7 +8736,16 @@ function stateLabel(state) {
 }
 
 function isRegionalReferenceAnalysis(analysis) {
-  return analysis?.inputSummary?.locationPrecision === "ADMIN_AREA_BROAD";
+  return analysis?.analysisScope?.summary?.regionalReferenceOnly === true ||
+    analysis?.inputSummary?.locationPrecision === "ADMIN_AREA_BROAD";
+}
+
+function analysisHasMissingSoilExamHistory(analysis) {
+  const missingReasons = analysis?.analysisScope?.missingReasons;
+  if (Array.isArray(missingReasons)) {
+    return missingReasons.some(({ code }) => code === "NO_FIELD_SOIL_EXAM_HISTORY");
+  }
+  return hasMissingSoilExamHistory(analysis);
 }
 
 function stateHasUsableValues(state) {
@@ -7237,7 +8952,9 @@ function persistenceStateLabel(state) {
 }
 
 function locationResolutionLabel(mode) {
-  return mode === "ADMIN_AREA_BROAD" ? "행정구역 단위" : "주소 확인";
+  return mode === "ADMIN_AREA_BROAD"
+    ? "시·군·구 · 지역 참고 분석"
+    : "상세 주소 · 지점 분석";
 }
 
 function errorMessage(error) {

@@ -6,6 +6,22 @@ import { createBackend } from '../server/app.js';
 
 const FIXED_TIME = Date.parse('2026-07-23T03:00:00.000Z');
 const ALLOWED_ORIGIN = 'http://app.example.test';
+const PRIVATE_PARCEL_KEY = '4111710500100010001';
+const CONFIRMED_PARCEL = Object.freeze({
+  userConfirmed: true,
+  geometry: {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [127.05, 37.25],
+        [127.051, 37.25],
+        [127.051, 37.251],
+        [127.05, 37.251],
+        [127.05, 37.25],
+      ],
+    ],
+  },
+});
 const PROVENANCE = Object.freeze({
   sourceTitle: '검토된 E2E 시험 근거',
   sourceUrl: 'https://example.test/reviewed-source',
@@ -79,6 +95,8 @@ test('real HTTP composition completes analysis, semantic replay, ownership, and 
       endMonth: 5,
       userConfirmed: true,
     },
+    parcel: CONFIRMED_PARCEL,
+    options: { includeSatelliteObservation: true },
   };
   const createHeaders = {
     'Content-Type': 'application/json',
@@ -93,12 +111,23 @@ test('real HTTP composition completes analysis, semantic replay, ownership, and 
     body: JSON.stringify(looseInput),
   });
   assert.equal(createResponse.status, 201);
-  const created = await createResponse.json();
+  const createdBody = await createResponse.text();
+  const created = JSON.parse(createdBody);
   assert.equal(created.state, 'COMPLETE');
   assert.equal(created.conditionState, 'READY');
   assert.equal(created.riskState, 'READY');
   assert.equal(created.lifecycle.currentState, 'CORE_READY');
   assert.equal(created.inputSummary.regionLabel, '경기도 수원시');
+  assert.equal(created.analysisScope.version, 'analysis-scope-v1');
+  assert.equal(created.analysisScope.parcel.parcelState, 'POLYGON_REGISTERED');
+  assert.equal(created.satellite.state, 'UNSUPPORTED');
+  assert.equal(created.analysisScope.parcel.satelliteState, 'UNAVAILABLE');
+  assert.equal(
+    created.analysisScope.parcel.missingReasonCode,
+    'SATELLITE_NOT_ENABLED',
+  );
+  assert.equal(createdBody.includes(PRIVATE_PARCEL_KEY), false);
+  assert.equal(createdBody.includes('"geometry"'), false);
 
   const canonicalInput = {
     usageMode: 'LAND_SEARCH',
@@ -112,9 +141,10 @@ test('real HTTP composition completes analysis, semantic replay, ownership, and 
       endMonth: 5,
       userConfirmed: true,
     },
+    parcel: CONFIRMED_PARCEL,
     options: {
       includeSmartfarmBenchmark: false,
-      includeSatelliteObservation: false,
+      includeSatelliteObservation: true,
       saveConsent: false,
     },
   };
@@ -250,6 +280,7 @@ function fixtureAdapters() {
                 longitude: 127.05,
                 legalDongCode10: '4111710500',
                 adminAreaCode: '4111710500',
+                fieldParcelLookupKey: PRIVATE_PARCEL_KEY,
               },
             ],
           },

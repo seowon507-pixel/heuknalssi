@@ -5,6 +5,7 @@ import {
   ContractValidationError,
   buildAnalysisRequest,
   buildAnalysisRequests,
+  buildCropCycleRequests,
   createIdempotencyKey,
 } from "./api-contract.mjs";
 
@@ -187,6 +188,55 @@ test("multiple planning crops remain LAND_SEARCH without a growth-stage requirem
       { usageMode: "LAND_SEARCH", crop: "POTATO", growthStage: undefined },
     ],
   );
+});
+
+test("재배주기 요청은 작물별 cycle 최소 필드만 서버 어댑터에 전달한다", () => {
+  const requests = buildCropCycleRequests({
+    situation: "growing",
+    crops: ["apple", "potato"],
+    cropSettings: {
+      apple: {
+        cycle: {
+          seasonId: "season-apple-2026",
+          anchorType: "FLOWERING",
+          anchorDate: "2026-04-15",
+          status: "ACTIVE",
+        },
+      },
+      potato: {
+        cycle: {
+          seasonId: "season-potato-2026",
+          anchorType: "SOWING",
+          anchorDate: "2026-06-15",
+          status: "ACTIVE",
+          ignored: "not-forwarded",
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(requests, [
+    {
+      crop: "apple",
+      cropId: "APPLE",
+      input: {
+        seasonId: "season-apple-2026",
+        anchorType: "FLOWERING",
+        anchorDate: "2026-04-15",
+        status: "ACTIVE",
+      },
+    },
+    {
+      crop: "potato",
+      cropId: "POTATO",
+      input: {
+        seasonId: "season-potato-2026",
+        anchorType: "SOWING",
+        anchorDate: "2026-06-15",
+        status: "ACTIVE",
+      },
+    },
+  ]);
 });
 
 test("SmartFarm 참고자료는 사전점검 READY와 지원 조합을 모두 만족할 때만 요청한다", () => {

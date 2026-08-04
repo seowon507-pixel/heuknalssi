@@ -29,6 +29,7 @@ import {
   notApplicableModule,
   unavailableModule,
 } from './disclosure.js';
+import { buildAnalysisScopeProjection } from './analysis-scope.js';
 import { latestKmaMidIssue, latestKmaShortIssue } from './forecast-issue.js';
 import {
   resolveLocationKeys,
@@ -228,6 +229,7 @@ export function createApplicationServices({
   coreDeadlineMs = 5_000,
   runtimeStatus = null,
   sharedStateProbe = null,
+  deviceBackupProbe = null,
   minimumVerifiedMappingCount = 6,
   capabilities = {
     smartfarm: 'DISABLED',
@@ -596,6 +598,17 @@ export function createApplicationServices({
       ...action,
       title: renderActionTitle(action.actionId),
     }));
+    const satellite = request.options.includeSatelliteObservation
+      ? unavailableModule('SATELLITE_P2_NOT_ENABLED', 'UNSUPPORTED')
+      : null;
+    const analysisScope = buildAnalysisScopeProjection({
+      request,
+      resolvedLocation,
+      locationKeys,
+      envelopes,
+      soilMeasurementEnvelope: soilMeasurement,
+      satellite,
+    });
 
     const nowIso = new Date(clock()).toISOString();
     lifecycle.transition('CORE_READY');
@@ -616,6 +629,7 @@ export function createApplicationServices({
             ? 'ADMIN_AREA_ONLY'
             : 'UNREGISTERED',
       },
+      analysisScope,
       state: analysisStates.analysisState,
       conditionState: analysisStates.conditionState,
       riskState: analysisStates.riskState,
@@ -629,9 +643,7 @@ export function createApplicationServices({
       forecast,
       fieldConditionsEstimate,
       smartfarm: null,
-      satellite: request.options.includeSatelliteObservation
-        ? unavailableModule('SATELLITE_P2_NOT_ENABLED', 'UNSUPPORTED')
-        : null,
+      satellite,
       dataSources: collectSourceDisclosures(Object.values(envelopes)),
       capabilities: {
         smartfarm: capabilities.smartfarm ?? 'DISABLED',
@@ -662,6 +674,11 @@ export function createApplicationServices({
       {
         ownerSessionId,
         result: structuredClone(result),
+        analysisContext: {
+          cropId: request.crop,
+          observationStationId: locationKeys.observationStationId ?? null,
+          normalStationId: locationKeys.normalStationId ?? null,
+        },
         reportPending: false,
         reportLockExpiresAtMs: null,
         expiresAtMs,
@@ -678,6 +695,14 @@ export function createApplicationServices({
     const record = await Promise.resolve(analysisStore.get(analysisId));
     if (!record || record.ownerSessionId !== ownerSessionId) return null;
     return structuredClone(record.result);
+  }
+
+  async function getAnalysisContext({ ownerSessionId, analysisId }) {
+    const record = await Promise.resolve(analysisStore.get(analysisId));
+    if (!record || record.ownerSessionId !== ownerSessionId) return null;
+    return record.analysisContext
+      ? structuredClone(record.analysisContext)
+      : null;
   }
 
   async function answerAnalysisQuestion({
@@ -816,6 +841,15 @@ export function createApplicationServices({
       configuredState: capabilities.persistence ?? 'NOT_AVAILABLE',
       probe: sharedStateProbe,
     });
+    const deviceBackupConfigured = ![
+      'NOT_AVAILABLE',
+      'DISABLED',
+      'UNSUPPORTED',
+    ].includes(capabilities.deviceBackup ?? 'NOT_AVAILABLE');
+    const deviceBackupHealth = await verifySharedStateCapability({
+      configuredState: capabilities.deviceBackup ?? 'NOT_AVAILABLE',
+      probe: deviceBackupProbe,
+    });
     const mappingValidation = validateVerifiedLocationMappings(
       verifiedLocationMappings,
       { now: () => new Date(clock()) },
@@ -878,11 +912,14 @@ export function createApplicationServices({
       p0ReadyLocationMappingCount >= minimumVerifiedMappingCount;
     const ready = requiredAdaptersReady && rulesReady && mappingsReady;
     const sharedStateReady = persistenceHealth.ready;
+    const deviceBackupReady =
+      !deviceBackupConfigured || deviceBackupHealth.ready;
     return {
       ready,
       serviceState: ready ? 'READY' : 'HOLD',
-      deploymentReady: ready && sharedStateReady,
-      deploymentState: ready && sharedStateReady ? 'READY' : 'HOLD',
+      deploymentReady: ready && sharedStateReady && deviceBackupReady,
+      deploymentState:
+        ready && sharedStateReady && deviceBackupReady ? 'READY' : 'HOLD',
       serviceVersion: '3.0.0',
       ruleRegistry: {
         activeRuleCount,
@@ -929,7 +966,7 @@ export function createApplicationServices({
           capabilities.pestLiveOccurrence ?? 'NOT_CONNECTED',
         satellite: capabilities.satellite ?? 'DISABLED',
         persistence: persistenceHealth.capability,
-        deviceBackup: capabilities.deviceBackup ?? 'NOT_AVAILABLE',
+        deviceBackup: deviceBackupHealth.capability,
         report: 'DETERMINISTIC_TEMPLATE',
         assistant: capabilities.assistant ?? assistant?.state ?? 'FALLBACK',
       },
@@ -976,6 +1013,9 @@ export function createApplicationServices({
                 : 'SHARED_STATE_PROBE_FAILED',
             ]
           : []),
+        ...(deviceBackupConfigured && !deviceBackupHealth.ready
+          ? ['DEVICE_BACKUP_PROBE_FAILED']
+          : []),
       ],
     };
   }
@@ -986,6 +1026,7 @@ export function createApplicationServices({
     normalizeAnalysisInput,
     createAnalysis,
     getAnalysis,
+    getAnalysisContext,
     answerAnalysisQuestion,
     requestReport,
     getPreflight,

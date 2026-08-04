@@ -66,6 +66,14 @@ test("행동·필지·위성 쓰기는 CSRF와 명시적 확인을 거쳐 계정
         calls.push(["create", input]);
         return { created: true, action: { actionId: "action-1" } };
       },
+      async syncRuleActions(input) {
+        calls.push(["sync", input]);
+        return {
+          plan: { firstAction: null, today: [], upcoming: [] },
+          createdCount: input.projections.length,
+          cancelledCount: 0,
+        };
+      },
       async reconcileRuleActions(input) {
         calls.push(["reconcile", input]);
         return { cancelled: [] };
@@ -113,6 +121,23 @@ test("행동·필지·위성 쓰기는 CSRF와 명시적 확인을 거쳐 계정
   });
   assert.equal(createResponse.status, 201);
 
+  const syncResponse = await fetch(
+    `${baseUrl}/api/farms/farm-1/actions/rules/sync`,
+    {
+      method: "POST",
+      headers: headers(currentSession, { "Idempotency-Key": "feature-sync-1" }),
+      body: JSON.stringify({
+        cropId: "crop-apple",
+        seasonId: "season-1",
+        projections: [{
+          ruleId: "apple.heat.v1",
+          draft: { farmId: "farm-1", cropId: "crop-apple", seasonId: "season-1" },
+        }],
+      }),
+    },
+  );
+  assert.equal(syncResponse.status, 200);
+
   const reconcileResponse = await fetch(
     `${baseUrl}/api/farms/farm-1/actions/rules/reconcile`,
     {
@@ -153,14 +178,16 @@ test("행동·필지·위성 쓰기는 CSRF와 명시적 확인을 거쳐 계정
   assert.equal(calls[0][1].cropId, "crop-apple");
   assert.equal(calls[1][0], "create");
   assert.equal(calls[1][1].confirmed, true);
-  assert.equal(calls[2][0], "reconcile");
-  assert.deepEqual(calls[2][1].activeRuleIds, ["apple.heat.v1"]);
-  assert.equal(calls[2][1].projection, "SYSTEM_RULE");
-  assert.equal(calls[3][0], "snooze");
-  assert.equal(calls[3][1].confirmed, true);
-  assert.equal(calls[3][1].snoozedUntil, "2026-08-03T22:00:00.000Z");
-  assert.equal(calls[4][0], "satellite.refresh");
-  assert.match(calls[4][1].ownerSessionId, /^[A-Za-z0-9_-]+$/);
+  assert.equal(calls[2][0], "sync");
+  assert.equal(calls[2][1].projections.length, 1);
+  assert.equal(calls[3][0], "reconcile");
+  assert.deepEqual(calls[3][1].activeRuleIds, ["apple.heat.v1"]);
+  assert.equal(calls[3][1].projection, "SYSTEM_RULE");
+  assert.equal(calls[4][0], "snooze");
+  assert.equal(calls[4][1].confirmed, true);
+  assert.equal(calls[4][1].snoozedUntil, "2026-08-03T22:00:00.000Z");
+  assert.equal(calls[5][0], "satellite.refresh");
+  assert.match(calls[5][1].ownerSessionId, /^[A-Za-z0-9_-]+$/);
 });
 
 test("병해충 가이드는 현재 세션과 분석 ID 범위로만 조회한다", async (t) => {
@@ -187,6 +214,58 @@ test("병해충 가이드는 현재 세션과 분석 ID 범위로만 조회한�
   assert.equal(response.status, 200);
   assert.equal((await response.json()).diagnosisState, "NOT_PERFORMED");
   assert.equal(calls[0].analysisId, "analysis-apple");
+  assert.match(calls[0].ownerSessionId, /^[A-Za-z0-9_-]+$/);
+});
+
+test("수확 사진 판정은 CSRF와 농장·작물·시즌 범위를 그대로 보존한다", async (t) => {
+  const calls = [];
+  const baseUrl = await openServer(t, {
+    harvestAssessment: {
+      async assessPhoto(input) {
+        calls.push(input);
+        return {
+          state: "UNCERTAIN",
+          quality: "UNUSABLE",
+          confidence: 0.2,
+          suggestedDelayDays: 0,
+          recheckInDays: 2,
+          visibleReasons: ["사진에서 수확할 부분을 확인하기 어렵습니다."],
+        };
+      },
+    },
+  });
+  const currentSession = await session(baseUrl);
+  const body = JSON.stringify({
+    cropId: "CUCUMBER",
+    seasonId: "season-1",
+    mimeType: "image/png",
+    dataBase64: "iVBORw0KGgo=",
+  });
+
+  const withoutCsrf = await fetch(
+    `${baseUrl}/api/farms/farm-1/harvest-assessments`,
+    {
+      method: "POST",
+      headers: {
+        Origin: ORIGIN,
+        Cookie: currentSession.cookie,
+        "Content-Type": "application/json",
+      },
+      body,
+    },
+  );
+  assert.equal(withoutCsrf.status, 403);
+
+  const response = await fetch(
+    `${baseUrl}/api/farms/farm-1/harvest-assessments`,
+    { method: "POST", headers: headers(currentSession), body },
+  );
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).assessment.state, "UNCERTAIN");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].farmId, "farm-1");
+  assert.equal(calls[0].cropId, "CUCUMBER");
+  assert.equal(calls[0].seasonId, "season-1");
   assert.match(calls[0].ownerSessionId, /^[A-Za-z0-9_-]+$/);
 });
 

@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   SessionManager,
   createSupabaseSharedState,
+  sessionDefaults,
 } from "../src/infrastructure/index.js";
 
 const SUPABASE_URL = "https://project.supabase.co";
@@ -130,6 +131,17 @@ function createRpcFixture() {
 function deterministicRandomBytes(size) {
   return Buffer.alloc(size, 7);
 }
+
+test("기본 비회원 세션은 한 작기를 넘겨 유지된다", async () => {
+  assert.ok(sessionDefaults.sessionTtlMs >= 365 * 24 * 60 * 60 * 1_000);
+  const manager = new SessionManager({
+    secret: "a-session-secret-with-at-least-thirty-two-bytes",
+    randomBytes: deterministicRandomBytes,
+  });
+  const issued = await manager.resolve();
+  const maxAge = Number(issued.setCookie.match(/Max-Age=(\d+)/u)?.[1]);
+  assert.equal(maxAge, Math.floor(sessionDefaults.sessionTtlMs / 1_000));
+});
 
 test("Supabase state is disabled unless both server-only values exist", async () => {
   const state = createSupabaseSharedState({
@@ -311,6 +323,8 @@ test("reviewed setup SQL keeps shared tables server-only with explicit grants an
   assert.match(sql, /grant execute on function public\.heuknalssi_shared_state_probe/iu);
   assert.match(sql, /revoke all on function public\.save_device_backup/iu);
   assert.match(sql, /grant execute on function public\.load_device_backup/iu);
+  assert.match(sql, /revoke all on function public\.heuknalssi_device_backup_probe/iu);
+  assert.match(sql, /grant execute on function public\.heuknalssi_device_backup_probe/iu);
   assert.match(sql, /insert into storage\.buckets/iu);
   assert.match(sql, /'farm-photos'[\s\S]*false[\s\S]*10485760/iu);
   assert.match(sql, /array\['image\/jpeg', 'image\/png', 'image\/webp'\]/iu);

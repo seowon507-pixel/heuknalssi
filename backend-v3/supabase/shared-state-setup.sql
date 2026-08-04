@@ -95,6 +95,48 @@ as $$
     and p_key_hash ~ '^[a-f0-9]{64}$';
 $$;
 
+-- Verify the exact backup table/RPC path without leaving a probe row behind.
+create or replace function public.heuknalssi_device_backup_probe(
+  p_key_hash text
+) returns boolean
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_expected jsonb := jsonb_build_object('probe', p_key_hash);
+  v_observed jsonb;
+begin
+  if char_length(p_key_hash) <> 64 or p_key_hash !~ '^[a-f0-9]{64}$' then
+    raise exception 'backup probe key hash is invalid' using errcode = '22023';
+  end if;
+
+  insert into public.heuknalssi_device_backups (
+    key_hash,
+    payload,
+    updated_at
+  ) values (
+    p_key_hash,
+    v_expected,
+    clock_timestamp()
+  )
+  on conflict (key_hash) do update
+    set payload = excluded.payload,
+        updated_at = excluded.updated_at;
+
+  select payload
+    into v_observed
+  from public.heuknalssi_device_backups
+  where key_hash = p_key_hash
+  for update;
+
+  delete from public.heuknalssi_device_backups
+  where key_hash = p_key_hash;
+
+  return v_observed = v_expected;
+end;
+$$;
+
 create or replace function public.heuknalssi_shared_state_get(
   p_namespace text,
   p_key text
@@ -536,6 +578,8 @@ revoke all on function public.save_device_backup(text, jsonb) from public, anon,
 grant execute on function public.save_device_backup(text, jsonb) to service_role;
 revoke all on function public.load_device_backup(text) from public, anon, authenticated;
 grant execute on function public.load_device_backup(text) to service_role;
+revoke all on function public.heuknalssi_device_backup_probe(text) from public, anon, authenticated;
+grant execute on function public.heuknalssi_device_backup_probe(text) to service_role;
 
 -- Private farm-photo bytes are accessed only through the backend secret. The
 -- browser receives a one-use upload token and never a bucket/object path.

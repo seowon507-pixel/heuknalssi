@@ -130,14 +130,15 @@ test('server composition promotes persistence only after its live RPC probe', as
   });
 
   const preflight = await backend.services.getPreflight();
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   assert.match(calls[0].url, /heuknalssi_shared_state_probe$/u);
-  assert.equal(calls[0].options.headers.apikey, 'sb_secret_server-composition-test');
-  assert.equal(
-    Object.hasOwn(calls[0].options.headers, 'Authorization'),
-    false,
-  );
+  assert.match(calls[1].url, /heuknalssi_device_backup_probe$/u);
+  for (const call of calls) {
+    assert.equal(call.options.headers.apikey, 'sb_secret_server-composition-test');
+    assert.equal(Object.hasOwn(call.options.headers, 'Authorization'), false);
+  }
   assert.equal(preflight.capabilities.persistence, 'READY');
+  assert.equal(preflight.capabilities.deviceBackup, 'READY');
   assert.equal(preflight.storage.state, 'READY');
   assert.deepEqual(preflight.deploymentBlockers, []);
   assert.equal(preflight.deploymentState, 'HOLD');

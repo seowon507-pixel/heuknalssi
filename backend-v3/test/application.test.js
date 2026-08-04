@@ -617,6 +617,12 @@ test('field soil profile is attached without exposing the private parcel lookup 
     topsoilTextureCode: '04',
     codeLabelsVerified: false,
   });
+  const fieldMapScope = result.analysisScope.groups
+    .flatMap(({ items }) => items)
+    .find(({ itemId }) => itemId === 'FIELD_SOIL_MAP');
+  assert.equal(fieldMapScope.scope, 'FIELD_SOIL_MAP');
+  assert.equal(fieldMapScope.state, 'AVAILABLE');
+  assert.equal(fieldMapScope.source.sourceId, 'soil-field-v3');
   assert.equal(JSON.stringify(result).includes(privatePnu), false);
 });
 
@@ -695,6 +701,12 @@ test('latest provider field exam is used before regional soil statistics', async
   });
   assert.equal(result.soil.result.metrics[0].areaUnit, 'MEASURED_POINT');
   assert.equal(result.soil.result.regionalStatistics.usedForDecision, false);
+  const fieldExamScope = result.analysisScope.groups
+    .flatMap(({ items }) => items)
+    .find(({ itemId }) => itemId === 'FIELD_SOIL_EXAM');
+  assert.equal(fieldExamScope.scope, 'FIELD_MEASUREMENT');
+  assert.equal(fieldExamScope.state, 'AVAILABLE');
+  assert.equal(fieldExamScope.source.sourceId, 'soil-exam-v2');
   assert.equal(JSON.stringify(result).includes(privatePnu), false);
 });
 
@@ -795,6 +807,24 @@ test('application exposes a source-trust weighted growth score with separate con
   });
   assert.equal(calls.climate[0].stationId, '119');
   assert.equal(calls.observations[0].completedDays, 7);
+  assert.deepEqual(
+    await services.getAnalysisContext({
+      ownerSessionId: 'owner-a',
+      analysisId: 'analysis-integration',
+    }),
+    {
+      cropId: 'CUCUMBER',
+      observationStationId: '119',
+      normalStationId: '119',
+    },
+  );
+  assert.equal(
+    await services.getAnalysisContext({
+      ownerSessionId: 'owner-b',
+      analysisId: 'analysis-integration',
+    }),
+    null,
+  );
   assert.equal(calls.short[0].nx > 0 && calls.short[0].ny > 0, true);
   assert.equal(calls.mid[0].temperatureRegId, '11B20601');
   assert.equal(calls.mid[0].landRegId, '11B00000');
@@ -1444,6 +1474,16 @@ test('broad administrative candidates use only a labeled regional forecast grid 
   );
   assert.equal(shortSource.spatialLabel, '시·군 대표 예보 격자');
   assert.ok(shortSource.qualityFlags.includes('ADMIN_AREA_REPRESENTATIVE'));
+  assert.equal(
+    result.analysisScope.summary.commonNotice.code,
+    'ADMIN_AREA_REFERENCE_ONLY',
+  );
+  const observationScope = result.analysisScope.groups
+    .flatMap(({ items }) => items)
+    .find(({ itemId }) => itemId === 'RECENT_OBSERVATION');
+  assert.equal(observationScope.state, 'MISSING');
+  assert.equal(observationScope.distanceKm, null);
+  assert.equal(observationScope.source.distanceKm, null);
   assert.equal(result.state, 'DATA_NEEDED');
 });
 

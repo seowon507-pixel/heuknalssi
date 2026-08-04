@@ -15,6 +15,7 @@ import {
   createKmaShortForecastAdapter,
   createSoilV2Adapter,
   parseKakaoCandidates,
+  parseKakaoCurrentAddressCandidates,
   parseKakaoRegionCandidates,
   parseKmaMidForecast,
   parseKmaShortForecast,
@@ -98,7 +99,7 @@ test("Kakao parser handles 0, 1, and multiple candidates without selecting the f
   assert.equal("primary" in many[0], false);
 });
 
-test("Kakao coordinate parser keeps only a verified legal-region candidate", () => {
+test("Kakao coordinate parser keeps a legal-region fallback broad", () => {
   assert.deepEqual(
     parseKakaoRegionCandidates({
       documents: [
@@ -121,15 +122,79 @@ test("Kakao coordinate parser keeps only a verified legal-region candidate", () 
     [
       {
         displayName: "경기도 수원시 영통구 원천동",
-        resolutionMode: "ADDRESS_RESOLVED",
+        resolutionMode: "ADMIN_AREA_BROAD",
         providerAddressType: "LEGAL_REGION_COORDINATE",
         legalDongCode10: "4111710500",
-        longitude: 127.045,
-        latitude: 37.285,
-        providerCoordinatesExcluded: false
+        longitude: null,
+        latitude: null,
+        providerCoordinatesExcluded: true,
+        administrativeRepresentative: {
+          longitude: 127.045,
+          latitude: 37.285,
+          purpose: "REGIONAL_FORECAST_ONLY"
+        }
       }
     ]
   );
+});
+
+test("Kakao current-address parser derives a 19-digit parcel PNU from the GPS address", () => {
+  const [candidate] = parseKakaoCurrentAddressCandidates(
+    {
+      documents: [
+        {
+          address: {
+            address_name: "경기도 수원시 영통구 원천동 산 12-3",
+            b_code: "4111710500",
+            mountain_yn: "Y",
+            main_address_no: "12",
+            sub_address_no: "3"
+          },
+          road_address: {
+            address_name: "경기도 수원시 영통구 월드컵로 206"
+          }
+        }
+      ]
+    },
+    { latitude: 37.285, longitude: 127.045 }
+  );
+
+  assert.deepEqual(candidate, {
+    displayName: "경기도 수원시 영통구 월드컵로 206",
+    resolutionMode: "ADDRESS_RESOLVED",
+    providerAddressType: "CURRENT_COORDINATE_ADDRESS",
+    legalDongCode10: "4111710500",
+    longitude: 127.045,
+    latitude: 37.285,
+    providerCoordinatesExcluded: false,
+    fieldParcelLookupKey: "4111710500200120003"
+  });
+});
+
+test("Kakao current-address parser combines parcel numbers with the verified legal-region code", () => {
+  const [candidate] = parseKakaoCurrentAddressCandidates(
+    {
+      documents: [
+        {
+          address: {
+            address_name: "경기 수원시 영통구 원천동 산 5-1",
+            mountain_yn: "Y",
+            main_address_no: "5",
+            sub_address_no: "1"
+          },
+          road_address: null
+        }
+      ]
+    },
+    {
+      latitude: 37.285,
+      longitude: 127.045,
+      legalDongCode10: "4111710500"
+    }
+  );
+
+  assert.equal(candidate.fieldParcelLookupKey, "4111710500200050001");
+  assert.equal(candidate.legalDongCode10, "4111710500");
 });
 
 test("Kakao REGION and ROAD candidates do not expose provider centroids as points", () => {
@@ -203,13 +268,67 @@ test("Kakao adapter returns all candidates and an explicit selection requirement
 });
 
 test("Kakao adapter resolves current coordinates without exposing them in its cache key or source URL", async () => {
-  let requestedUrl;
+  const requestedUrls = [];
   const adapter = createKakaoAdapter({
     enabled: true,
     apiKey: "fixture-key",
     contractVersion: VERIFIED_KAKAO_ADDRESS_CONTRACT_VERSION,
     fetchImpl: async (url) => {
-      requestedUrl = String(url);
+      requestedUrls.push(String(url));
+      if (String(url).includes("coord2regioncode.json")) {
+        return jsonResponse({
+          documents: [
+            {
+              region_type: "B",
+              address_name: "경기도 수원시 영통구 원천동",
+              code: "4111710500",
+              x: 127.045,
+              y: 37.285
+            }
+          ]
+        });
+      }
+      return jsonResponse({
+        documents: [
+          {
+            address: {
+              address_name: "경기도 수원시 영통구 원천동 12-3",
+              mountain_yn: "N",
+              main_address_no: "12",
+              sub_address_no: "3"
+            },
+            road_address: null
+          }
+        ]
+      });
+    }
+  });
+
+  const result = await adapter.resolveCurrentLocation({
+    latitude: 37.285,
+    longitude: 127.045
+  });
+  assert.equal(result.adapterState, "SUCCESS");
+  assert.equal(result.data.candidates[0].legalDongCode10, "4111710500");
+  assert.equal(result.data.candidates[0].fieldParcelLookupKey, "4111710500100120003");
+  assert.match(requestedUrls[0], /coord2address\.json/);
+  assert.match(requestedUrls[1], /coord2regioncode\.json/);
+  assert.equal(requestedUrls.length, 2);
+  assert.equal(result.sourceUrl.includes("37.285"), false);
+  assert.equal(result.sourceUrl.includes("127.045"), false);
+});
+
+test("Kakao current-location lookup falls back to a broad region when no parcel address exists", async () => {
+  const requestedUrls = [];
+  const adapter = createKakaoAdapter({
+    enabled: true,
+    apiKey: "fixture-key",
+    contractVersion: VERIFIED_KAKAO_ADDRESS_CONTRACT_VERSION,
+    fetchImpl: async (url) => {
+      requestedUrls.push(String(url));
+      if (String(url).includes("coord2address.json")) {
+        return jsonResponse({ documents: [] });
+      }
       return jsonResponse({
         documents: [
           {
@@ -229,10 +348,10 @@ test("Kakao adapter resolves current coordinates without exposing them in its ca
     longitude: 127.045
   });
   assert.equal(result.adapterState, "SUCCESS");
-  assert.equal(result.data.candidates[0].legalDongCode10, "4111710500");
-  assert.match(requestedUrl, /coord2regioncode\.json/);
-  assert.equal(result.sourceUrl.includes("37.285"), false);
-  assert.equal(result.sourceUrl.includes("127.045"), false);
+  assert.equal(result.data.candidates[0].resolutionMode, "ADMIN_AREA_BROAD");
+  assert.equal("fieldParcelLookupKey" in result.data.candidates[0], false);
+  assert.match(requestedUrls[0], /coord2address\.json/);
+  assert.match(requestedUrls[1], /coord2regioncode\.json/);
 });
 
 test("Kakao empty result is NO_DATA, not schema failure", async () => {

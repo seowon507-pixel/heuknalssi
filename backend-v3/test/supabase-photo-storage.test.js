@@ -88,6 +88,54 @@ test("photo token cannot cross an account or farm scope", async () => {
   );
 });
 
+test("photo deletion uses the Supabase bulk object endpoint", async () => {
+  const requests = [];
+  const storage = createSupabasePhotoStorage({
+    url: "https://project.supabase.co",
+    serviceKey: "sb_secret_fixture",
+    uploadStore: new TtlMemoryStore({ capacityPolicy: "reject" }),
+    fetchImpl: async (url, init) => {
+      requests.push({ url: String(url), init });
+      return response();
+    },
+  });
+
+  const ownerSessionId = "owner-delete";
+  const storageForPath = createSupabasePhotoStorage({
+    url: "https://project.supabase.co",
+    serviceKey: "sb_secret_fixture",
+    uploadStore: new TtlMemoryStore({ capacityPolicy: "reject" }),
+    tokenFactory: () => "upload-token-delete",
+    fetchImpl: async () => response(),
+  });
+  const prepared = await storageForPath.prepareUpload({
+    ...SCOPE,
+    ownerSessionId,
+    mimeType: "image/webp",
+    dataBase64: Buffer.from("delete-photo").toString("base64"),
+  });
+  const committed = await storageForPath.commitUpload({
+    ...SCOPE,
+    ownerSessionId,
+    uploadToken: prepared.uploadToken,
+    photoId: "photo-delete",
+  });
+
+  await storage.deleteObjects({
+    ownerSessionId,
+    objectPaths: [committed.objectPath],
+  });
+
+  assert.equal(
+    requests[0].url,
+    "https://project.supabase.co/storage/v1/object/farm-photos",
+  );
+  assert.equal(requests[0].init.method, "DELETE");
+  assert.deepEqual(JSON.parse(requests[0].init.body), {
+    prefixes: [committed.objectPath],
+  });
+});
+
 test("photo storage rejects unsupported files before a provider request", async () => {
   let calls = 0;
   const storage = createSupabasePhotoStorage({

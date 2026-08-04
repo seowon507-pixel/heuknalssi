@@ -2,6 +2,7 @@ export {
   applicationDefaults,
   createApplicationServices,
 } from './services.js';
+export { buildAnalysisScopeProjection } from './analysis-scope.js';
 export {
   answerGroundedQuestion,
   buildAssistantCatalog,
@@ -18,6 +19,12 @@ export {
   ACTION_PLAN_REPOSITORY_CONTRACT,
   createActionPlanService,
 } from './action-plan.js';
+export {
+  CROP_CYCLE_REPOSITORY_CONTRACT,
+  createCropCycleService,
+} from './crop-cycle.js';
+export { createHarvestAssessmentService } from './harvest-assessment.js';
+export { createHarvestWeatherService } from './harvest-weather.js';
 export {
   createSatelliteObservationService,
   satelliteObservationDefaults,

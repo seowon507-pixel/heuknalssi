@@ -147,6 +147,39 @@ test("live ASOS adapter sends the exact completed-day window and returns a valid
   assert.equal(validateDataEnvelope(envelope).valid, true);
 });
 
+test("수확 예측용 ASOS 조회는 재배기간 완료일 전체를 요청한다", async () => {
+  const seasonDates = Array.from({ length: 20 }, (_, index) =>
+    new Date(Date.UTC(2026, 6, index + 1)).toISOString().slice(0, 10),
+  );
+  let requestedUrl;
+  const adapter = createKmaAsosObservationAdapter({
+    enabled: true,
+    apiKey: "public-data-key",
+    contractVersion: VERIFIED_KMA_ASOS_CONTRACT_VERSION,
+    now: () => new Date("2026-07-26T03:00:00.000Z"),
+    fetchImpl: async (url) => {
+      requestedUrl = url;
+      return new Response(JSON.stringify(asosPayload(seasonDates)), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+
+  const envelope = await adapter.getDailyRange({
+    stationId: "136",
+    from: "2026-07-01",
+    to: "2026-07-20",
+  });
+
+  assert.equal(requestedUrl.searchParams.get("startDt"), "20260701");
+  assert.equal(requestedUrl.searchParams.get("endDt"), "20260720");
+  assert.equal(requestedUrl.searchParams.get("numOfRows"), "20");
+  assert.equal(envelope.adapterState, "SUCCESS");
+  assert.equal(envelope.data.requestedRange.expectedDayCount, 20);
+  assert.equal(envelope.data.readings.length, 20);
+});
+
 test("어제 자료가 아직 발표되지 않았으면 미완결로 정직하게 표시한다", async () => {
   // 오늘이 7/27이면 도메인이 기대하는 창은 7/20~7/26이다.
   // 기상청이 7/26을 아직 올리지 않아 6일만 온 상황.

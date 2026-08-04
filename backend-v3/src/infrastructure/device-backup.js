@@ -1,4 +1,4 @@
-import { createHash, randomInt } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
 
 import { createSupabaseServerHeaders } from "./supabase-server-headers.js";
 
@@ -24,9 +24,24 @@ const SUPPORTED_CROPS = new Set([
   "POTATO",
   "LETTUCE",
 ]);
+const MAX_SUPPORTED_CROPS = SUPPORTED_CROPS.size;
+const SUPPORTED_SITUATIONS = new Set(["planning", "growing"]);
+const CYCLE_ANCHOR_TYPES = new Set([
+  "SOWING",
+  "TRANSPLANTING",
+  "FLOWERING",
+  "SEASON_START",
+]);
+const CYCLE_STATUSES = new Set([
+  "PLANNING",
+  "ACTIVE",
+  "HARVEST_WINDOW",
+  "COMPLETED",
+]);
 const ALLOWED_PAYLOAD_KEYS = Object.freeze([
   "version",
   "soilTest",
+  "soilTestsByFarmId",
   "region",
   "farms",
   "activeFarmId",
@@ -138,11 +153,100 @@ export function assertStorablePayload(payload) {
       );
     }
   }
+  if (payload.soilTestsByFarmId !== undefined) {
+    validateScopedSoilTests(payload.soilTestsByFarmId, payload.farms);
+  }
   const encoded = JSON.stringify(payload);
   if (Buffer.byteLength(encoded, "utf8") > MAX_PAYLOAD_BYTES) {
     throw new DeviceBackupError("PAYLOAD_TOO_LARGE", "payload is too large");
   }
   return payload;
+}
+
+function validateScopedSoilTests(value, farms) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new DeviceBackupError(
+      "INVALID_PAYLOAD",
+      "soilTestsByFarmId must be an object",
+    );
+  }
+  const farmIds = new Set(Array.isArray(farms) ? farms.map(({ id }) => id) : []);
+  const entries = Object.entries(value);
+  if (entries.length > MAX_FARMS) {
+    throw new DeviceBackupError(
+      "INVALID_PAYLOAD",
+      `soilTestsByFarmId must contain at most ${MAX_FARMS} items`,
+    );
+  }
+  for (const [farmId, soilTest] of entries) {
+    requireBoundedText(farmId, "soilTestsByFarmId key", 160);
+    if (!farmIds.has(farmId)) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        "soilTestsByFarmId must reference a stored farm",
+      );
+    }
+    if (!soilTest || typeof soilTest !== "object" || Array.isArray(soilTest) || !Number.isFinite(soilTest.ph)) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `soilTestsByFarmId.${farmId} must contain a numeric ph`,
+      );
+    }
+    const allowedFields = new Set([
+      "ph",
+      "electricalConductivity",
+      "organicMatter",
+      "availablePhosphate",
+      "exchangeableK",
+      "exchangeableCa",
+      "exchangeableMg",
+      "sampledOn",
+      "issuer",
+      "userConfirmed",
+    ]);
+    if (Object.keys(soilTest).some((field) => !allowedFields.has(field))) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `soilTestsByFarmId.${farmId} contains unsupported fields`,
+      );
+    }
+    if (soilTest.ph < 0 || soilTest.ph > 14) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `soilTestsByFarmId.${farmId}.ph is out of range`,
+      );
+    }
+    for (const field of [
+      "electricalConductivity",
+      "organicMatter",
+      "availablePhosphate",
+      "exchangeableK",
+      "exchangeableCa",
+      "exchangeableMg",
+    ]) {
+      if (soilTest[field] !== undefined && !Number.isFinite(soilTest[field])) {
+        throw new DeviceBackupError(
+          "INVALID_PAYLOAD",
+          `soilTestsByFarmId.${farmId}.${field} must be numeric`,
+        );
+      }
+    }
+    if (soilTest.sampledOn !== undefined && !/^\d{4}-\d{2}-\d{2}$/u.test(soilTest.sampledOn)) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `soilTestsByFarmId.${farmId}.sampledOn is invalid`,
+      );
+    }
+    if (soilTest.issuer !== undefined) {
+      requireBoundedText(soilTest.issuer, `soilTestsByFarmId.${farmId}.issuer`, 120);
+    }
+    if (soilTest.userConfirmed !== undefined && typeof soilTest.userConfirmed !== "boolean") {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `soilTestsByFarmId.${farmId}.userConfirmed must be boolean`,
+      );
+    }
+  }
 }
 
 function validateFarms(farms) {
@@ -185,7 +289,7 @@ function validateFarms(farms) {
     ids.add(id);
     requireBoundedText(farm.name, `farms[${index}].name`, 200);
     requireBoundedText(farm.region, `farms[${index}].region`, 200);
-    if (farm.situation !== "growing") {
+    if (!SUPPORTED_SITUATIONS.has(farm.situation)) {
       throw new DeviceBackupError(
         "INVALID_PAYLOAD",
         `farms[${index}].situation is unsupported`,
@@ -194,9 +298,11 @@ function validateFarms(farms) {
     if (
       !Array.isArray(farm.crops) ||
       farm.crops.length === 0 ||
-      farm.crops.length > SUPPORTED_CROPS.size ||
-      farm.crops.some((crop) => !SUPPORTED_CROPS.has(crop)) ||
-      new Set(farm.crops).size !== farm.crops.length
+      farm.crops.length > MAX_SUPPORTED_CROPS ||
+      farm.crops.some((crop) =>
+        typeof crop !== "string" || !SUPPORTED_CROPS.has(crop.toUpperCase())
+      ) ||
+      new Set(farm.crops.map((crop) => crop.toUpperCase())).size !== farm.crops.length
     ) {
       throw new DeviceBackupError(
         "INVALID_PAYLOAD",
@@ -213,6 +319,7 @@ function validateFarms(farms) {
         `farms[${index}].cropSettings must be an object`,
       );
     }
+    validateCropSettings(farm.cropSettings, farm.crops, index);
     if (
       typeof farm.updatedAt !== "string" ||
       Number.isNaN(Date.parse(farm.updatedAt))
@@ -222,6 +329,104 @@ function validateFarms(farms) {
         `farms[${index}].updatedAt is invalid`,
       );
     }
+  }
+}
+
+function validateCropSettings(settings, crops, farmIndex) {
+  const supportedKeys = new Set(crops.flatMap((crop) => [crop, crop.toLowerCase()]));
+  const entries = Object.entries(settings);
+  if (entries.some(([crop]) => !supportedKeys.has(crop))) {
+    throw new DeviceBackupError(
+      "INVALID_PAYLOAD",
+      `farms[${farmIndex}].cropSettings contains an unsupported crop`,
+    );
+  }
+  const allowedSettingFields = new Set([
+    "cultivation",
+    "season",
+    "growth",
+    "cultivationMode",
+    "growthStage",
+    "seasonProfile",
+    "cycle",
+  ]);
+  for (const [crop, setting] of entries) {
+    if (setting === null || typeof setting !== "object" || Array.isArray(setting)) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `farms[${farmIndex}].cropSettings.${crop} must be an object`,
+      );
+    }
+    if (Object.keys(setting).some((field) => !allowedSettingFields.has(field))) {
+      throw new DeviceBackupError(
+        "INVALID_PAYLOAD",
+        `farms[${farmIndex}].cropSettings.${crop} contains unsupported fields`,
+      );
+    }
+    for (const field of [
+      "cultivation",
+      "season",
+      "growth",
+      "cultivationMode",
+      "growthStage",
+      "seasonProfile",
+    ]) {
+      if (setting[field] !== undefined) {
+        requireBoundedText(
+          setting[field],
+          `farms[${farmIndex}].cropSettings.${crop}.${field}`,
+          80,
+        );
+      }
+    }
+    if (setting.cycle !== undefined) {
+      validateCropCycle(setting.cycle, `farms[${farmIndex}].cropSettings.${crop}.cycle`);
+    }
+  }
+}
+
+function validateCropCycle(cycle, field) {
+  if (cycle === null || typeof cycle !== "object" || Array.isArray(cycle)) {
+    throw new DeviceBackupError("INVALID_PAYLOAD", `${field} must be an object`);
+  }
+  const allowed = new Set([
+    "seasonId",
+    "anchorType",
+    "anchorDate",
+    "status",
+    "userConfirmed",
+  ]);
+  if (Object.keys(cycle).some((key) => !allowed.has(key))) {
+    throw new DeviceBackupError(
+      "INVALID_PAYLOAD",
+      `${field} contains unsupported fields`,
+    );
+  }
+  requireBoundedText(cycle.seasonId, `${field}.seasonId`, 160);
+  if (!CYCLE_ANCHOR_TYPES.has(cycle.anchorType)) {
+    throw new DeviceBackupError(
+      "INVALID_PAYLOAD",
+      `${field}.anchorType is unsupported`,
+    );
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(String(cycle.anchorDate ?? "")) ||
+      Number.isNaN(Date.parse(`${cycle.anchorDate}T00:00:00Z`))) {
+    throw new DeviceBackupError(
+      "INVALID_PAYLOAD",
+      `${field}.anchorDate is invalid`,
+    );
+  }
+  if (!CYCLE_STATUSES.has(cycle.status)) {
+    throw new DeviceBackupError(
+      "INVALID_PAYLOAD",
+      `${field}.status is unsupported`,
+    );
+  }
+  if (cycle.userConfirmed !== undefined && typeof cycle.userConfirmed !== "boolean") {
+    throw new DeviceBackupError(
+      "INVALID_PAYLOAD",
+      `${field}.userConfirmed must be boolean`,
+    );
   }
 }
 
@@ -245,6 +450,7 @@ export function createDeviceBackupStore({
   fetchImpl = globalThis.fetch,
   timeoutMs = 6000,
   now = Date.now,
+  probeId = randomUUID,
 } = {}) {
   const configured =
     typeof url === "string" &&
@@ -256,6 +462,10 @@ export function createDeviceBackupStore({
   const endpoint = configured
     ? `${url.trim().replace(/\/$/u, "")}/rest/v1/rpc`
     : null;
+
+  if (typeof probeId !== "function") {
+    throw new TypeError("device backup probeId must be a function");
+  }
 
   async function callRpc(name, args) {
     const controller = new AbortController();
@@ -288,6 +498,41 @@ export function createDeviceBackupStore({
 
   return Object.freeze({
     configured,
+
+    async probe() {
+      if (!configured) {
+        return {
+          ready: false,
+          state: "NOT_CONFIGURED",
+          verifiedAt: null,
+        };
+      }
+      const keyHash = createHash("sha256")
+        .update(`heuknalssi-device-backup-probe:${probeId()}`, "utf8")
+        .digest("hex");
+      try {
+        const ready = await callRpc("heuknalssi_device_backup_probe", {
+          p_key_hash: keyHash,
+        });
+        return ready === true
+          ? {
+              ready: true,
+              state: "READY",
+              verifiedAt: new Date(now()).toISOString(),
+            }
+          : {
+              ready: false,
+              state: "PROBE_FAILED",
+              verifiedAt: null,
+            };
+      } catch {
+        return {
+          ready: false,
+          state: "UNAVAILABLE",
+          verifiedAt: null,
+        };
+      }
+    },
 
     async save(accountKey, payload) {
       if (!configured) {
