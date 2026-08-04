@@ -45,6 +45,31 @@ test("FarmMap domain normalization accepts a Vercel hostname without a scheme", 
   assert.equal(normalizeFarmmapDomain("javascript:alert(1)"), null);
 });
 
+test("FarmMap preserves the provider-registered hostname before trying its URL form", async () => {
+  const requestedDomains = [];
+  const adapter = createFarmmapAdapter({
+    enabled: true,
+    apiKey: "fixture-farmmap-secret",
+    domain: "nong-kappa.vercel.app",
+    contractVersion: VERIFIED_FARMMAP_CONTRACT_VERSION,
+    fetchImpl: async (url) => {
+      requestedDomains.push(new URL(String(url)).searchParams.get("domain"));
+      return new Response(JSON.stringify(FEATURE_COLLECTION), {
+        status: 200,
+        headers: { "Content-Type": "application/geo+json" },
+      });
+    },
+  });
+
+  const result = await adapter.searchParcels({
+    latitude: 37.45,
+    longitude: 126.72,
+  });
+
+  assert.deepEqual(requestedDomains, ["nong-kappa.vercel.app"]);
+  assert.equal(result.state, "READY");
+});
+
 test("FarmMap parser returns only bounded product fields and a normalized boundary", () => {
   const [candidate] = parseFarmmapFeatureCollection(FEATURE_COLLECTION);
   assert.equal(candidate.farmmapId, "FM-100");
@@ -215,8 +240,9 @@ test("FarmMap retries the Vercel production domain after a stale registered doma
     contractVersion: VERIFIED_FARMMAP_CONTRACT_VERSION,
     fetchImpl: async (url) => {
       const requestedUrl = new URL(String(url));
-      requestedDomains.push(requestedUrl.searchParams.get("domain"));
-      if (requestedDomains.length === 1) {
+      const requestedDomain = requestedUrl.searchParams.get("domain");
+      requestedDomains.push(requestedDomain);
+      if (requestedDomain !== "nong-kappa.vercel.app") {
         return new Response(JSON.stringify({ status: "rejected" }), {
           status: 200,
           headers: { "Content-Type": "text/plain" },
@@ -237,7 +263,8 @@ test("FarmMap retries the Vercel production domain after a stale registered doma
 
   assert.deepEqual(requestedDomains, [
     "https://old-project.vercel.app",
-    "https://nong-kappa.vercel.app",
+    "old-project.vercel.app",
+    "nong-kappa.vercel.app",
   ]);
   assert.equal(result.state, "READY");
   assert.equal(result.candidates.length, 1);

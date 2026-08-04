@@ -47,6 +47,19 @@ export function normalizeFarmmapDomain(value) {
   }
 }
 
+function farmmapDomainCandidates(value) {
+  const origin = normalizeFarmmapDomain(value);
+  if (!origin) return [];
+  const url = new URL(origin);
+  const raw = value.trim();
+  const registeredForm = /^[a-z][a-z\d+.-]*:\/\//iu.test(raw)
+    ? origin
+    : url.host;
+  return [registeredForm, origin, url.host].filter(
+    (candidate, index, values) => values.indexOf(candidate) === index,
+  );
+}
+
 function requireCoordinate(value, label, minimum, maximum) {
   if (!Number.isFinite(value) || value < minimum || value > maximum) {
     throw new TypeError(`${label} is outside the supported Korea bounds`);
@@ -278,12 +291,11 @@ export function createFarmmapAdapter({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   now = Date.now,
 } = {}) {
-  const registeredDomain = normalizeFarmmapDomain(domain);
   const domains = Object.freeze([
-    registeredDomain,
+    domain,
     ...(Array.isArray(fallbackDomains) ? fallbackDomains : []),
   ]
-    .map(normalizeFarmmapDomain)
+    .flatMap(farmmapDomainCandidates)
     .filter((value, index, values) => value && values.indexOf(value) === index));
   const configured =
     enabled &&
