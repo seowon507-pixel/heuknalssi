@@ -11,8 +11,12 @@ export {
   normalizeQuestion,
 } from './assistant.js';
 export {
+  aggregateDailyPrecipitationProbability,
   calculateIssuedForecastMetrics,
+  evaluateFarmOutcomeGroundTruth,
+  evaluateHistoricalSoilCoverage,
   replayAsosRiskRules,
+  selectHistoricalSoilSnapshot,
 } from './backtest.js';
 export { latestKmaMidIssue, latestKmaShortIssue } from './forecast-issue.js';
 export {

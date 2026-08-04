@@ -110,6 +110,11 @@ const ERROR_DEFINITIONS = Object.freeze({
     message: "The location candidate is invalid or expired.",
     retryable: false,
   },
+  EXACT_LOCATION_REQUIRED: {
+    status: 409,
+    message: "FarmMap search requires an address-resolved farm location.",
+    retryable: false,
+  },
   ANALYSIS_NOT_FOUND: {
     status: 404,
     message: "The analysis was not found.",

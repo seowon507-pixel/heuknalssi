@@ -43,6 +43,7 @@ const ACTION_TITLES = Object.freeze({
   REVIEW_CONDITION_EVIDENCE: '주의 근거 우선 확인',
   REQUEST_FIELD_SOIL_TEST: '필지 토양검정 진행',
   CHECK_CURRENT_FORECAST_RISK: '가까운 기상위험 확인',
+  CHECK_SOIL_MOISTURE_AND_IRRIGATE: '고온 전 토양 수분 확인·관수',
   CHECK_FACILITY_WEATHER: '시설 외기와 내부 온도·환기 상태 확인',
   CHECK_INTERNAL_SENSORS: '시설 내부 온도 센서와 환기 상태 확인',
 });

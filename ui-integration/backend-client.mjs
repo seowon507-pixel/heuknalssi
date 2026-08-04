@@ -426,6 +426,14 @@ class BackendApi {
     return this.request(`/api/farms/${encodeURIComponent(farmId)}/parcel`);
   }
 
+  async searchFarmmapParcels(analysisId, radiusMeters = 250) {
+    return this.request("/api/farmmap/parcels/search", {
+      method: "POST",
+      body: { analysisId, radiusMeters },
+      csrf: true,
+    });
+  }
+
   async saveParcel(farmId, geometry) {
     return this.request(`/api/farms/${encodeURIComponent(farmId)}/parcel`, {
       method: "PUT",
@@ -618,6 +626,9 @@ let overviewRequestVersion = 0;
 let actionPlanBusy = false;
 let lastAnalysisRequestAt = 0;
 let pendingParcelGeometry = null;
+let parcelDraftMode = "farmmap";
+let parcelDraftPoints = [];
+let savedParcelAvailable = false;
 const photoJournal = createLocalPhotoJournal();
 let photoObjectUrls = [];
 const savedSessionAtBoot = readStoredSession();
@@ -1969,12 +1980,17 @@ function actionDraftsFromAnalysis(analysis, scope) {
     ? analysis.actions.filter((action) => actionRelevantForDisplay(action, analysis))
     : [];
   const forecastGuide = forecastRiskGuide(analysis);
+  const irrigationGuide = irrigationActionGuide(analysis);
   return actions.slice(0, 5).flatMap((action, index) => {
     const title = userActionTitle(action, analysis);
     if (!title) return [];
     const projection = projectAnalysisAction(action, analysis);
     const practicalInstruction =
-      action.actionId === "CHECK_CURRENT_FORECAST_RISK" &&
+      action.actionId === "CHECK_SOIL_MOISTURE_AND_IRRIGATE" &&
+      Array.isArray(irrigationGuide?.actions) &&
+      irrigationGuide.actions.length > 0
+        ? irrigationGuide.actions.slice(0, 2).join(" ")
+        : action.actionId === "CHECK_CURRENT_FORECAST_RISK" &&
       Array.isArray(forecastGuide.actions) &&
       forecastGuide.actions.length > 0
         ? forecastGuide.actions.slice(0, 2).join(" ")
@@ -2000,6 +2016,10 @@ function actionReason(action, analysis) {
   if (action?.actionId === "CONFIRM_SEASON") {
     return "재배 시기와 생육 단계가 확인되지 않아 작물별 시기 기준을 정확히 적용할 수 없습니다.";
   }
+  if (action?.actionId === "CHECK_SOIL_MOISTURE_AND_IRRIGATE") {
+    return irrigationActionGuide(analysis)?.reason ??
+      "고온 예보와 최근 강수·증발산 수지에서 건조 경향이 함께 확인됐습니다.";
+  }
   const weather = forecastRiskGuide(analysis);
   const soil = soilConditionGuide(analysis);
   if (weather.risk && actionHasForecastRisk(action, analysis)) {
@@ -2021,6 +2041,35 @@ function actionHasForecastRisk(action, analysis) {
       .filter((value) => typeof value === "string"),
   );
   return activeForecastRisks(analysis).some((risk) => triggerIds.has(risk.riskId));
+}
+
+function irrigationActionGuide(analysis) {
+  const action = (analysis?.actions ?? []).find(
+    (item) => item?.actionId === "CHECK_SOIL_MOISTURE_AND_IRRIGATE",
+  );
+  const moisture = fieldMoistureSummary(analysis);
+  if (!action || !moisture) return null;
+  const forecastHighs = forecastDisplayDays(analysis)
+    .map((day) => day.maxTemperature)
+    .filter(Number.isFinite);
+  const hottest = forecastHighs.length ? Math.max(...forecastHighs) : null;
+  const heatSummary = Number.isFinite(hottest)
+    ? `최고 ${formatNumber(hottest)}℃의 고온 예보와`
+    : "고온 예보와";
+  const balanceDeficit = Math.abs(Math.min(moisture.cumulativeBalanceMm, 0));
+  const cropLabel = CROP_LABELS[analysis?.inputSummary?.crop] ?? "작물";
+  return {
+    title: "고온 전 토양 수분 확인·관수",
+    reason:
+      `${heatSummary} 최근 ${moisture.dayCount}일 기상 수지의 건조 부족량 ` +
+      `${formatNumber(balanceDeficit)}mm가 함께 확인됐습니다. ` +
+      `토양 수분은 센서값이 아닌 기상 기반 지수 ${moisture.central}이므로, 현장에서 마른 상태를 확인한 뒤 물을 주세요.`,
+    actions: [
+      "오늘 아침이나 해가 진 뒤 뿌리 주변 10cm 안쪽 흙을 손으로 확인합니다.",
+      `흙이 쉽게 부서지고 ${cropLabel}이 처져 있다면 한낮을 피해 기존 관수시설로 천천히 물을 공급합니다.`,
+      "흙이 이미 젖었거나 물이 고이면 추가 관수를 멈추고 배수 상태를 먼저 확인합니다.",
+    ],
+  };
 }
 
 function projectedOpenActionPlan(analysis) {
@@ -2873,13 +2922,14 @@ function dashboardSoilMetricItems(analysis) {
     ? formatPercent(phMetric.outsideRatio)
     : null;
   const actualBasis = ["USER_SOIL_TEST", "PROVIDER_SOIL_TEST"].includes(basis);
+  const moisture = fieldMoistureSummary(analysis);
 
   return [
     {
       label: "수분",
-      value: "—",
-      help: "미측정",
-      available: false,
+      value: moisture ? `지수 ${moisture.central}` : "—",
+      help: moisture ? `${moisture.trendLabel} · 기상 추정` : "추정 자료 없음",
+      available: Boolean(moisture),
     },
     {
       label: "EC",
@@ -2904,6 +2954,33 @@ function dashboardSoilMetricItems(analysis) {
       available: false,
     },
   ];
+}
+
+function fieldMoistureSummary(analysis) {
+  const estimate = analysis?.fieldConditionsEstimate;
+  const moisture = estimate?.surfaceMoisture;
+  if (
+    !["READY", "PARTIAL"].includes(estimate?.state) ||
+    !Number.isFinite(moisture?.central) ||
+    !Number.isFinite(moisture?.cumulativeBalanceMm)
+  ) {
+    return null;
+  }
+  const trendLabels = {
+    DRYING: "건조 경향",
+    WETTING: "습윤 경향",
+    STABLE: "변화 적음",
+  };
+  return {
+    central: Math.round(moisture.central),
+    lower: Number.isFinite(moisture.lower) ? Math.round(moisture.lower) : null,
+    upper: Number.isFinite(moisture.upper) ? Math.round(moisture.upper) : null,
+    cumulativeBalanceMm: moisture.cumulativeBalanceMm,
+    dayCount: moisture.window?.dayCount ?? estimate.inputsUsed?.recentWeatherDayCount ?? 0,
+    trend: moisture.trend,
+    trendLabel: trendLabels[moisture.trend] ?? "기상 추정",
+    confidence: estimate.confidence?.score ?? null,
+  };
 }
 
 function renderFarmConditionGuide(analysis, idSuffix = "dashboard") {
@@ -5620,6 +5697,19 @@ function resolveDisplayAction(analysis) {
   const facility = summary.cultivationMode !== "OPEN_FIELD";
   const cropLabel = CROP_LABELS[summary.crop] ?? "작물";
   const riskGuide = forecastRiskGuide(analysis);
+  const irrigationGuide = irrigationActionGuide(analysis);
+
+  if (
+    primary?.actionId === "CHECK_SOIL_MOISTURE_AND_IRRIGATE" &&
+    irrigationGuide
+  ) {
+    return {
+      title: irrigationGuide.title,
+      detail: irrigationGuide.reason,
+      status: primary.severity === "WARNING" ? "우선 확인" : "주의",
+      actions: irrigationGuide.actions,
+    };
+  }
 
   if (riskGuide.risk) {
     return {
@@ -5679,6 +5769,7 @@ function userActionTitle(action, analysis = null) {
     REVIEW_CONDITION_EVIDENCE: "기후·토양 주의 항목 확인",
     REQUEST_FIELD_SOIL_TEST: "농업기술센터 토양검정 신청",
     CHECK_CURRENT_FORECAST_RISK: `${cropLabel} 예보 위험 전 농장 상태 확인`,
+    CHECK_SOIL_MOISTURE_AND_IRRIGATE: "고온 전 토양 수분 확인·관수",
     CHECK_FACILITY_WEATHER: "시설 외기와 내부 온도·환기 상태 확인",
     CHECK_INTERNAL_SENSORS: "시설 내부 온도 센서와 환기 상태 확인",
   };
@@ -5693,6 +5784,10 @@ function actionDetail(actionId, analysis) {
   }
   if (actionId === "CHECK_CURRENT_FORECAST_RISK") {
     return `${period}에서 검토된 작물 기준의 주의 신호가 확인됐습니다. 해당 날짜의 작물 상태를 먼저 확인해 주세요.`;
+  }
+  if (actionId === "CHECK_SOIL_MOISTURE_AND_IRRIGATE") {
+    return irrigationActionGuide(analysis)?.reason ??
+      "고온이 오기 전 뿌리 주변 토양 수분을 확인하고, 실제로 마른 경우에만 관수합니다.";
   }
   if (actionId === "CHECK_FACILITY_WEATHER") {
     return `${period}의 외기 위험 신호와 시설 내부 온도·환기 상태를 함께 확인해 주세요.`;
@@ -5991,11 +6086,26 @@ function safeFilenamePart(value) {
 
 function setupSatelliteService() {
   const useLocation = document.querySelector("#parcel-use-location");
+  const farmmapMode = document.querySelector("#parcel-mode-farmmap");
+  const squareMode = document.querySelector("#parcel-mode-square");
+  const walkMode = document.querySelector("#parcel-mode-walk");
+  const addCorner = document.querySelector("#parcel-add-corner");
+  const undoCorner = document.querySelector("#parcel-undo-corner");
+  const resetCorners = document.querySelector("#parcel-reset-corners");
+  const farmmapSearch = document.querySelector("#parcel-farmmap-search");
   const save = document.querySelector("#parcel-save");
   const refresh = document.querySelector("#satellite-refresh");
+  farmmapMode?.addEventListener("click", () => setParcelDraftMode("farmmap"));
+  squareMode?.addEventListener("click", () => setParcelDraftMode("square"));
+  walkMode?.addEventListener("click", () => setParcelDraftMode("walk"));
   useLocation?.addEventListener("click", () => void prepareParcelFromLocation());
+  addCorner?.addEventListener("click", () => void addParcelCorner());
+  undoCorner?.addEventListener("click", undoParcelCorner);
+  resetCorners?.addEventListener("click", resetParcelCorners);
+  farmmapSearch?.addEventListener("click", () => void searchFarmmapParcels());
   save?.addEventListener("click", () => void savePreparedParcel());
   refresh?.addEventListener("click", () => void refreshSatellite());
+  setParcelDraftMode("farmmap", { preserveDraft: true });
   applySatelliteAvailability();
 }
 
@@ -6005,35 +6115,136 @@ function satelliteIsAvailable() {
   );
 }
 
+function farmmapIsAvailable() {
+  return ["READY", "CONFIGURED_UNVERIFIED"].includes(
+    preflight?.capabilities?.farmmap ?? preflight?.optionalAdapters?.farmmap,
+  );
+}
+
 function applySatelliteAvailability() {
-  if (satelliteIsAvailable()) {
-    const size = document.querySelector("#parcel-size");
-    const useLocation = document.querySelector("#parcel-use-location");
-    if (size) size.disabled = false;
-    if (useLocation) useLocation.disabled = false;
-    return true;
-  }
+  const available = satelliteIsAvailable();
   const state = document.querySelector("#satellite-service-state");
   const status = document.querySelector("#parcel-status");
-  if (state) state.textContent = "연결 준비 필요";
-  if (status) {
+  const refresh = document.querySelector("#satellite-refresh");
+  if (refresh) refresh.disabled = !available || !savedParcelAvailable;
+  if (!available && state) {
+    state.textContent = savedParcelAvailable ? "경계 저장됨" : "경계 등록 가능";
+  }
+  if (!available && status && currentAnalysis) {
     status.textContent =
-      "현재 실행 환경에는 위성 데이터 연결이 설정되지 않았습니다.";
+      "필지 경계는 지금 저장할 수 있습니다. 위성 변화 확인은 연결 설정 후 사용할 수 있습니다.";
   }
-  for (const selector of [
-    "#parcel-size",
-    "#parcel-use-location",
-    "#parcel-save",
-    "#satellite-refresh",
-  ]) {
-    const control = document.querySelector(selector);
-    if (control) control.disabled = true;
+  return available;
+}
+
+function setParcelDraftMode(mode, { preserveDraft = false } = {}) {
+  parcelDraftMode = ["farmmap", "walk"].includes(mode) ? mode : "square";
+  const farmmapMode = document.querySelector("#parcel-mode-farmmap");
+  const squareMode = document.querySelector("#parcel-mode-square");
+  const walkMode = document.querySelector("#parcel-mode-walk");
+  farmmapMode?.classList.toggle("is-active", parcelDraftMode === "farmmap");
+  squareMode?.classList.toggle("is-active", parcelDraftMode === "square");
+  walkMode?.classList.toggle("is-active", parcelDraftMode === "walk");
+  farmmapMode?.setAttribute("aria-pressed", String(parcelDraftMode === "farmmap"));
+  squareMode?.setAttribute("aria-pressed", String(parcelDraftMode === "square"));
+  walkMode?.setAttribute("aria-pressed", String(parcelDraftMode === "walk"));
+  const farmmapControls = document.querySelector("#parcel-farmmap-controls");
+  const squareControls = document.querySelector("#parcel-square-controls");
+  const walkControls = document.querySelector("#parcel-walk-controls");
+  if (farmmapControls) farmmapControls.hidden = parcelDraftMode !== "farmmap";
+  if (squareControls) squareControls.hidden = parcelDraftMode !== "square";
+  if (walkControls) walkControls.hidden = parcelDraftMode !== "walk";
+  if (!preserveDraft) {
+    pendingParcelGeometry = null;
+    parcelDraftPoints = [];
+    const save = document.querySelector("#parcel-save");
+    if (save) save.disabled = true;
+    updateParcelPreview(
+      parcelDraftMode === "farmmap"
+        ? "분석한 주소 주변의 팜맵 필지를 찾아 주세요"
+        : parcelDraftMode === "walk"
+        ? "첫 번째 농장 모서리에서 위치를 기록해 주세요"
+        : "현재 위치 중심으로 경계를 만들어 주세요",
+    );
   }
-  return false;
+  updateParcelCornerControls();
+}
+
+async function searchFarmmapParcels() {
+  const status = document.querySelector("#parcel-status");
+  const button = document.querySelector("#parcel-farmmap-search");
+  const list = document.querySelector("#parcel-farmmap-candidates");
+  if (!currentAnalysis?.analysisId) {
+    if (status) status.textContent = "먼저 상세 주소로 농장 분석을 완료해 주세요.";
+    return;
+  }
+  if (!farmmapIsAvailable()) {
+    if (status) {
+      status.textContent = "팜맵 API 연결을 확인해 주세요. 간편 경계나 모서리 직접 기록은 계속 사용할 수 있습니다.";
+    }
+    return;
+  }
+  setBusy(button, true, "팜맵 필지 찾는 중…");
+  try {
+    const result = await api.searchFarmmapParcels(currentAnalysis.analysisId);
+    const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
+    if (candidates.length === 0) {
+      list?.replaceChildren();
+      if (status) status.textContent = "이 주소 주변에서 팜맵 필지를 찾지 못했습니다. 다른 경계 방식을 사용해 주세요.";
+      return;
+    }
+    renderFarmmapCandidates(candidates);
+    if (status) status.textContent = `${candidates.length}개 팜맵 필지를 찾았습니다. 실제 농장 경계를 선택해 주세요.`;
+  } catch (error) {
+    if (status) {
+      status.textContent = error?.code === "EXACT_LOCATION_REQUIRED"
+        ? "시·군·구가 아닌 지번 또는 도로명 상세 주소로 다시 분석해 주세요."
+        : `팜맵 필지를 찾지 못했습니다. ${errorMessage(error)}`;
+    }
+  } finally {
+    setBusy(button, false, "주변 팜맵 필지 찾기");
+  }
+}
+
+function renderFarmmapCandidates(candidates) {
+  const list = document.querySelector("#parcel-farmmap-candidates");
+  if (!list) return;
+  const items = candidates.flatMap((candidate, index) => {
+    if (
+      !candidate?.geometry ||
+      !["Polygon", "MultiPolygon"].includes(candidate.geometry.type) ||
+      !Number.isFinite(candidate.areaSquareMeters)
+    ) {
+      return [];
+    }
+    const item = document.createElement("li");
+    const button = element("button", "farmmap-candidate");
+    button.type = "button";
+    const category = candidate.category ? ` · ${candidate.category}` : "";
+    const address = candidate.representativeAddress ?? "분석 주소 주변 필지";
+    button.append(
+      element("strong", "", `필지 ${index + 1} · ${formatNumber(candidate.areaSquareMeters)}㎡${category}`),
+      element("small", "", address),
+    );
+    button.addEventListener("click", () => {
+      pendingParcelGeometry = structuredClone(candidate.geometry);
+      parcelDraftPoints = [];
+      const save = document.querySelector("#parcel-save");
+      if (save) save.disabled = false;
+      list.querySelectorAll(".farmmap-candidate").forEach((control) => {
+        control.setAttribute("aria-pressed", String(control === button));
+      });
+      updateParcelPreview(`팜맵 필지 ${formatNumber(candidate.areaSquareMeters)}㎡ 선택됨`);
+      const status = document.querySelector("#parcel-status");
+      if (status) status.textContent = "선택한 농장 모양이 맞는지 확인한 뒤 경계를 저장해 주세요.";
+    });
+    item.append(button);
+    return [item];
+  });
+  list.replaceChildren(...items);
 }
 
 async function prepareParcelFromLocation() {
-  if (!applySatelliteAvailability()) return;
   const status = document.querySelector("#parcel-status");
   const button = document.querySelector("#parcel-use-location");
   if (!currentAnalysis) {
@@ -6053,8 +6264,9 @@ async function prepareParcelFromLocation() {
       position.coords.longitude,
       size,
     );
+    parcelDraftPoints = [];
     document.querySelector("#parcel-save").disabled = false;
-    updateParcelPreview(`${size}m × ${size}m 경계 준비됨`);
+    updateParcelPreview(`${size}m × ${size}m 간편 경계 준비됨`);
     if (status) {
       status.textContent =
         "경계를 저장하기 전에 실제 농장 안에서 만든 범위가 맞는지 확인해 주세요.";
@@ -6062,12 +6274,96 @@ async function prepareParcelFromLocation() {
   } catch {
     if (status) status.textContent = "현재 위치를 확인하지 못했습니다. 위치 권한을 확인해 주세요.";
   } finally {
-    setBusy(button, false, "현재 위치로 경계 만들기");
+    setBusy(button, false, "현재 위치 중심으로 만들기");
   }
 }
 
+async function addParcelCorner() {
+  const status = document.querySelector("#parcel-status");
+  const button = document.querySelector("#parcel-add-corner");
+  if (!currentAnalysis) {
+    if (status) status.textContent = "먼저 농장 분석을 완료해 주세요.";
+    return;
+  }
+  if (!navigator.geolocation) {
+    if (status) status.textContent = "이 기기에서는 현재 위치를 사용할 수 없습니다.";
+    return;
+  }
+  setBusy(button, true, "위치 기록 중…");
+  try {
+    const position = await getCurrentPosition();
+    const point = [position.coords.longitude, position.coords.latitude];
+    const previous = parcelDraftPoints.at(-1);
+    if (previous && parcelPointDistanceMeters(previous, point) < 1) {
+      if (status) status.textContent = "이전 모서리와 같은 위치입니다. 다음 모서리로 이동해 주세요.";
+      return;
+    }
+    parcelDraftPoints.push(point);
+    pendingParcelGeometry = parcelDraftPoints.length >= 3
+      ? parcelGeometryFromCorners(parcelDraftPoints)
+      : null;
+    const save = document.querySelector("#parcel-save");
+    if (save) save.disabled = !pendingParcelGeometry;
+    const accuracy = Number(position.coords.accuracy);
+    const accuracyCopy = Number.isFinite(accuracy)
+      ? ` · 위치 정확도 약 ±${Math.round(accuracy)}m`
+      : "";
+    updateParcelPreview(
+      parcelDraftPoints.length >= 3
+        ? `모서리 ${parcelDraftPoints.length}곳으로 닫힌 경계 준비됨`
+        : `모서리 ${parcelDraftPoints.length}곳 기록됨`,
+    );
+    updateParcelCornerControls();
+    if (status) {
+      status.textContent = parcelDraftPoints.length >= 3
+        ? `경계 모양을 확인한 뒤 저장해 주세요${accuracyCopy}.`
+        : `다음 농장 모서리로 이동해 위치를 추가해 주세요${accuracyCopy}.`;
+    }
+  } catch {
+    if (status) status.textContent = "현재 위치를 기록하지 못했습니다. 위치 권한과 GPS 상태를 확인해 주세요.";
+  } finally {
+    setBusy(button, false, "현재 모서리 추가");
+  }
+}
+
+function undoParcelCorner() {
+  parcelDraftPoints.pop();
+  pendingParcelGeometry = parcelDraftPoints.length >= 3
+    ? parcelGeometryFromCorners(parcelDraftPoints)
+    : null;
+  const save = document.querySelector("#parcel-save");
+  if (save) save.disabled = !pendingParcelGeometry;
+  updateParcelPreview(
+    parcelDraftPoints.length
+      ? `모서리 ${parcelDraftPoints.length}곳 기록됨`
+      : "첫 번째 농장 모서리에서 위치를 기록해 주세요",
+  );
+  updateParcelCornerControls();
+}
+
+function resetParcelCorners() {
+  parcelDraftPoints = [];
+  pendingParcelGeometry = null;
+  const save = document.querySelector("#parcel-save");
+  if (save) save.disabled = true;
+  updateParcelPreview("첫 번째 농장 모서리에서 위치를 기록해 주세요");
+  updateParcelCornerControls();
+}
+
+function updateParcelCornerControls() {
+  const count = document.querySelector("#parcel-corner-count");
+  const undo = document.querySelector("#parcel-undo-corner");
+  const reset = document.querySelector("#parcel-reset-corners");
+  if (count) {
+    count.textContent = parcelDraftPoints.length >= 3
+      ? `기록한 모서리 ${parcelDraftPoints.length}곳 · 저장 가능`
+      : `기록한 모서리 ${parcelDraftPoints.length}곳 · 3곳 이상 필요`;
+  }
+  if (undo) undo.disabled = parcelDraftPoints.length === 0;
+  if (reset) reset.disabled = parcelDraftPoints.length === 0;
+}
+
 async function savePreparedParcel() {
-  if (!applySatelliteAvailability()) return;
   const scope = currentFeatureScope(currentAnalysis);
   const status = document.querySelector("#parcel-status");
   const button = document.querySelector("#parcel-save");
@@ -6076,10 +6372,17 @@ async function savePreparedParcel() {
   try {
     const parcel = await api.saveParcel(scope.farmId, pendingParcelGeometry);
     pendingParcelGeometry = parcel.geometry;
-    document.querySelector("#satellite-refresh").disabled = false;
-    document.querySelector("#satellite-service-state").textContent = "필지 등록됨";
+    savedParcelAvailable = true;
+    document.querySelector("#satellite-service-state").textContent = satelliteIsAvailable()
+      ? "필지 등록됨"
+      : "경계 저장됨";
     updateParcelPreview(`${formatNumber(parcel.areaSquareMeters)}㎡ 경계 저장됨`);
-    if (status) status.textContent = "필지 경계를 저장했습니다. 최신 위성 자료를 확인할 수 있습니다.";
+    applySatelliteAvailability();
+    if (status) {
+      status.textContent = satelliteIsAvailable()
+        ? "필지 경계를 저장했습니다. 최신 위성 자료를 확인할 수 있습니다."
+        : "필지 경계를 저장했습니다. 위성 연결 전에도 이 경계는 유지됩니다.";
+    }
   } catch (error) {
     if (status) status.textContent = errorMessage(error);
   } finally {
@@ -6108,26 +6411,39 @@ async function refreshSatellite() {
 async function refreshSatellitePanel(analysis) {
   const scope = currentFeatureScope(analysis);
   const status = document.querySelector("#parcel-status");
-  if (!scope || !connected || !applySatelliteAvailability()) return;
+  if (!scope || !connected) return;
+  const satelliteAvailable = satelliteIsAvailable();
   try {
-    const [{ parcel }, { observation }] = await Promise.all([
+    const [{ parcel }, observationResponse] = await Promise.all([
       api.getParcel(scope.farmId),
-      api.getSatelliteObservation(scope.farmId),
+      satelliteAvailable
+        ? api.getSatelliteObservation(scope.farmId)
+        : Promise.resolve({ observation: null }),
     ]);
+    const observation = observationResponse?.observation ?? null;
     if (parcel) {
+      savedParcelAvailable = true;
       pendingParcelGeometry = parcel.geometry;
       updateParcelPreview(`${formatNumber(parcel.areaSquareMeters)}㎡ 경계 저장됨`);
       document.querySelector("#parcel-save").disabled = false;
-      document.querySelector("#satellite-refresh").disabled = false;
-      document.querySelector("#satellite-service-state").textContent = "필지 등록됨";
-      if (status) status.textContent = "저장된 필지 경계를 사용합니다.";
+      document.querySelector("#satellite-service-state").textContent = satelliteAvailable
+        ? "필지 등록됨"
+        : "경계 저장됨";
+      if (status) {
+        status.textContent = satelliteAvailable
+          ? "저장된 필지 경계를 사용합니다."
+          : "저장된 필지 경계를 사용합니다. 위성 변화 확인은 연결 설정 후 사용할 수 있습니다.";
+      }
     } else {
+      savedParcelAvailable = false;
       pendingParcelGeometry = null;
       document.querySelector("#parcel-save").disabled = true;
-      document.querySelector("#satellite-refresh").disabled = true;
-      document.querySelector("#satellite-service-state").textContent = "필지 미등록";
-      if (status) status.textContent = "현재 위치에서 농장 경계를 먼저 만들어 주세요.";
+      document.querySelector("#satellite-service-state").textContent = satelliteAvailable
+        ? "필지 미등록"
+        : "경계 등록 가능";
+      if (status) status.textContent = "간편 경계 또는 모서리 직접 기록으로 농장 경계를 만들어 주세요.";
     }
+    applySatelliteAvailability();
     if (observation) renderSatelliteObservation(observation);
   } catch (error) {
     if (status) status.textContent = `위성 기능 상태를 확인하지 못했습니다. ${errorMessage(error)}`;
@@ -6618,9 +6934,141 @@ function squareGeometry(latitude, longitude, sideMeters) {
   };
 }
 
+function parcelGeometryFromCorners(points) {
+  if (!Array.isArray(points) || points.length < 3) return null;
+  return {
+    type: "Polygon",
+    coordinates: [[...points.map((point) => [...point]), [...points[0]]]],
+  };
+}
+
+function parcelPointDistanceMeters(left, right) {
+  const [leftLongitude, leftLatitude] = left;
+  const [rightLongitude, rightLatitude] = right;
+  const toRadians = (value) => (value * Math.PI) / 180;
+  const latitudeDelta = toRadians(rightLatitude - leftLatitude);
+  const longitudeDelta = toRadians(rightLongitude - leftLongitude);
+  const originLatitude = toRadians(leftLatitude);
+  const destinationLatitude = toRadians(rightLatitude);
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(originLatitude) * Math.cos(destinationLatitude) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  return 6_371_008.8 * 2 * Math.atan2(
+    Math.sqrt(haversine),
+    Math.sqrt(Math.max(0, 1 - haversine)),
+  );
+}
+
+function parcelPreviewRings(geometry) {
+  if (geometry?.type === "Polygon") return [geometry.coordinates?.[0] ?? []];
+  if (geometry?.type === "MultiPolygon") {
+    return geometry.coordinates?.map((polygon) => polygon?.[0] ?? []) ?? [];
+  }
+  return [];
+}
+
+function projectParcelPreview(rings) {
+  const positions = rings.flat().filter(
+    (position) =>
+      Array.isArray(position) &&
+      Number.isFinite(position[0]) &&
+      Number.isFinite(position[1]),
+  );
+  if (positions.length === 0) return { rings: [], points: [] };
+  const meanLatitude = positions.reduce((sum, point) => sum + point[1], 0) /
+    positions.length;
+  const longitudeScale = Math.max(0.2, Math.cos((meanLatitude * Math.PI) / 180));
+  const projected = positions.map(([longitude, latitude]) => [
+    longitude * longitudeScale,
+    latitude,
+  ]);
+  const minX = Math.min(...projected.map((point) => point[0]));
+  const maxX = Math.max(...projected.map((point) => point[0]));
+  const minY = Math.min(...projected.map((point) => point[1]));
+  const maxY = Math.max(...projected.map((point) => point[1]));
+  const rangeX = Math.max(maxX - minX, 1e-8);
+  const rangeY = Math.max(maxY - minY, 1e-8);
+  const scale = Math.min(360 / rangeX, 150 / rangeY);
+  const width = rangeX * scale;
+  const height = rangeY * scale;
+  const offsetX = 240 - width / 2;
+  const offsetY = 105 + height / 2;
+  const pointMap = new Map(
+    positions.map((position, index) => {
+      const [x, y] = projected[index];
+      return [
+        position,
+        [offsetX + (x - minX) * scale, offsetY - (y - minY) * scale],
+      ];
+    }),
+  );
+  return {
+    rings: rings.map((ring) => ring.map((position) => pointMap.get(position))),
+    points: rings.flatMap((ring) => ring.slice(0, -1).map((position) => pointMap.get(position))),
+  };
+}
+
 function updateParcelPreview(label) {
   const target = document.querySelector("#parcel-preview-label");
-  if (target) target.textContent = label;
+  const shape = document.querySelector("#parcel-preview-shape");
+  const line = document.querySelector("#parcel-preview-line");
+  const pointsRoot = document.querySelector("#parcel-preview-points");
+  if (target) {
+    target.textContent = label;
+    target.setAttribute("y", pendingParcelGeometry || parcelDraftPoints.length ? "238" : "135");
+  }
+  const previewGeometry = pendingParcelGeometry ?? (
+    parcelDraftPoints.length >= 3
+      ? parcelGeometryFromCorners(parcelDraftPoints)
+      : null
+  );
+  const sourceRings = previewGeometry
+    ? parcelPreviewRings(previewGeometry)
+    : parcelDraftPoints.length
+    ? [[...parcelDraftPoints, ...(parcelDraftPoints.length > 1 ? [] : [])]]
+    : [];
+  const projected = projectParcelPreview(sourceRings);
+  const hasGeometry = projected.rings.length > 0 && Boolean(previewGeometry);
+  if (shape) {
+    shape.setAttribute(
+      "d",
+      hasGeometry
+        ? projected.rings
+          .map((ring) => ring.map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ") + " Z")
+          .join(" ")
+        : "",
+    );
+    shape.hidden = !hasGeometry;
+  }
+  if (line) {
+    const openPoints = !previewGeometry && projected.rings[0]
+      ? projected.rings[0]
+      : [];
+    line.setAttribute(
+      "points",
+      openPoints.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" "),
+    );
+    line.hidden = openPoints.length === 0;
+  }
+  if (pointsRoot) {
+    const pointCoordinates = hasGeometry
+      ? projected.points
+      : projected.rings[0] ?? [];
+    pointsRoot.replaceChildren(
+      ...pointCoordinates.map(([x, y], index) => {
+        const point = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        point.setAttribute(
+          "class",
+          `parcel-preview-point${index === 0 ? " is-first" : ""}`,
+        );
+        point.setAttribute("cx", x.toFixed(1));
+        point.setAttribute("cy", y.toFixed(1));
+        point.setAttribute("r", "5");
+        return point;
+      }),
+    );
+  }
 }
 
 function renderSatelliteObservation(observation) {

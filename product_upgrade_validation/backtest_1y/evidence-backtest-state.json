@@ -1,0 +1,47 @@
+{
+  "auditKind": "FARM_OUTCOME_AND_HISTORICAL_SOIL_EVIDENCE_BACKTEST",
+  "generatedAt": "2026-08-04T07:25:14.155Z",
+  "state": "COLLECTION_PIPELINE_READY",
+  "inputDirectory": "product_upgrade_validation/backtest_1y/input_templates",
+  "farmOutcomeAccuracy": {
+    "state": "COLLECTION_READY_NO_RECORDS",
+    "outcomeRecordCount": 0,
+    "harvest": {
+      "actualFirstHarvestCount": 0,
+      "pairedPredictionCount": 0,
+      "meanAbsoluteWindowErrorDays": null,
+      "meanAbsoluteMidpointErrorDays": null,
+      "withinWindowCount": 0,
+      "pairs": []
+    },
+    "damage": {
+      "confirmedEventCount": 0,
+      "alertCount": 0,
+      "matchedEventCount": 0,
+      "matchedAlertCount": 0,
+      "eventRecall": null,
+      "alertPrecision": null,
+      "trueNegativeRate": null,
+      "limitation": "UNLABELED_DAYS_ARE_NOT_CONFIRMED_NEGATIVES"
+    }
+  },
+  "historicalSoilCoverage": {
+    "state": "COLLECTION_READY_NO_ANALYSIS_DATES",
+    "analysisDateCount": 0,
+    "snapshotRecordCount": 0,
+    "readyCount": 0,
+    "coverageRatio": 0,
+    "staleCount": 0,
+    "missingCount": 0,
+    "futureSnapshotSubstituted": false,
+    "rows": []
+  },
+  "guarantees": {
+    "missingValuesImputed": false,
+    "unlabeledDaysTreatedAsHealthy": false,
+    "futureSoilSnapshotUsed": false,
+    "currentSoilSubstitutedForHistoricalSoil": false,
+    "rawAddressExported": false,
+    "callerResponsibleForOpaqueIdentifiers": true
+  }
+}

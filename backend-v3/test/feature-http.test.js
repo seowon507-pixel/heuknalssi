@@ -7,19 +7,20 @@ import { createHttpHandler } from "../src/api/index.js";
 const ORIGIN = "https://app.example.test";
 const SECRET = "feature-http-test-secret-that-is-longer-than-32-bytes";
 
-function coreServices() {
+function coreServices(overrides = {}) {
   return {
     async searchLocations() { return { candidates: [] }; },
     async createAnalysis() { return { analysisId: "unused" }; },
     async getAnalysis() { return null; },
     async requestReport() { return { state: "UNAVAILABLE" }; },
     async getPreflight() { return { state: "READY" }; },
+    ...overrides,
   };
 }
 
-async function openServer(t, featureServices) {
+async function openServer(t, featureServices, serviceOverrides = {}) {
   const server = createServer(createHttpHandler({
-    services: coreServices(),
+    services: coreServices(serviceOverrides),
     featureServices,
     config: {
       allowedOrigins: [ORIGIN],
@@ -34,6 +35,38 @@ async function openServer(t, featureServices) {
   t.after(() => new Promise((resolve) => server.close(resolve)));
   return `http://127.0.0.1:${server.address().port}`;
 }
+
+test("팜맵 필지 후보 조회는 CSRF와 현재 세션의 분석 범위를 보존한다", async (t) => {
+  const calls = [];
+  const baseUrl = await openServer(t, {}, {
+    async searchFarmmapParcels(input) {
+      calls.push(input);
+      return {
+        state: "READY",
+        candidates: [{ farmmapId: "FM-1", areaSquareMeters: 1200 }],
+      };
+    },
+  });
+  const currentSession = await session(baseUrl);
+  const response = await fetch(`${baseUrl}/api/farmmap/parcels/search`, {
+    method: "POST",
+    headers: headers(currentSession),
+    body: JSON.stringify({ analysisId: "analysis-1", radiusMeters: 300 }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).candidates[0].farmmapId, "FM-1");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].analysisId, "analysis-1");
+  assert.equal(calls[0].radiusMeters, 300);
+  assert.match(calls[0].ownerSessionId, /^[A-Za-z0-9_-]+$/u);
+
+  const invalid = await fetch(`${baseUrl}/api/farmmap/parcels/search`, {
+    method: "POST",
+    headers: headers(currentSession),
+    body: JSON.stringify({ analysisId: "analysis-1", apiKey: "must-not-pass" }),
+  });
+  assert.equal(invalid.status, 400);
+});
 
 async function session(baseUrl) {
   const response = await fetch(`${baseUrl}/api/session`, { headers: { Origin: ORIGIN } });

@@ -47,6 +47,16 @@ export function createHarvestWeatherService({
       privateContext?.observationStationId ?? fallbackStationId;
     const normalStationId = privateContext?.normalStationId ?? fallbackStationId;
     const lastCompletedDate = addDays(seoulDate(new Date(clock())), -1);
+    if (cycle.status === "COMPLETED") {
+      return unavailableProjection({
+        cropId,
+        from: cycle.anchorDate,
+        to: lastCompletedDate,
+        baselineHarvestWindow: cycle.harvestWindow,
+        reason: "CROP_CYCLE_COMPLETED",
+        summary: "완료한 작기의 수확 일정은 더 이상 자동으로 변경하지 않습니다.",
+      });
+    }
     if (
       cycle.status === "PLANNING" ||
       cycle.anchorDate > lastCompletedDate
@@ -55,6 +65,7 @@ export function createHarvestWeatherService({
         cropId,
         from: cycle.anchorDate,
         to: lastCompletedDate,
+        baselineHarvestWindow: cycle.harvestWindow,
         reason: "NO_COMPLETED_SEASON_DAYS",
         summary: "재배 시작 후 완료된 관측일이 생기면 적산온도를 반영합니다.",
       });
@@ -64,6 +75,7 @@ export function createHarvestWeatherService({
         cropId,
         from: cycle.anchorDate,
         to: lastCompletedDate,
+        baselineHarvestWindow: cycle.harvestWindow,
         reason: "WEATHER_STATION_MAPPING_UNAVAILABLE",
         summary: "재배기간 관측지점을 확인할 수 없어 기준 일정을 유지합니다.",
       });
@@ -87,6 +99,7 @@ export function createHarvestWeatherService({
         cropId,
         from: cycle.anchorDate,
         to: lastCompletedDate,
+        baselineHarvestWindow: cycle.harvestWindow,
         reason: !observationReady
           ? `ASOS_${observationEnvelope?.adapterState ?? "UNAVAILABLE"}`
           : `CLIMATE_NORMAL_${climateEnvelope?.adapterState ?? "UNAVAILABLE"}`,
@@ -100,6 +113,9 @@ export function createHarvestWeatherService({
         cropId,
         from: cycle.anchorDate,
         to: lastCompletedDate,
+        asOfDate: lastCompletedDate,
+        baselineHarvestWindow: cycle.harvestWindow,
+        baselineConfidence: cycle.confidence,
         readings: observationEnvelope.data?.readings,
         monthlyNormals: climateEnvelope.data?.observations,
       }),
@@ -121,11 +137,26 @@ async function callAdapter(adapter, method, parameters, signal, deadlineAt) {
   return adapter[method](parameters, { signal, deadlineAt });
 }
 
-function unavailableProjection({ cropId, from, to, reason, summary, sources = [] }) {
+function unavailableProjection({
+  cropId,
+  from,
+  to,
+  baselineHarvestWindow = null,
+  reason,
+  summary,
+  sources = [],
+}) {
   return Object.freeze({
     state: "HOLD",
     adjustmentApplied: false,
     adjustmentDays: 0,
+    adjustmentMode: "NOT_APPLICABLE",
+    baselineHarvestWindow: baselineHarvestWindow ?? null,
+    adjustedHarvestWindow: baselineHarvestWindow ?? null,
+    maximumAdjustmentDays: 0,
+    rawAdjustmentDays: null,
+    remainingDaysToMidpoint: null,
+    confidence: "LOW",
     cropId,
     period: Object.freeze({ from, to, expectedDayCount: 0 }),
     coverage: 0,

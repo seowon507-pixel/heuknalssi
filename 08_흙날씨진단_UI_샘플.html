@@ -2091,6 +2091,23 @@
     .satellite-map-card { display: grid; gap: 10px; }
     .satellite-map-card svg { width: 100%; min-height: 260px; border: 1px solid #D7E2DA; border-radius: 14px; background: #F5F8F5; }
     .satellite-controls { display: grid; align-content: start; gap: 13px; padding: 18px; border: 1px solid #DDE6DF; border-radius: 14px; background: #F8FBF9; }
+    .parcel-mode-switch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; padding: 4px; border-radius: 11px; background: #EAF1EC; }
+    .parcel-mode-button { min-height: 44px; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #44554A; font: inherit; font-size: 13px; font-weight: 750; cursor: pointer; }
+    .parcel-mode-button.is-active { border-color: #BFD2C5; background: #FFFFFF; color: #174D2E; box-shadow: 0 1px 4px rgb(20 58 37 / 8%); }
+    .parcel-mode-button:focus-visible { outline: 3px solid rgb(36 131 81 / 28%); outline-offset: 2px; }
+    .parcel-mode-panel { display: grid; gap: 10px; }
+    .parcel-corner-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 7px; }
+    .parcel-corner-actions .button { min-width: 0; padding-inline: 11px; }
+    .parcel-corner-count { margin: 0; color: #315E43; font-size: 13px; font-weight: 750; }
+    .farmmap-candidate-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+    .farmmap-candidate { display: grid; width: 100%; padding: 11px 12px; gap: 4px; border: 1px solid #CAD9CF; border-radius: 10px; background: #FFFFFF; color: #20342A; text-align: left; font: inherit; cursor: pointer; }
+    .farmmap-candidate:hover { border-color: #4F8C67; background: #F5FAF7; }
+    .farmmap-candidate strong { font-size: 14px; }
+    .farmmap-candidate small { color: #5F7066; font-size: 12px; }
+    #parcel-preview-shape { transition: opacity 160ms ease; }
+    .parcel-preview-line { fill: none; stroke: #248351; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .parcel-preview-point { fill: #FFFFFF; stroke: #17683F; stroke-width: 3; }
+    .parcel-preview-point.is-first { fill: #17683F; }
     .satellite-result { margin-top: 18px; padding: 20px; border: 1px solid #CFE1D5; border-radius: 14px; background: #F5FAF7; }
     .satellite-result-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 15px 0; }
     .satellite-result-grid > div { padding: 12px; border: 1px solid #D9E5DC; border-radius: 11px; background: #FFFFFF; }
@@ -2124,6 +2141,9 @@
     .season-summary-card p { margin: 4px 0 0; color: #CDE3D5; font-size: 13px; }
     @media (max-width: 780px) {
       .satellite-setup-grid { grid-template-columns: 1fr; }
+      .parcel-mode-switch { grid-template-columns: 1fr; }
+      .parcel-corner-actions { grid-template-columns: 1fr 1fr; }
+      .parcel-corner-actions .button:first-child { grid-column: 1 / -1; }
       .satellite-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .photo-journal-layout { grid-template-columns: 1fr; }
       .photo-journal-list { grid-template-columns: 1fr; }
@@ -2915,21 +2935,42 @@
               <svg id="parcel-preview" viewBox="0 0 480 260" role="img" aria-label="등록할 필지 경계 미리보기">
                 <defs><pattern id="parcel-grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#DDE9E1" stroke-width="1"/></pattern></defs>
                 <rect width="480" height="260" fill="#F5F8F5"/><rect width="480" height="260" fill="url(#parcel-grid)"/>
-                <path id="parcel-preview-shape" d="M144 62H336V198H144Z" fill="rgb(36 131 81 / 18%)" stroke="#248351" stroke-width="3" stroke-dasharray="8 5"/>
+                <path id="parcel-preview-shape" d="" fill="rgb(36 131 81 / 18%)" stroke="#248351" stroke-width="3" stroke-dasharray="8 5" hidden/>
+                <polyline id="parcel-preview-line" class="parcel-preview-line" points="" hidden/>
+                <g id="parcel-preview-points" aria-hidden="true"></g>
                 <text x="240" y="135" text-anchor="middle" fill="#52665A" font-size="15" font-weight="700" id="parcel-preview-label">경계를 만들면 여기에 표시됩니다</text>
               </svg>
-              <p class="muted no-margin">실제 위성 지도 이미지를 대신하는 도식이 아니라, 저장 전 경계 크기를 확인하는 미리보기입니다.</p>
+              <p class="muted no-margin">저장 전 경계 모양을 확인하는 미리보기입니다. 법적 지적 경계를 대신하지 않습니다.</p>
             </div>
             <div class="satellite-controls">
-              <div class="field">
-                <label for="parcel-size">현재 위치 주변 경계 크기</label>
-                <select id="parcel-size"><option value="50">가로·세로 50m</option><option value="100" selected>가로·세로 100m</option><option value="200">가로·세로 200m</option></select>
-                <p class="field-help">농장 안에서 실행하거나, 경계 좌표를 아는 경우에만 저장해 주세요.</p>
+              <div class="parcel-mode-switch" role="group" aria-label="필지 경계 만드는 방법">
+                <button class="parcel-mode-button is-active" id="parcel-mode-farmmap" type="button" aria-pressed="true">팜맵에서 찾기</button>
+                <button class="parcel-mode-button" id="parcel-mode-square" type="button" aria-pressed="false">간편 경계</button>
+                <button class="parcel-mode-button" id="parcel-mode-walk" type="button" aria-pressed="false">모서리 직접 기록</button>
               </div>
-              <div class="location-search-actions">
-                <button class="button button-secondary" id="parcel-use-location" type="button">현재 위치로 경계 만들기</button>
-                <button class="button button-primary" id="parcel-save" type="button" disabled>이 경계 저장</button>
+              <div class="parcel-mode-panel" id="parcel-farmmap-controls">
+                <p class="field-help no-margin">분석한 상세 주소 주변의 실제 경작 경계를 팜맵에서 찾습니다. 후보 중 본인 농장을 선택하세요.</p>
+                <button class="button button-secondary" id="parcel-farmmap-search" type="button">주변 팜맵 필지 찾기</button>
+                <ul class="farmmap-candidate-list" id="parcel-farmmap-candidates" aria-live="polite"></ul>
               </div>
+              <div class="parcel-mode-panel" id="parcel-square-controls" hidden>
+                <div class="field">
+                  <label for="parcel-size">현재 위치 주변 경계 크기</label>
+                  <select id="parcel-size"><option value="50">가로·세로 50m</option><option value="100" selected>가로·세로 100m</option><option value="200">가로·세로 200m</option></select>
+                  <p class="field-help">빠르게 범위를 만들 때 사용합니다. 실제 농장 모양이 다르면 모서리 직접 기록을 선택하세요.</p>
+                </div>
+                <button class="button button-secondary" id="parcel-use-location" type="button">현재 위치 중심으로 만들기</button>
+              </div>
+              <div class="parcel-mode-panel" id="parcel-walk-controls" hidden>
+                <p class="field-help no-margin">농장 모서리에 서서 차례대로 현재 모서리를 추가하세요. 3곳 이상 기록하면 닫힌 경계가 만들어집니다.</p>
+                <div class="parcel-corner-actions">
+                  <button class="button button-secondary" id="parcel-add-corner" type="button">현재 모서리 추가</button>
+                  <button class="button button-secondary" id="parcel-undo-corner" type="button" disabled>되돌리기</button>
+                  <button class="button button-secondary" id="parcel-reset-corners" type="button" disabled>초기화</button>
+                </div>
+                <p class="parcel-corner-count" id="parcel-corner-count">기록한 모서리 0곳 · 3곳 이상 필요</p>
+              </div>
+              <button class="button button-primary" id="parcel-save" type="button" disabled>이 경계 저장</button>
               <p class="location-search-status" id="parcel-status" role="status" aria-live="polite">농장 분석을 완료한 뒤 필지 경계를 등록할 수 있습니다.</p>
               <button class="button button-primary" id="satellite-refresh" type="button" disabled>최신 위성 자료 확인</button>
             </div>

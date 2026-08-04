@@ -28,7 +28,15 @@ test("소유 분석·작물주기의 지점으로 재배기간 ASOS와 평년값
     cropCycleService: {
       async getCycle(input) {
         calls.push(["cycle", input]);
-        return { status: "ACTIVE", anchorDate: "2026-07-01" };
+        return {
+          status: "ACTIVE",
+          anchorDate: "2026-07-01",
+          harvestWindow: {
+            earliest: "2026-08-29",
+            latest: "2026-09-28",
+          },
+          confidence: "MEDIUM",
+        };
       },
     },
     async getAnalysis() {
@@ -74,6 +82,11 @@ test("소유 분석·작물주기의 지점으로 재배기간 ASOS와 평년값
 
   assert.equal(result.state, "READY");
   assert.equal(result.adjustmentDays, 0);
+  assert.deepEqual(result.adjustedHarvestWindow, {
+    earliest: "2026-08-29",
+    latest: "2026-09-28",
+  });
+  assert.equal(result.adjustmentMode, "REMAINING_GDD_WINDOW_V2");
   assert.deepEqual(calls.find(([name]) => name === "observations")[1], {
     stationId: "119",
     from: "2026-07-01",
@@ -109,5 +122,43 @@ test("재배 예정 상태는 과거 관측을 요청하지 않는다", async ()
 
   assert.equal(result.state, "HOLD");
   assert.equal(result.adjustmentApplied, false);
+  assert.equal(called, false);
+});
+
+test("완료된 작기는 과거 관측을 다시 요청하거나 수확 일정을 바꾸지 않는다", async () => {
+  let called = false;
+  const service = createHarvestWeatherService({
+    cropCycleService: {
+      async getCycle() {
+        return {
+          status: "COMPLETED",
+          anchorDate: "2026-04-01",
+          harvestWindow: {
+            earliest: "2026-06-10",
+            latest: "2026-07-10",
+          },
+        };
+      },
+    },
+    async getAnalysis() { return { inputSummary: { crop: "POTATO" } }; },
+    async getAnalysisContext() {
+      return { observationStationId: "119", normalStationId: "108" };
+    },
+    observationAdapter: { async getDailyRange() { called = true; } },
+    climateAdapter: { async getNormals() { called = true; } },
+    clock: () => new Date("2026-08-04T03:00:00.000Z").getTime(),
+  });
+
+  const result = await service.getSeasonWeather({
+    ownerSessionId: "owner-1",
+    farmId: "farm-1",
+    cropId: "POTATO",
+    seasonId: "season-1",
+    analysisId: "analysis-1",
+  });
+
+  assert.equal(result.state, "HOLD");
+  assert.equal(result.adjustmentApplied, false);
+  assert.ok(result.limitations.includes("CROP_CYCLE_COMPLETED"));
   assert.equal(called, false);
 });

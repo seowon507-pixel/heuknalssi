@@ -562,6 +562,73 @@ test('current coordinates are converted to an owner-bound opaque location candid
   assert.match(result.candidates[0].candidateToken, /^[A-Za-z0-9_-]+$/u);
 });
 
+test('FarmMap search uses the analysis-bound exact location without exposing coordinates', async () => {
+  const calls = {
+    climate: [], observations: [], soil: [], short: [], mid: [], farmmap: [],
+  };
+  const adapters = completeAdapters(calls);
+  adapters.farmmap = {
+    id: 'farmmap-fixture',
+    state: 'CONFIGURED_UNVERIFIED',
+    async searchParcels(params) {
+      calls.farmmap.push(params);
+      return {
+        state: 'READY',
+        candidates: [{
+          farmmapId: 'FM-1',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[
+              [127.049, 37.249], [127.051, 37.249],
+              [127.051, 37.251], [127.049, 37.251],
+              [127.049, 37.249],
+            ]],
+          },
+          areaSquareMeters: 39_000,
+          category: '밭',
+          representativeAddress: '경기도 수원시 영통구 원천동',
+          source: 'EPIS_FARMMAP_WFS',
+        }],
+        sourceUrl: 'https://agis.epis.or.kr/',
+        limitations: ['REFERENCE_MAP_NOT_LEGAL_CADASTRAL_BOUNDARY'],
+      };
+    },
+  };
+  const services = createApplicationServices({
+    adapters,
+    rules: reviewedRules(),
+    verifiedLocationMappings: sixVerifiedMappings(),
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+    capabilities: { farmmap: 'CONFIGURED_UNVERIFIED' },
+  });
+  const candidateToken = await confirmedCandidate(services, 'owner-farmmap');
+  const analysis = await services.createAnalysis({
+    ownerSessionId: 'owner-farmmap',
+    analysisId: 'analysis-farmmap',
+    input: analysisInput(candidateToken),
+  });
+  assert.equal(JSON.stringify(analysis).includes('37.25'), false);
+  assert.equal(JSON.stringify(analysis).includes('127.05'), false);
+
+  const result = await services.searchFarmmapParcels({
+    ownerSessionId: 'owner-farmmap',
+    analysisId: 'analysis-farmmap',
+    radiusMeters: 300,
+  });
+  assert.deepEqual(calls.farmmap, [{
+    latitude: 37.25,
+    longitude: 127.05,
+    radiusMeters: 300,
+  }]);
+  assert.equal(result.state, 'READY');
+  assert.equal(result.candidates[0].farmmapId, 'FM-1');
+  assert.equal(await services.searchFarmmapParcels({
+    ownerSessionId: 'another-owner',
+    analysisId: 'analysis-farmmap',
+  }), null);
+});
+
 test('field soil profile is attached without exposing the private parcel lookup key', async () => {
   const privatePnu = '4111710500100010001';
   const calls = {
@@ -905,6 +972,91 @@ test('application exposes a source-trust weighted growth score with separate con
       })
     ).analysisId,
     result.analysisId,
+  );
+});
+
+test('active open-field heat plus a dry weather balance creates a conditional irrigation action', async () => {
+  const calls = {
+    climate: [],
+    observations: [],
+    soil: [],
+    short: [],
+    mid: [],
+  };
+  const adapters = completeAdapters(calls);
+  adapters.observations = {
+    id: 'dry-observations-fixture',
+    async getRecent(params) {
+      calls.observations.push(params);
+      return envelope({
+        sourceId: 'kma-asos-observations',
+        spatialLevel: 'OBSERVATION_STATION',
+        observedAt: '2026-07-22T15:00:00.000Z',
+        data: {
+          stationId: '119',
+          stationName: '수원',
+          distanceKm: 4.2,
+          readings: completeObservationReadings().map((reading) => ({
+            ...reading,
+            minTemperature: 24,
+            meanTemperature: 29,
+            maxTemperature: 35,
+            precipitationAmount: 0,
+          })),
+          monthlyNormals: [{ stationId: '119', month: 7, meanTemperature: 24 }],
+        },
+      });
+    },
+  };
+  adapters.kmaShort = {
+    id: 'hot-short-fixture',
+    async getForecast(params) {
+      calls.short.push(params);
+      return envelope({
+        sourceId: 'kma-short-forecast',
+        spatialLevel: 'FORECAST_GRID',
+        issuedAt: '2026-07-23T02:00:00.000Z',
+        validFrom: '2026-07-23T15:00:00.000Z',
+        validTo: '2026-07-24T14:59:59.000Z',
+        data: {
+          days: [{
+            ...forecastDay('2026-07-24', 'SHORT_GRID'),
+            minTemperature: 25,
+            maxTemperature: 36,
+          }],
+        },
+      });
+    },
+  };
+  const services = createApplicationServices({
+    adapters,
+    rules: reviewedRules(),
+    verifiedLocationMappings: { '4111710500': verifiedMapping() },
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+  });
+  const candidateToken = await confirmedCandidate(services);
+  const input = analysisInput(candidateToken);
+  input.usageMode = 'ACTIVE_GROWING';
+  const result = await services.createAnalysis({
+    ownerSessionId: 'owner-a',
+    analysisId: 'analysis-hot-dry-irrigation',
+    input,
+  });
+
+  assert.equal(result.fieldConditionsEstimate.surfaceMoisture.trend, 'DRYING');
+  assert.ok(result.fieldConditionsEstimate.surfaceMoisture.central <= 35);
+  const irrigation = result.actions.find(
+    ({ actionId }) => actionId === 'CHECK_SOIL_MOISTURE_AND_IRRIGATE',
+  );
+  assert.ok(irrigation);
+  assert.equal(irrigation.title, '고온 전 토양 수분 확인·관수');
+  assert.equal(irrigation.sourceFreshness, 'CURRENT');
+  assert.equal(
+    result.actions.some(
+      ({ actionId }) => actionId === 'CHECK_CURRENT_FORECAST_RISK',
+    ),
+    false,
   );
 });
 

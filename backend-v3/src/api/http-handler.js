@@ -25,6 +25,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const DEFAULT_RATE_LIMITS = Object.freeze({
   "locations.search": { limit: 30, windowMs: 60_000 },
   "locations.current": { limit: 10, windowMs: 60_000 },
+  "farmmap.search": { limit: 10, windowMs: 60_000 },
   "analyses.create": { limit: 10, windowMs: 60_000 },
   "analyses.report": { limit: 5, windowMs: 60_000 },
   "analyses.assistant": { limit: 20, windowMs: 60_000 },
@@ -59,6 +60,7 @@ const DEFAULT_IP_RATE_LIMITS = Object.freeze({
   "session.get": { limit: 30, windowMs: 60_000 },
   "locations.search": { limit: 30, windowMs: 60_000 },
   "locations.current": { limit: 10, windowMs: 60_000 },
+  "farmmap.search": { limit: 10, windowMs: 60_000 },
   "analyses.create": { limit: 10, windowMs: 60_000 },
   "analyses.get": { limit: 60, windowMs: 60_000 },
   "analyses.report": { limit: 5, windowMs: 60_000 },
@@ -104,6 +106,11 @@ const ROUTES = Object.freeze([
   {
     name: "locations.current",
     pattern: /^\/api\/locations\/current$/,
+    methods: ["POST"],
+  },
+  {
+    name: "farmmap.search",
+    pattern: /^\/api\/farmmap\/parcels\/search$/,
     methods: ["POST"],
   },
   {
@@ -907,6 +914,45 @@ export function createHttpHandler({
           { ...serviceContext, latitude, longitude },
           abortContext.signal,
         );
+        assertServiceResult(
+          result,
+          (value) => value && Array.isArray(value.candidates),
+        );
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (route.name === "farmmap.search") {
+        const body = await readJsonBody(
+          req,
+          config.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES,
+          abortContext.signal,
+        );
+        const allowedKeys = new Set(["analysisId", "radiusMeters"]);
+        if (
+          !body ||
+          Array.isArray(body) ||
+          Object.keys(body).some((key) => !allowedKeys.has(key)) ||
+          typeof body.analysisId !== "string" ||
+          !body.analysisId.trim() ||
+          (body.radiusMeters !== undefined &&
+            (!Number.isFinite(body.radiusMeters) ||
+              body.radiusMeters < 50 ||
+              body.radiusMeters > 1_000))
+        ) {
+          throw new ApiError("INVALID_INPUT");
+        }
+        const result = await invokeService(
+          services.searchFarmmapParcels,
+          services,
+          {
+            ...serviceContext,
+            analysisId: body.analysisId.trim(),
+            radiusMeters: body.radiusMeters ?? 250,
+          },
+          abortContext.signal,
+        );
+        if (!result) throw new ApiError("ANALYSIS_NOT_FOUND");
         assertServiceResult(
           result,
           (value) => value && Array.isArray(value.candidates),

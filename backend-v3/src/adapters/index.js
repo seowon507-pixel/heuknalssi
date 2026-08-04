@@ -4,6 +4,7 @@ import {
   createKmaShortForecastAdapter
 } from "./kma.js";
 import { createKmaHistoricalShortForecastAdapter } from "./kma-historical-forecast.js";
+import { createKmaHistoricalMediumForecastAdapter } from "./kma-historical-medium.js";
 import {
   createKmaAsosObservationAdapter,
   createKmaClimateNormalAdapter
@@ -16,6 +17,7 @@ import { createSoilExamAdapter } from "./soil-exam.js";
 import { createSmartfarmAdapter } from "./smartfarm.js";
 import { createGoogleAiSelector } from "./google-ai.js";
 import { createCopernicusSatelliteAdapter } from "./copernicus.js";
+import { createFarmmapAdapter } from "./farmmap.js";
 
 export {
   ADAPTER_STATES,
@@ -63,6 +65,7 @@ export {
   VERIFIED_KMA_CLIMATE_NORMAL_CONTRACT_VERSION,
   VERIFIED_KMA_LOCATION_CATALOG_CONTRACT_VERSION,
   VERIFIED_KMA_HISTORICAL_SHORT_CONTRACT_VERSION,
+  VERIFIED_KMA_HISTORICAL_MID_CONTRACT_VERSION,
   VERIFIED_KMA_SHORT_CONTRACT_VERSION,
   VERIFIED_SOIL_V2_CONTRACT_VERSION,
   VERIFIED_SOIL_FIELD_CONTRACT_VERSION,
@@ -100,8 +103,18 @@ export {
 } from "./kma-location-catalog.js";
 export {
   createKmaHistoricalShortForecastAdapter,
-  HISTORICAL_SHORT_ENDPOINT
+  HISTORICAL_SHORT_ENDPOINT,
+  KMA_GRID_CELL_COUNT,
+  KMA_GRID_HEIGHT,
+  KMA_GRID_WIDTH,
+  parseKmaHistoricalGrid
 } from "./kma-historical-forecast.js";
+export {
+  createKmaHistoricalMediumForecastAdapter,
+  HISTORICAL_MID_LAND_ENDPOINT,
+  HISTORICAL_MID_TEMPERATURE_ENDPOINT,
+  parseKmaHistoricalMediumTable,
+} from "./kma-historical-medium.js";
 export {
   createKmaMidForecastAdapter,
   createKmaShortForecastAdapter,
@@ -139,11 +152,18 @@ export {
   parseCopernicusNdviStatistics,
   parseCopernicusStacItems
 } from "./copernicus.js";
+export {
+  createFarmmapAdapter,
+  farmmapDefaults,
+  parseFarmmapFeatureCollection,
+  VERIFIED_FARMMAP_CONTRACT_VERSION
+} from "./farmmap.js";
 
 export const adapterFactories = Object.freeze({
   kakao: createKakaoAdapter,
   kmaShort: createKmaShortForecastAdapter,
   kmaHistoricalShort: createKmaHistoricalShortForecastAdapter,
+  kmaHistoricalMid: createKmaHistoricalMediumForecastAdapter,
   kmaMid: createKmaMidForecastAdapter,
   kmaAsos: createKmaAsosObservationAdapter,
   kmaClimate: createKmaClimateNormalAdapter,
@@ -152,7 +172,8 @@ export const adapterFactories = Object.freeze({
   soilField: createSoilFieldAdapter,
   soilExam: createSoilExamAdapter,
   smartfarm: createSmartfarmAdapter,
-  satellite: createCopernicusSatelliteAdapter
+  satellite: createCopernicusSatelliteAdapter,
+  farmmap: createFarmmapAdapter
 });
 
 /**
@@ -171,7 +192,8 @@ export function createAdapterRegistry({
   soilField = {},
   soilExam = {},
   smartfarm = {},
-  satellite = {}
+  satellite = {},
+  farmmap = {}
 } = {}) {
   const kmaProviderControl = {
     ...(common.providerControl ?? {}),
@@ -244,6 +266,7 @@ export function createAdapterRegistry({
     soilField: createSoilFieldAdapter({ ...common, ...soilField }),
     soilExam: createSoilExamAdapter({ ...common, ...soilExam }),
     smartfarm: createSmartfarmAdapter({ ...common, ...smartfarm }),
-    satellite: createCopernicusSatelliteAdapter({ ...common, ...satellite })
+    satellite: createCopernicusSatelliteAdapter({ ...common, ...satellite }),
+    farmmap: createFarmmapAdapter({ ...common, ...farmmap })
   });
 }

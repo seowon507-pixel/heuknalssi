@@ -1,11 +1,12 @@
 import { domainAssert } from "./errors.js";
 
-export const HARVEST_WEATHER_RULE_VERSION = "harvest-weather-pace-v1";
+export const HARVEST_WEATHER_RULE_VERSION = "harvest-weather-pace-v2";
 
 const DAY_MS = 86_400_000;
 const MINIMUM_PAIRED_DAYS = 14;
 const MINIMUM_COVERAGE = 0.7;
-const MAXIMUM_ADJUSTMENT_DAYS = 14;
+const ABSOLUTE_MAXIMUM_ADJUSTMENT_DAYS = 14;
+const WINDOW_ADJUSTMENT_RATIO = 0.25;
 const CROP_PARAMETERS = Object.freeze({
   APPLE: Object.freeze({ baseTemperature: 4, coldMean: 10, hotMaximum: 34 }),
   PEAR: Object.freeze({ baseTemperature: 4, coldMean: 10, hotMaximum: 34 }),
@@ -32,6 +33,10 @@ export function calculateHarvestWeatherPace(input = {}) {
     "HARVEST_WEATHER_RANGE_INVALID",
     "Harvest weather range cannot exceed 366 days.",
   );
+  const baselineHarvestWindow = optionalDateWindow(input.baselineHarvestWindow);
+  const asOfDate = input.asOfDate === undefined
+    ? to
+    : requiredDate(input.asOfDate, "asOfDate");
 
   const normals = normalMeanByMonth(input.monthlyNormals);
   const readings = Array.isArray(input.readings) ? input.readings : [];
@@ -73,26 +78,59 @@ export function calculateHarvestWeatherPace(input = {}) {
   }
 
   const coverage = pairedDayCount / expectedDayCount;
-  const enoughData =
+  const coverageSufficient =
     pairedDayCount >= MINIMUM_PAIRED_DAYS &&
-    coverage >= MINIMUM_COVERAGE &&
-    normalGrowingDegreeDays > 0;
-  const normalDailyHeat = enoughData
-    ? normalGrowingDegreeDays / pairedDayCount
-    : null;
-  const rawEquivalentDays = enoughData && normalDailyHeat > 0
-    ? (normalGrowingDegreeDays - observedGrowingDegreeDays) / normalDailyHeat
-    : null;
-  const adjustmentDays = rawEquivalentDays === null
-    ? 0
-    : clamp(
-        Math.round(rawEquivalentDays * coverage),
-        -MAXIMUM_ADJUSTMENT_DAYS,
-        MAXIMUM_ADJUSTMENT_DAYS,
-      );
+    coverage >= MINIMUM_COVERAGE;
+  const thermalBaselineActive = normalGrowingDegreeDays > 0;
+  const enoughData = coverageSufficient && thermalBaselineActive;
   const paceRatio = normalGrowingDegreeDays > 0
     ? observedGrowingDegreeDays / normalGrowingDegreeDays
     : null;
+  const baselineWindowElapsed = baselineHarvestWindow !== null &&
+    asOfDate > baselineHarvestWindow.latest;
+  const windowWidthDays = baselineHarvestWindow === null
+    ? 0
+    : daysBetween(
+        baselineHarvestWindow.earliest,
+        baselineHarvestWindow.latest,
+      );
+  const maximumAdjustmentDays = baselineHarvestWindow === null
+    ? 0
+    : Math.min(
+        ABSOLUTE_MAXIMUM_ADJUSTMENT_DAYS,
+        Math.ceil(windowWidthDays * WINDOW_ADJUSTMENT_RATIO),
+      );
+  const baselineMidpoint = baselineHarvestWindow === null
+    ? null
+    : addDays(
+        baselineHarvestWindow.earliest,
+        Math.round(windowWidthDays / 2),
+      );
+  const remainingDaysToMidpoint = baselineMidpoint === null
+    ? null
+    : Math.max(0, daysBetween(asOfDate, baselineMidpoint));
+  const scheduleEligible =
+    enoughData &&
+    baselineHarvestWindow !== null &&
+    !baselineWindowElapsed &&
+    paceRatio !== null &&
+    paceRatio > 0;
+  const rawAdjustmentDays = scheduleEligible
+    ? remainingDaysToMidpoint * (1 / paceRatio - 1)
+    : null;
+  const adjustmentDays = rawAdjustmentDays === null
+    ? 0
+    : clamp(
+        Math.round(rawAdjustmentDays * coverage),
+        -maximumAdjustmentDays,
+        maximumAdjustmentDays,
+      );
+  const adjustedHarvestWindow = baselineHarvestWindow === null
+    ? null
+    : Object.freeze({
+        earliest: addDays(baselineHarvestWindow.earliest, adjustmentDays),
+        latest: addDays(baselineHarvestWindow.latest, adjustmentDays),
+      });
   const state = enoughData
     ? pairedDayCount === expectedDayCount
       ? "READY"
@@ -103,8 +141,22 @@ export function calculateHarvestWeatherPace(input = {}) {
 
   return Object.freeze({
     state,
-    adjustmentApplied: enoughData,
+    adjustmentApplied: scheduleEligible,
     adjustmentDays,
+    adjustmentMode: scheduleEligible
+      ? "REMAINING_GDD_WINDOW_V2"
+      : "THERMAL_PACE_ONLY",
+    baselineHarvestWindow,
+    adjustedHarvestWindow,
+    maximumAdjustmentDays,
+    rawAdjustmentDays:
+      rawAdjustmentDays === null ? null : round(rawAdjustmentDays, 2),
+    remainingDaysToMidpoint,
+    confidence: scheduleConfidence({
+      scheduleEligible,
+      coverage,
+      baselineConfidence: input.baselineConfidence,
+    }),
     cropId,
     period: Object.freeze({ from, to, expectedDayCount }),
     coverage: round(coverage, 4),
@@ -119,6 +171,11 @@ export function calculateHarvestWeatherPace(input = {}) {
     heatStressDayCount,
     summary: paceSummary({
       enoughData,
+      coverageSufficient,
+      thermalBaselineActive,
+      scheduleEligible,
+      baselineHarvestWindow,
+      baselineWindowElapsed,
       adjustmentDays,
       pairedDayCount,
       expectedDayCount,
@@ -127,7 +184,16 @@ export function calculateHarvestWeatherPace(input = {}) {
     limitations: Object.freeze([
       "ASOS_STATION_NOT_FIELD_MICROCLIMATE",
       "THERMAL_PACE_NOT_BIOLOGICAL_MATURITY_DIAGNOSIS",
-      ...(!enoughData ? ["SEASON_WEATHER_COVERAGE_INSUFFICIENT"] : []),
+      ...(!coverageSufficient
+        ? ["SEASON_WEATHER_COVERAGE_INSUFFICIENT"]
+        : []),
+      ...(coverageSufficient && !thermalBaselineActive
+        ? ["NORMAL_GDD_BASELINE_INACTIVE"]
+        : []),
+      ...(baselineHarvestWindow === null
+        ? ["BASELINE_HARVEST_WINDOW_REQUIRED"]
+        : []),
+      ...(baselineWindowElapsed ? ["BASELINE_HARVEST_WINDOW_ELAPSED"] : []),
     ]),
     ruleVersion: HARVEST_WEATHER_RULE_VERSION,
   });
@@ -156,13 +222,33 @@ function dailyMean(reading) {
 
 function paceSummary({
   enoughData,
+  coverageSufficient,
+  thermalBaselineActive,
+  scheduleEligible,
+  baselineHarvestWindow,
+  baselineWindowElapsed,
   adjustmentDays,
   pairedDayCount,
   expectedDayCount,
   paceRatio,
 }) {
-  if (!enoughData) {
+  if (!coverageSufficient) {
     return `재배기간 관측 ${pairedDayCount}/${expectedDayCount}일·적산온도 비교가 부족해 기준 일정을 유지`;
+  }
+  if (!thermalBaselineActive) {
+    return "평년 기온이 작물 기준온도 이하인 기간이라 생육 속도로 환산하지 않음";
+  }
+  if (!enoughData) {
+    return "적산온도 속도를 계산할 수 없어 기준 일정을 유지";
+  }
+  if (baselineHarvestWindow === null) {
+    return "기준 수확 범위가 없어 적산온도 추이만 확인하고 수확 일정은 변경하지 않음";
+  }
+  if (baselineWindowElapsed) {
+    return "기준 수확 범위가 지나 과거 일정을 변경하지 않음";
+  }
+  if (!scheduleEligible) {
+    return "적산온도 속도를 일정 보정에 사용할 수 없어 기준 수확 범위를 유지";
   }
   const differencePercent = Math.round(Math.abs((paceRatio - 1) * 100));
   if (adjustmentDays < 0) {
@@ -172,6 +258,31 @@ function paceSummary({
     return `재배 후 ${pairedDayCount}일 적산온도가 평년보다 ${differencePercent}% 느려 첫 수확을 ${adjustmentDays}일 늦춰 예상`;
   }
   return `재배 후 ${pairedDayCount}일 적산온도가 평년 범위와 비슷해 기준 일정을 유지`;
+}
+
+function optionalDateWindow(value) {
+  if (value === null || value === undefined) return null;
+  domainAssert(
+    typeof value === "object" && !Array.isArray(value),
+    "HARVEST_WEATHER_WINDOW_INVALID",
+    "baselineHarvestWindow must be an object.",
+  );
+  const earliest = requiredDate(value.earliest, "baselineHarvestWindow.earliest");
+  const latest = requiredDate(value.latest, "baselineHarvestWindow.latest");
+  domainAssert(
+    earliest <= latest,
+    "HARVEST_WEATHER_WINDOW_INVALID",
+    "baselineHarvestWindow.earliest must not be after latest.",
+  );
+  return Object.freeze({ earliest, latest });
+}
+
+function scheduleConfidence({ scheduleEligible, coverage, baselineConfidence }) {
+  if (!scheduleEligible) return "LOW";
+  const normalized = String(baselineConfidence ?? "LOW").trim().toUpperCase();
+  return coverage >= 0.9 && ["HIGH", "MEDIUM"].includes(normalized)
+    ? "MEDIUM"
+    : "LOW";
 }
 
 function requiredDate(value, field) {
@@ -191,6 +302,12 @@ function daysBetween(from, to) {
       new Date(`${from}T00:00:00Z`).getTime()) /
       DAY_MS,
   );
+}
+
+function addDays(value, amount) {
+  return new Date(
+    new Date(`${value}T00:00:00Z`).getTime() + amount * DAY_MS,
+  ).toISOString().slice(0, 10);
 }
 
 function finite(value) {

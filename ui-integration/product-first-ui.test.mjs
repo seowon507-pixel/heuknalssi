@@ -998,14 +998,22 @@ test("배포 빌드는 브라우저에서 import하는 제품 기능 모듈을 �
   }
 });
 
-test("위성 연결이 비활성이면 필지 조작을 잠그고 준비 필요 상태를 알린다", async () => {
+test("팜맵 필지 선택을 기본으로 제공하고 위성 연결 전에도 경계를 저장할 수 있다", async () => {
   const client = await readFile(
     path.join(import.meta.dirname, "backend-client.mjs"),
     "utf8",
   );
+  const markup = await readFile(
+    path.join(import.meta.dirname, "..", "08_흙날씨진단_UI_샘플.html"),
+    "utf8",
+  );
 
   assert.match(client, /"READY", "CONFIGURED_UNVERIFIED"/);
-  assert.match(client, /연결 준비 필요/);
-  assert.match(client, /현재 실행 환경에는 위성 데이터 연결이 설정되지 않았습니다/);
+  assert.match(client, /searchFarmmapParcels/);
+  assert.match(client, /위성 연결 전에도 이 경계는 유지됩니다/);
   assert.match(client, /#parcel-use-location/);
+  assert.match(client, /parcelGeometryFromCorners/);
+  assert.match(markup, /id="parcel-mode-farmmap"/);
+  assert.match(markup, /id="parcel-farmmap-candidates"/);
+  assert.match(markup, /법적 지적 경계를 대신하지 않습니다/);
 });

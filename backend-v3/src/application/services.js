@@ -234,6 +234,7 @@ export function createApplicationServices({
   capabilities = {
     smartfarm: 'DISABLED',
     satellite: 'DISABLED',
+    farmmap: 'DISABLED',
     persistence: 'NOT_AVAILABLE',
     assistant: 'FALLBACK',
     deviceBackup: 'NOT_AVAILABLE',
@@ -376,6 +377,46 @@ export function createApplicationServices({
           ? []
           : ['LOCATION_PROVIDER_UNAVAILABLE_OR_NO_DATA'],
     };
+  }
+
+  async function searchFarmmapParcels({
+    ownerSessionId,
+    analysisId,
+    radiusMeters = 250,
+    signal,
+  }) {
+    const record = await Promise.resolve(analysisStore.get(analysisId));
+    if (!record || record.ownerSessionId !== ownerSessionId) return null;
+    const location = record.exactFarmLocation;
+    if (
+      !location ||
+      !Number.isFinite(location.latitude) ||
+      !Number.isFinite(location.longitude)
+    ) {
+      throw serviceError(
+        'EXACT_LOCATION_REQUIRED',
+        'FarmMap parcel search requires an address-resolved farm location.',
+        409,
+      );
+    }
+    if (typeof adapters.farmmap?.searchParcels !== 'function') {
+      return {
+        state: 'UNAVAILABLE',
+        candidates: [],
+        sourceUrl: 'https://agis.epis.or.kr/',
+        limitations: ['FARMMAP_NOT_CONFIGURED'],
+      };
+    }
+    const result = await adapters.farmmap.searchParcels(
+      {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        radiusMeters,
+      },
+      { signal, deadlineAt: clock() + Math.min(coreDeadlineMs, 7_000) },
+    );
+    if (signal?.aborted) throw signal.reason;
+    return structuredClone(result);
   }
 
   async function createAnalysis({
@@ -589,6 +630,7 @@ export function createApplicationServices({
       request,
       decision,
       modules: internalModules,
+      fieldConditionsEstimate,
     });
     const actionProjection = mergeAndRankActions({
       request,
@@ -679,6 +721,16 @@ export function createApplicationServices({
           observationStationId: locationKeys.observationStationId ?? null,
           normalStationId: locationKeys.normalStationId ?? null,
         },
+        // FarmMap retrieval needs the selected point, but generic analysis
+        // context consumers (assistant/harvest) must not receive coordinates.
+        exactFarmLocation:
+          Number.isFinite(resolvedLocation.latitude) &&
+          Number.isFinite(resolvedLocation.longitude)
+            ? {
+                latitude: resolvedLocation.latitude,
+                longitude: resolvedLocation.longitude,
+              }
+            : null,
         reportPending: false,
         reportLockExpiresAtMs: null,
         expiresAtMs,
@@ -956,6 +1008,11 @@ export function createApplicationServices({
           runtimeStatus?.adapters?.soilField,
           'getFieldProfile',
         ),
+        farmmap: adapterCapability(
+          adapters.farmmap,
+          capabilities.farmmap,
+          'searchParcels',
+        ),
       },
       contracts: sanitizeRuntimeContracts(runtimeStatus?.contracts),
       capabilities: {
@@ -965,6 +1022,7 @@ export function createApplicationServices({
         pestLiveOccurrence:
           capabilities.pestLiveOccurrence ?? 'NOT_CONNECTED',
         satellite: capabilities.satellite ?? 'DISABLED',
+        farmmap: capabilities.farmmap ?? 'DISABLED',
         persistence: persistenceHealth.capability,
         deviceBackup: deviceBackupHealth.capability,
         report: 'DETERMINISTIC_TEMPLATE',
@@ -1023,6 +1081,7 @@ export function createApplicationServices({
   return Object.freeze({
     searchLocations,
     resolveCurrentLocation,
+    searchFarmmapParcels,
     normalizeAnalysisInput,
     createAnalysis,
     getAnalysis,
@@ -2267,7 +2326,12 @@ function evidenceFromRule({
   };
 }
 
-function createActionCandidates({ request, decision, modules }) {
+function createActionCandidates({
+  request,
+  decision,
+  modules,
+  fieldConditionsEstimate,
+}) {
   const candidates = [];
   const common = {
     usageModes: ['LAND_SEARCH', 'ACTIVE_GROWING'],
@@ -2300,7 +2364,29 @@ function createActionCandidates({ request, decision, modules }) {
     });
   }
 
+  const heatDryness = heatDrynessActionContext({
+    request,
+    forecast: modules.forecast,
+    fieldConditionsEstimate,
+  });
+  if (heatDryness) {
+    candidates.push({
+      ...common,
+      actionId: 'CHECK_SOIL_MOISTURE_AND_IRRIGATE',
+      titleTemplateId: 'ACTION.CHECK_SOIL_MOISTURE_AND_IRRIGATE',
+      triggerIds: heatDryness.riskIds,
+      blocking: false,
+      severity: heatDryness.severity,
+      dueWindow: heatDryness.dueWindow,
+      evidenceStrength: 'RISK_ONLY',
+      sourceFreshness: 'CURRENT',
+      ruleOrder: 15,
+    });
+  }
+
+  const heatDryRiskIds = new Set(heatDryness?.riskIds ?? []);
   for (const risk of modules.forecast?.result?.risks ?? []) {
+    if (heatDryRiskIds.has(risk.riskId)) continue;
     const evidenceQuality = actionEvidenceQuality({
       triggerIds: [risk.riskId],
       modules,
@@ -2326,6 +2412,46 @@ function createActionCandidates({ request, decision, modules }) {
     });
   }
   return candidates;
+}
+
+function heatDrynessActionContext({ request, forecast, fieldConditionsEstimate }) {
+  if (
+    request.usageMode !== 'ACTIVE_GROWING' ||
+    request.cultivationMode !== 'OPEN_FIELD'
+  ) {
+    return null;
+  }
+  if (!['READY', 'PARTIAL'].includes(fieldConditionsEstimate?.state)) {
+    return null;
+  }
+  const moisture = fieldConditionsEstimate.surfaceMoisture;
+  const confidence = fieldConditionsEstimate.confidence?.score;
+  const dryWeatherBalance =
+    moisture?.trend === 'DRYING' &&
+    Number.isFinite(moisture?.central) &&
+    moisture.central <= 35 &&
+    Number.isFinite(moisture?.cumulativeBalanceMm) &&
+    moisture.cumulativeBalanceMm <= -10 &&
+    Number.isFinite(confidence) &&
+    confidence >= 0.35;
+  if (!dryWeatherBalance) return null;
+
+  const heatRisks = (forecast?.result?.risks ?? []).filter(
+    (risk) =>
+      risk?.sourceFreshness === 'CURRENT' &&
+      risk?.trigger?.metric === 'maxTemperature' &&
+      typeof risk?.riskId === 'string',
+  );
+  if (heatRisks.length === 0) return null;
+  return {
+    riskIds: heatRisks.map((risk) => risk.riskId),
+    severity: heatRisks.some((risk) => risk.severity === 'WARNING')
+      ? 'WARNING'
+      : 'CAUTION',
+    dueWindow: heatRisks.some((risk) => risk.sourceType === 'SHORT_GRID')
+      ? '1_TO_3_DAYS'
+      : '4_TO_10_DAYS',
+  };
 }
 
 function decisionActionFor(code, evidenceContext) {

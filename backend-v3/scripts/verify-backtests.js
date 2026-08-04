@@ -49,36 +49,26 @@ const forecastAdapter = createKmaHistoricalShortForecastAdapter({
   contractVersion: VERIFIED_KMA_HISTORICAL_SHORT_CONTRACT_VERSION,
 });
 
-const [observationEnvelope, forecastEnvelope] = await Promise.all([
+const [observationEnvelope, forecastSnapshots] = await Promise.all([
   observationsAdapter.getRecent(
     { stationId: TARGET.stationId, completedDays: 7 },
     { deadlineAt: HISTORICAL_CLOCK().getTime() + 20_000 },
   ),
-  forecastAdapter.getIssuedForecast(
-    {
-      ...grid,
-      baseDate: TARGET.issuedBaseDate,
-      baseTime: TARGET.issuedBaseTime,
-    },
-    { deadlineAt: Date.now() + 20_000 },
-  ),
+  fetchIssuedDailyForecast({
+    adapter: forecastAdapter,
+    point: { id: TARGET.stationId, ...grid },
+    baseDate: TARGET.issuedBaseDate,
+    baseTime: TARGET.issuedBaseTime,
+    validDate: TARGET.observationWindow.from.replaceAll('-', ''),
+  }),
 ]);
 
 const observationRows =
   observationEnvelope.adapterState === 'SUCCESS'
     ? observationEnvelope.data?.readings ?? []
     : [];
-const issuedForecastRows =
-  forecastEnvelope.adapterState === 'SUCCESS'
-    ? (forecastEnvelope.data?.days ?? []).map((day) => ({
-        issuedAt: day.issueTime,
-        validAt: day.validFrom,
-        validDate: day.date,
-        minTemperature: day.minTemperature,
-        maxTemperature: day.maxTemperature,
-        precipitationProbability: day.precipitationProbability,
-      }))
-    : [];
+const forecastEnvelopeState = summarizeSnapshotState(forecastSnapshots);
+const issuedForecastRows = dailyForecastRow(forecastSnapshots);
 const riskRules = REVIEWED_CROP_RULES.filter(
   (rule) =>
     rule.module === 'FORECAST' &&
@@ -113,10 +103,16 @@ const accuracy =
             : []),
         ],
       };
-const ready = replay.state === 'READY' && accuracy.state === 'READY';
+const temperatureReady =
+  accuracy.temperature?.minTemperature?.sampleCount > 0 &&
+  accuracy.temperature?.maxTemperature?.sampleCount > 0;
+const ready =
+  replay.state === 'READY' &&
+  forecastEnvelopeState === 'SUCCESS' &&
+  temperatureReady;
 const result = {
   auditKind: 'HISTORICAL_ASOS_AND_ISSUED_FORECAST_BACKTEST',
-  state: ready ? 'READY' : 'CHANGES_REQUESTED',
+  state: ready ? 'TEMPERATURE_READY' : 'CHANGES_REQUESTED',
   target: {
     label: TARGET.label,
     stationId: TARGET.stationId,
@@ -130,12 +126,14 @@ const result = {
       qualityFlags: observationEnvelope.qualityFlags,
     },
     historicalIssuedForecast: {
-      state: forecastEnvelope.adapterState,
-      qualityFlags: forecastEnvelope.qualityFlags,
+      state: forecastEnvelopeState,
+      qualityFlags: [
+        ...new Set(forecastSnapshots.flatMap(({ qualityFlags = [] }) => qualityFlags)),
+      ],
       requiredCapability:
-        forecastEnvelope.adapterState === 'SUCCESS'
+        forecastEnvelopeState === 'SUCCESS'
           ? null
-          : 'KMA_API_HUB_HISTORICAL_SHORT_FORECAST',
+          : 'KMA_API_HUB_HISTORICAL_SHORT_GRID',
     },
   },
   replay,
@@ -149,3 +147,62 @@ const result = {
 
 console.log(JSON.stringify(result, null, 2));
 if (!ready) process.exitCode = 2;
+
+async function fetchIssuedDailyForecast({
+  adapter,
+  point,
+  baseDate,
+  baseTime,
+  validDate,
+}) {
+  return Promise.all([
+    adapter.getGridSnapshot(
+      {
+        baseDate,
+        baseTime,
+        validDate,
+        validTime: '0600',
+        variable: 'TMN',
+        points: [point],
+      },
+      { deadlineAt: Date.now() + 30_000 },
+    ),
+    adapter.getGridSnapshot(
+      {
+        baseDate,
+        baseTime,
+        validDate,
+        validTime: '1500',
+        variable: 'TMX',
+        points: [point],
+      },
+      { deadlineAt: Date.now() + 30_000 },
+    ),
+  ]);
+}
+
+function summarizeSnapshotState(snapshots) {
+  const states = snapshots.map(({ adapterState }) => adapterState);
+  if (states.every((state) => state === 'SUCCESS')) return 'SUCCESS';
+  if (states.some((state) => state === 'SUCCESS')) return 'PARTIAL';
+  return states[0] ?? 'UNAVAILABLE';
+}
+
+function dailyForecastRow(snapshots) {
+  const byVariable = new Map(
+    snapshots.map((snapshot) => [snapshot.data?.variable, snapshot]),
+  );
+  const tmin = byVariable.get('TMN');
+  const tmax = byVariable.get('TMX');
+  if (![tmin, tmax].every((snapshot) => snapshot?.adapterState === 'SUCCESS')) {
+    return [];
+  }
+  return [{
+    issuedAt: tmax.issuedAt,
+    validAt: tmax.validFrom,
+    validDate: TARGET.observationWindow.from,
+    minTemperature: tmin.data.points[0].value,
+    maxTemperature: tmax.data.points[0].value,
+    precipitationProbability: null,
+  }];
+}

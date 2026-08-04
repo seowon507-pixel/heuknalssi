@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "from": "2025-08-05",
+  "to": "2025-08-05",
+  "shortRows": [
+    {
+      "areaCode": "2820000000",
+      "region": "인천광역시 남동구",
+      "stationId": "112",
+      "leadDays": 1,
+      "issuedAt": "2025-08-04T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 30,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4150000000",
+      "region": "경기도 이천시",
+      "stationId": "203",
+      "leadDays": 1,
+      "issuedAt": "2025-08-04T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 30,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4717000000",
+      "region": "경상북도 안동시",
+      "stationId": "136",
+      "leadDays": 1,
+      "issuedAt": "2025-08-04T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 60,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4476000000",
+      "region": "충청남도 부여군",
+      "stationId": "236",
+      "leadDays": 1,
+      "issuedAt": "2025-08-04T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 30,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4721000000",
+      "region": "경상북도 영주시",
+      "stationId": "272",
+      "leadDays": 1,
+      "issuedAt": "2025-08-04T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 60,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4728000000",
+      "region": "경상북도 문경시",
+      "stationId": "273",
+      "leadDays": 1,
+      "issuedAt": "2025-08-04T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 60,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4773000000",
+      "region": "경상북도 의성군",
+      "stationId": "278",
+      "leadDays": 1,
+      "issuedAt": "2025-08-04T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 60,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "5176000000",
+      "region": "강원특별자치도 평창군",
+      "stationId": "100",
+      "leadDays": 1,
+      "issuedAt": "2025-08-04T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 30,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "2820000000",
+      "region": "인천광역시 남동구",
+      "stationId": "112",
+      "leadDays": 3,
+      "issuedAt": "2025-08-02T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 30,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4150000000",
+      "region": "경기도 이천시",
+      "stationId": "203",
+      "leadDays": 3,
+      "issuedAt": "2025-08-02T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 60,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4717000000",
+      "region": "경상북도 안동시",
+      "stationId": "136",
+      "leadDays": 3,
+      "issuedAt": "2025-08-02T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 60,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4476000000",
+      "region": "충청남도 부여군",
+      "stationId": "236",
+      "leadDays": 3,
+      "issuedAt": "2025-08-02T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 60,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4721000000",
+      "region": "경상북도 영주시",
+      "stationId": "272",
+      "leadDays": 3,
+      "issuedAt": "2025-08-02T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 60,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4728000000",
+      "region": "경상북도 문경시",
+      "stationId": "273",
+      "leadDays": 3,
+      "issuedAt": "2025-08-02T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 60,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "4773000000",
+      "region": "경상북도 의성군",
+      "stationId": "278",
+      "leadDays": 3,
+      "issuedAt": "2025-08-02T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 60,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    },
+    {
+      "areaCode": "5176000000",
+      "region": "강원특별자치도 평창군",
+      "stationId": "100",
+      "leadDays": 3,
+      "issuedAt": "2025-08-02T08:00:00.000Z",
+      "validAt": "2025-08-05T14:00:00.000Z",
+      "validDate": "2025-08-05",
+      "precipitationProbability": 30,
+      "hourlyPeriodCount": 24,
+      "aggregationState": "READY"
+    }
+  ],
+  "mediumRows": [],
+  "failures": [
+    {
+      "source": "HISTORICAL_MEDIUM_FIVE_DAY",
+      "validDate": "2025-08-05",
+      "state": "AUTH_ERROR",
+      "qualityFlags": [
+        "PROVIDER_AUTH_ERROR"
+      ]
+    }
+  ],
+  "mediumPermissionState": "AUTH_ERROR"
+}

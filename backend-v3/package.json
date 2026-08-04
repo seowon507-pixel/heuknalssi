@@ -13,6 +13,8 @@
     "check": "node scripts/check-project.js",
     "verify:backtest": "node --env-file-if-exists=../.env scripts/verify-backtests.js",
     "verify:backtest:1y": "node --env-file-if-exists=../.env scripts/verify-one-year-backtest.js",
+    "verify:backtest:forecast-extended": "node --env-file-if-exists=../.env scripts/verify-forecast-extended.js",
+    "verify:backtest:evidence": "node scripts/verify-evidence-backtests.js",
     "verify:live": "node --env-file-if-exists=../.env scripts/verify-live-providers.js",
     "verify:flow": "node scripts/verify-natural-flow.js"
   }

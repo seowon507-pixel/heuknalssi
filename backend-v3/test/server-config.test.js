@@ -86,6 +86,24 @@ test('device backup is unavailable without both server-side values and accepts a
   });
 });
 
+test('FarmMap requires the registered domain, server key, and frozen WFS contract together', () => {
+  const missingContract = loadConfig({
+    ENABLE_FARMMAP: 'true',
+    FARMMAP_API_KEY: 'server-only-key',
+    FARMMAP_DOMAIN: 'http://localhost:3000',
+  });
+  assert.equal(missingContract.capabilities.farmmap, 'HOLD');
+
+  const configured = loadConfig({
+    ENABLE_FARMMAP: 'true',
+    FARMMAP_API_KEY: 'server-only-key',
+    FARMMAP_DOMAIN: 'http://localhost:3000',
+    FARMMAP_CONTRACT_VERSION: 'epis-farmmap-wfs-v1-2026-08-04',
+  });
+  assert.equal(configured.capabilities.farmmap, 'CONFIGURED_UNVERIFIED');
+  assert.equal(configured.adapterConfig.farmmap.apiKey, 'server-only-key');
+});
+
 test('default server preflight reports deployment HOLD without verified assets', async () => {
   const backend = createBackend({
     env: {

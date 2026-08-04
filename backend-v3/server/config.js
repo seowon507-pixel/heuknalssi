@@ -176,6 +176,12 @@ export function loadConfig(env = process.env) {
         clientSecret: env.COPERNICUS_CLIENT_SECRET || null,
         contractVersion: env.COPERNICUS_CONTRACT_VERSION || null,
       },
+      farmmap: {
+        enabled: enabled(env.ENABLE_FARMMAP),
+        apiKey: env.FARMMAP_API_KEY || null,
+        domain: env.FARMMAP_DOMAIN || null,
+        contractVersion: env.FARMMAP_CONTRACT_VERSION || null,
+      },
     },
     // 기기 이관 백업 저장소. 미설정이면 기능만 꺼지고 분석에는 영향이 없다.
     deviceBackupConfig: {
@@ -206,6 +212,13 @@ export function loadConfig(env = process.env) {
         ? env.COPERNICUS_CLIENT_ID && env.COPERNICUS_CLIENT_SECRET
           ? 'CONFIGURED_UNVERIFIED'
           : 'CATALOG_ONLY'
+        : 'DISABLED',
+      farmmap: enabled(env.ENABLE_FARMMAP)
+        ? env.FARMMAP_API_KEY && env.FARMMAP_DOMAIN &&
+            env.FARMMAP_CONTRACT_VERSION ===
+              'epis-farmmap-wfs-v1-2026-08-04'
+          ? 'CONFIGURED_UNVERIFIED'
+          : 'HOLD'
         : 'DISABLED',
       persistence:
         supabaseUrl && supabaseSecretKey

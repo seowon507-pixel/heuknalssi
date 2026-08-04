@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -9,6 +9,7 @@ import {
   createKmaHistoricalShortForecastAdapter,
 } from "../src/adapters/index.js";
 import {
+  calculateIssuedForecastMetrics,
   replayAsosRiskRules,
   toKmaGrid,
 } from "../src/application/index.js";
@@ -114,23 +115,31 @@ const harvestPace = buildHarvestPace({
   from,
   to,
 });
-const historicalForecastProbe = await probeHistoricalForecast({
+const dailyCropRiskRows = buildDailyCropRiskRows({
+  replayRuns,
+  rules: openFieldRules,
+});
+const dailySummaryRows = buildDailySummaryRows(dailyCropRiskRows);
+const historicalForecastBacktest = await buildHistoricalForecastBacktest({
   adapter: historicalForecastAdapter,
-  location: locations[0],
+  locations,
+  successfulStations,
   from,
+  to,
+  limitDays: args.forecastLimit,
 });
 
 const mechanicalReady =
   dataQuality.coverageRatio >= 0.98 &&
   dataQuality.successfulStationCount === locations.length &&
   riskReplay.state === "READY" &&
-  harvestPace.state === "READY";
+  ["READY", "PACE_READY_SCHEDULE_BLOCKED"].includes(harvestPace.state);
 const result = {
   auditKind: "ONE_YEAR_WEATHER_RULE_AND_HARVEST_PACE_BACKTEST",
   generatedAt: new Date().toISOString(),
   state:
-    mechanicalReady && historicalForecastProbe.state === "SUCCESS"
-      ? "READY_WITHOUT_OUTCOME_GROUND_TRUTH"
+    mechanicalReady && historicalForecastBacktest.state === "TEMPERATURE_READY"
+      ? "FORECAST_TEMPERATURE_BACKTEST_READY_OUTCOME_GROUND_TRUTH_BLOCKED"
       : mechanicalReady
         ? "MECHANICAL_BACKTEST_READY_FORECAST_ACCURACY_BLOCKED"
         : "CHANGES_REQUESTED",
@@ -164,23 +173,24 @@ const result = {
   ],
   providerStates: {
     historicalAsos: summarizeProviderStates(stationRuns),
-    historicalIssuedForecast: historicalForecastProbe,
+    historicalIssuedForecast: historicalForecastBacktest.providerState,
   },
   dataQuality,
   riskReplay,
   harvestPace,
+  forecastAccuracy: historicalForecastBacktest,
   validationBoundaries: {
     forecastErrorMetrics:
-      historicalForecastProbe.state === "SUCCESS"
-        ? "SINGLE_ISSUE_PROBE_ONLY"
-        : `BLOCKED_${historicalForecastProbe.state}`,
+      historicalForecastBacktest.state === "TEMPERATURE_READY"
+        ? "ONE_AND_THREE_DAY_TEMPERATURE_READY"
+        : `PARTIAL_${historicalForecastBacktest.state}`,
     cropDamagePrecisionRecall: "BLOCKED_NO_HISTORICAL_DAMAGE_LABELS",
     harvestDateError: "BLOCKED_NO_ACTUAL_HARVEST_DATES",
     historicalSoilContribution:
       "EXCLUDED_NO_AS_OF_DATE_FIELD_SOIL_SNAPSHOT",
     interpretation: [
       "관측 재생은 임계값 발동과 결측 방어를 검증하지만 미래 예측 정확도를 증명하지 않는다.",
-      "90일 적산온도 재생은 일정 보정의 안정성을 검증하지만 실제 수확일 정확도를 증명하지 않는다.",
+      "90일 적산온도 재생은 열량 추이 계산만 검증한다. 실제 작기와 기준 수확 범위가 없어 일정 보정은 실행하지 않았다.",
       "현재 토양값을 과거 시점에 소급 적용하지 않았다.",
     ],
   },
@@ -207,13 +217,52 @@ assert.ok(
   result.harvestPace.evaluationCount <=
     locations.length * CROPS.length * result.harvestPace.windowEndDates.length,
 );
+assert.equal(
+  dailyCropRiskRows.length,
+  expectedDayCount * locations.length * CROPS.length,
+);
+assert.equal(dailySummaryRows.length, expectedDayCount);
+for (const cropSummary of result.riskReplay.byCrop) {
+  assert.equal(
+    dailyCropRiskRows.filter(
+      (row) => row.crop_id === cropSummary.crop && row.general_risk_triggered,
+    ).length,
+    cropSummary.triggeredStationDayCount,
+  );
+}
+assert.equal(result.harvestPace.evaluations.length, result.harvestPace.evaluationCount);
 
 await mkdir(OUTPUT_DIRECTORY, { recursive: true });
 const outputPath = path.join(
   OUTPUT_DIRECTORY,
   `one-year-backtest-${from}-${to}.json`,
 );
+const dailyDetailCsvPath = path.join(
+  OUTPUT_DIRECTORY,
+  `daily-crop-risk-detail-${from}-${to}.csv`,
+);
+const dailySummaryCsvPath = path.join(
+  OUTPUT_DIRECTORY,
+  `daily-backtest-summary-${from}-${to}.csv`,
+);
+const harvestPaceCsvPath = path.join(
+  OUTPUT_DIRECTORY,
+  `harvest-pace-windows-${from}-${to}.csv`,
+);
+result.artifacts = {
+  json: repositoryRelativePath(outputPath),
+  dailyCropRiskDetailCsv: repositoryRelativePath(dailyDetailCsvPath),
+  dailyBacktestSummaryCsv: repositoryRelativePath(dailySummaryCsvPath),
+  harvestPaceWindowsCsv: repositoryRelativePath(harvestPaceCsvPath),
+  historicalForecastExtractJson:
+    historicalForecastBacktest.artifacts.extractJson,
+  historicalForecastAccuracyCsv:
+    historicalForecastBacktest.artifacts.accuracyCsv,
+};
 await writeFile(outputPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+await writeFile(dailyDetailCsvPath, toCsv(dailyCropRiskRows), "utf8");
+await writeFile(dailySummaryCsvPath, toCsv(dailySummaryRows), "utf8");
+await writeFile(harvestPaceCsvPath, toCsv(harvestPace.evaluations), "utf8");
 process.stdout.write(`${JSON.stringify({ ...result, outputPath: path.relative(process.cwd(), outputPath) }, null, 2)}\n`);
 if (!mechanicalReady) process.exitCode = 2;
 
@@ -464,9 +513,14 @@ function buildHarvestPace({ successfulStations: stations, from: rangeFrom, to: r
           state: result.state,
           adjustmentApplied: result.adjustmentApplied,
           adjustmentDays: result.adjustmentDays,
+          adjustmentMode: result.adjustmentMode,
+          maximumAdjustmentDays: result.maximumAdjustmentDays,
+          baselineHarvestWindowAvailable:
+            result.baselineHarvestWindow !== null,
           coverage: result.coverage,
           paceRatio: result.paceRatio,
           pairedDayCount: result.pairedDayCount,
+          limitations: result.limitations.join(" | "),
         });
       }
     }
@@ -482,14 +536,27 @@ function buildHarvestPace({ successfulStations: stations, from: rangeFrom, to: r
         (row) => row.crop === crop && row.windowEnd === endDate,
       );
       if (rows.length === 0) continue;
+      const appliedRows = rows.filter((row) => row.adjustmentApplied);
+      const paceRatios = rows.map((row) => row.paceRatio).filter(Number.isFinite);
       monthlyCropAdjustment.push({
         windowEnd: endDate,
         crop,
         stationCount: rows.length,
-        meanAdjustmentDays: round(mean(rows.map((row) => row.adjustmentDays)), 2),
-        minimumAdjustmentDays: Math.min(...rows.map((row) => row.adjustmentDays)),
-        maximumAdjustmentDays: Math.max(...rows.map((row) => row.adjustmentDays)),
-        meanPaceRatio: round(mean(rows.map((row) => row.paceRatio)), 3),
+        scheduleEligibleStationCount: appliedRows.length,
+        meanAdjustmentDays:
+          appliedRows.length === 0
+            ? null
+            : round(mean(appliedRows.map((row) => row.adjustmentDays)), 2),
+        minimumAdjustmentDays:
+          appliedRows.length === 0
+            ? null
+            : Math.min(...appliedRows.map((row) => row.adjustmentDays)),
+        maximumAdjustmentDays:
+          appliedRows.length === 0
+            ? null
+            : Math.max(...appliedRows.map((row) => row.adjustmentDays)),
+        meanPaceRatio:
+          paceRatios.length === 0 ? null : round(mean(paceRatios), 3),
       });
     }
   }
@@ -497,16 +564,34 @@ function buildHarvestPace({ successfulStations: stations, from: rangeFrom, to: r
   const insufficientInput = evaluations.filter(
     (row) => row.pairedDayCount < 14 || row.coverage < 0.7,
   );
-  const thermallyInactiveBaseline = evaluations.filter(
+  const baselineMissing = evaluations.filter(
     (row) =>
       !row.adjustmentApplied &&
       row.pairedDayCount >= 14 &&
-      row.coverage >= 0.7,
+      row.coverage >= 0.7 &&
+      Number.isFinite(row.paceRatio) &&
+      !row.baselineHarvestWindowAvailable,
+  );
+  const thermalPaceReady = evaluations.filter((row) =>
+    Number.isFinite(row.paceRatio),
+  );
+  const thermalPaceUnavailable = evaluations.filter(
+    (row) => !Number.isFinite(row.paceRatio),
+  );
+  const capHits = applied.filter(
+    (row) =>
+      row.maximumAdjustmentDays > 0 &&
+      Math.abs(row.adjustmentDays) === row.maximumAdjustmentDays,
   );
   return {
     state:
-      evaluations.length > 0 && insufficientInput.length === 0
-        ? "READY"
+      evaluations.length > 0 &&
+      insufficientInput.length === 0 &&
+      applied.length === 0 &&
+      baselineMissing.length > 0
+        ? "PACE_READY_SCHEDULE_BLOCKED"
+        : evaluations.length > 0 && insufficientInput.length === 0
+          ? "READY"
         : evaluations.length > 0
           ? "PARTIAL"
           : "HOLD",
@@ -519,44 +604,680 @@ function buildHarvestPace({ successfulStations: stations, from: rangeFrom, to: r
       evaluations.length,
     ),
     insufficientInputCount: insufficientInput.length,
-    adjustmentAppliedCount: applied.length,
-    thermallyEvaluableRatio: ratio(applied.length, evaluations.length),
-    thermallyInactiveBaselineCount: thermallyInactiveBaseline.length,
-    capHitCount: applied.filter((row) => Math.abs(row.adjustmentDays) === 14).length,
-    capHitRate: ratio(
-      applied.filter((row) => Math.abs(row.adjustmentDays) === 14).length,
-      applied.length,
+    thermalPaceReadyCount: thermalPaceReady.length,
+    thermalPaceReadyRatio: ratio(
+      thermalPaceReady.length,
+      evaluations.length,
     ),
+    thermalPaceUnavailableCount: thermalPaceUnavailable.length,
+    adjustmentAppliedCount: applied.length,
+    scheduleEligibleRatio: ratio(applied.length, evaluations.length),
+    baselineHarvestWindowMissingCount: baselineMissing.length,
+    capHitCount: capHits.length,
+    capHitRate: applied.length === 0 ? null : ratio(capHits.length, applied.length),
     byCrop,
     monthlyCropAdjustment,
+    evaluations,
     interpretation:
-      "각 월말 90일 관측을 평년 적산온도와 비교한 일정 보정 민감도이며 실제 수확일 오차가 아니다.",
+      "각 월말 90일 관측으로 적산온도 계산 경로를 재생했다. 실제 작기·기준 수확 범위가 없으므로 일정 보정과 수확일 정확도 평가는 차단했다.",
   };
 }
 
-async function probeHistoricalForecast({ adapter, location, from: rangeFrom }) {
-  const issueDate = addDays(rangeFrom, -1);
-  const grid = toKmaGrid(location.latitude, location.longitude);
-  const envelope = await adapter.getIssuedForecast(
-    {
-      ...grid,
-      baseDate: issueDate.replaceAll("-", ""),
-      baseTime: "1700",
+function buildDailyCropRiskRows({ replayRuns: runs, rules }) {
+  const rows = [];
+  const rulesByCrop = new Map(
+    CROPS.map((crop) => [crop, rules.filter((rule) => rule.crop === crop)]),
+  );
+  for (const { location, readings, replay } of runs) {
+    const triggerDatesByRule = new Map(
+      replay.results.map((result) => [result.ruleId, new Set(result.triggerDates)]),
+    );
+    for (const reading of readings) {
+      for (const crop of CROPS) {
+        const cropRules = rulesByCrop.get(crop);
+        const generalRules = cropRules.filter((rule) => rule.stage === "ANY");
+        const stageRules = cropRules.filter((rule) => rule.stage !== "ANY");
+        const triggeredGeneralRules = generalRules.filter((rule) =>
+          triggerDatesByRule.get(rule.ruleId)?.has(reading.date),
+        );
+        const triggeredStageRules = stageRules.filter((rule) =>
+          triggerDatesByRule.get(rule.ruleId)?.has(reading.date),
+        );
+        rows.push({
+          date: reading.date,
+          area_code: location.areaCode,
+          region: location.displayName,
+          station_id: location.stationId,
+          station_name: location.stationName,
+          crop_id: crop,
+          crop_name_ko: cropName(crop),
+          min_temperature_c: finiteOrBlank(reading.minTemperature),
+          mean_temperature_c: finiteOrBlank(reading.meanTemperature),
+          max_temperature_c: finiteOrBlank(reading.maxTemperature),
+          precipitation_mm: finiteOrBlank(reading.precipitationAmount),
+          temperature_data_complete:
+            Number.isFinite(reading.minTemperature) &&
+            Number.isFinite(reading.meanTemperature) &&
+            Number.isFinite(reading.maxTemperature),
+          general_rule_evaluable: generalRules.every((rule) =>
+            Number.isFinite(reading[rule.metric]),
+          ),
+          general_risk_triggered: triggeredGeneralRules.length > 0,
+          general_risk_rule_ids: triggeredGeneralRules
+            .map((rule) => rule.ruleId)
+            .join(" | "),
+          general_risk_reasons_ko: triggeredGeneralRules
+            .map((rule) => rule.guidance?.reason)
+            .filter(Boolean)
+            .join(" | "),
+          stage_scoped_condition_triggered: triggeredStageRules.length > 0,
+          stage_scoped_rule_ids: triggeredStageRules
+            .map((rule) => rule.ruleId)
+            .join(" | "),
+          stage_scope_note_ko:
+            triggeredStageRules.length > 0
+              ? "해당 생육단계일 때만 위험으로 해석"
+              : "",
+        });
+      }
+    }
+  }
+  return rows.sort((left, right) =>
+    `${left.date}|${left.station_id}|${left.crop_id}`.localeCompare(
+      `${right.date}|${right.station_id}|${right.crop_id}`,
+    ),
+  );
+}
+
+function buildDailySummaryRows(detailRows) {
+  const byDate = new Map();
+  for (const row of detailRows) {
+    const summary = byDate.get(row.date) ?? {
+      date: row.date,
+      observedStations: new Set(),
+      completeTemperatureStations: new Set(),
+      precipitationStations: new Set(),
+      generalRiskStationCropCount: 0,
+      cropsWithGeneralRisk: new Set(),
+      regionsWithGeneralRisk: new Set(),
+      stageScopedConditionStationCropCount: 0,
+      cropsWithStageScopedCondition: new Set(),
+    };
+    summary.observedStations.add(row.station_id);
+    if (row.temperature_data_complete) {
+      summary.completeTemperatureStations.add(row.station_id);
+    }
+    if (row.precipitation_mm !== "") {
+      summary.precipitationStations.add(row.station_id);
+    }
+    if (row.general_risk_triggered) {
+      summary.generalRiskStationCropCount += 1;
+      summary.cropsWithGeneralRisk.add(row.crop_name_ko);
+      summary.regionsWithGeneralRisk.add(row.region);
+    }
+    if (row.stage_scoped_condition_triggered) {
+      summary.stageScopedConditionStationCropCount += 1;
+      summary.cropsWithStageScopedCondition.add(row.crop_name_ko);
+    }
+    byDate.set(row.date, summary);
+  }
+  return [...byDate.values()].map((row) => ({
+    date: row.date,
+    observed_station_count: row.observedStations.size,
+    complete_temperature_station_count: row.completeTemperatureStations.size,
+    precipitation_station_count: row.precipitationStations.size,
+    general_risk_station_crop_count: row.generalRiskStationCropCount,
+    crops_with_general_risk: [...row.cropsWithGeneralRisk].join(" | "),
+    regions_with_general_risk: [...row.regionsWithGeneralRisk].join(" | "),
+    stage_scoped_condition_station_crop_count:
+      row.stageScopedConditionStationCropCount,
+    crops_with_stage_scoped_condition: [
+      ...row.cropsWithStageScopedCondition,
+    ].join(" | "),
+  }));
+}
+
+function toCsv(rows) {
+  if (rows.length === 0) return "\ufeff";
+  const headers = Object.keys(rows[0]);
+  const lines = [
+    headers.map(csvCell).join(","),
+    ...rows.map((row) => headers.map((header) => csvCell(row[header])).join(",")),
+  ];
+  return `\ufeff${lines.join("\n")}\n`;
+}
+
+function csvCell(value) {
+  const normalized = value === null || value === undefined ? "" : String(value);
+  return /[",\r\n]/u.test(normalized)
+    ? `"${normalized.replaceAll('"', '""')}"`
+    : normalized;
+}
+
+function finiteOrBlank(value) {
+  return Number.isFinite(value) ? value : "";
+}
+
+function cropName(crop) {
+  return {
+    APPLE: "사과",
+    PEAR: "배",
+    CUCUMBER: "오이",
+    POTATO: "감자",
+    LETTUCE: "상추",
+  }[crop];
+}
+
+function repositoryRelativePath(targetPath) {
+  return path.relative(path.resolve(process.cwd(), ".."), targetPath);
+}
+
+async function buildHistoricalForecastBacktest({
+  adapter,
+  locations: targetLocations,
+  successfulStations: stations,
+  from: rangeFrom,
+  to: rangeTo,
+  limitDays = null,
+}) {
+  const leadDays = [1, 3];
+  const allDates = datesInRange(rangeFrom, rangeTo);
+  const targetDates = Number.isInteger(limitDays)
+    ? allDates.slice(0, limitDays)
+    : allDates;
+  const points = targetLocations.map((location) => ({
+    id: location.areaCode,
+    ...toKmaGrid(location.latitude, location.longitude),
+  }));
+  const extractPath = path.join(
+    OUTPUT_DIRECTORY,
+    `historical-short-grid-extract-${rangeFrom}-${rangeTo}.json`,
+  );
+  const accuracyCsvPath = path.join(
+    OUTPUT_DIRECTORY,
+    `historical-forecast-accuracy-${rangeFrom}-${rangeTo}.csv`,
+  );
+  await mkdir(OUTPUT_DIRECTORY, { recursive: true });
+  const cache = await readForecastExtract(extractPath, {
+    from: rangeFrom,
+    to: rangeTo,
+    leadDays,
+  });
+  const rowsByKey = new Map(
+    cache.rows.map((row) => [forecastRowKey(row), row]),
+  );
+  const failures = cache.failures ?? [];
+
+  for (const [dateIndex, validDate] of targetDates.entries()) {
+    const expectedKeys = leadDays.flatMap((leadDay) =>
+      targetLocations.map((location) =>
+        forecastRowKey({
+          areaCode: location.areaCode,
+          validDate,
+          leadDays: leadDay,
+        }),
+      ),
+    );
+    if (expectedKeys.every((key) => rowsByKey.has(key))) continue;
+
+    const snapshotRequests = leadDays.flatMap((leadDay) => {
+      const issueDate = addDays(validDate, -leadDay).replaceAll("-", "");
+      const common = {
+        baseDate: issueDate,
+        baseTime: "1700",
+        validDate: validDate.replaceAll("-", ""),
+        points,
+      };
+      return [
+        { leadDay, variable: "TMN", validTime: "0600", common },
+        { leadDay, variable: "TMX", validTime: "1500", common },
+      ];
+    });
+    const snapshots = await Promise.all(
+      snapshotRequests.map(async (request) => ({
+        ...request,
+        envelope: await adapter.getGridSnapshot(
+          {
+            ...request.common,
+            validTime: request.validTime,
+            variable: request.variable,
+          },
+          { deadlineAt: Date.now() + 60_000 },
+        ),
+      })),
+    );
+
+    for (const leadDay of leadDays) {
+      const leadSnapshots = snapshots.filter(
+        (snapshot) => snapshot.leadDay === leadDay,
+      );
+      if (!leadSnapshots.every(({ envelope }) => envelope.adapterState === "SUCCESS")) {
+        failures.push({
+          validDate,
+          leadDays: leadDay,
+          states: leadSnapshots.map(({ variable, envelope }) => ({
+            variable,
+            state: envelope.adapterState,
+            qualityFlags: envelope.qualityFlags ?? [],
+          })),
+        });
+        continue;
+      }
+      const byVariable = new Map(
+        leadSnapshots.map(({ variable, envelope }) => [variable, envelope]),
+      );
+      const minimum = byVariable.get("TMN");
+      const maximum = byVariable.get("TMX");
+      const minimumByArea = new Map(
+        minimum.data.points.map(({ id, value }) => [id, value]),
+      );
+      const maximumByArea = new Map(
+        maximum.data.points.map(({ id, value }) => [id, value]),
+      );
+      for (const location of targetLocations) {
+        const row = {
+          areaCode: location.areaCode,
+          region: location.displayName,
+          stationId: location.stationId,
+          stationName: location.stationName,
+          leadDays: leadDay,
+          issuedAt: maximum.issuedAt,
+          validAt: maximum.validFrom,
+          validDate,
+          minTemperature: minimumByArea.get(location.areaCode) ?? null,
+          maxTemperature: maximumByArea.get(location.areaCode) ?? null,
+          precipitationProbability: null,
+        };
+        rowsByKey.set(forecastRowKey(row), row);
+      }
+    }
+
+    if ((dateIndex + 1) % 5 === 0 || dateIndex === targetDates.length - 1) {
+      await writeForecastExtract(extractPath, {
+        from: rangeFrom,
+        to: rangeTo,
+        leadDays,
+        rows: [...rowsByKey.values()],
+        failures,
+      });
+    }
+    if ((dateIndex + 1) % 10 === 0 || dateIndex === targetDates.length - 1) {
+      process.stderr.write(
+        `[historical-grid] ${dateIndex + 1}/${targetDates.length} dates, ${rowsByKey.size} location-lead rows\n`,
+      );
+    }
+  }
+
+  const rows = [...rowsByKey.values()]
+    .filter((row) => targetDates.includes(row.validDate))
+    .sort((left, right) =>
+      `${left.validDate}|${left.leadDays}|${left.areaCode}`.localeCompare(
+        `${right.validDate}|${right.leadDays}|${right.areaCode}`,
+      ),
+    );
+  const stationByArea = new Map(
+    stations.map((station) => [station.location.areaCode, station]),
+  );
+  const byLead = leadDays.map((leadDay) =>
+    summarizeForecastLead({
+      leadDay,
+      rows: rows.filter((row) => row.leadDays === leadDay),
+      locations: targetLocations,
+      stationByArea,
+    }),
+  );
+  const expectedRowCount =
+    targetDates.length * targetLocations.length * leadDays.length;
+  const pairedMinimumCount = byLead.reduce(
+    (sum, lead) => sum + lead.overall.temperature.minTemperature.sampleCount,
+    0,
+  );
+  const pairedMaximumCount = byLead.reduce(
+    (sum, lead) => sum + lead.overall.temperature.maxTemperature.sampleCount,
+    0,
+  );
+  const minimumCoverage = ratio(pairedMinimumCount, expectedRowCount);
+  const maximumCoverage = ratio(pairedMaximumCount, expectedRowCount);
+  const isFullRun = targetDates.length === allDates.length;
+  const state =
+    isFullRun && minimumCoverage >= 0.95 && maximumCoverage >= 0.95
+      ? "TEMPERATURE_READY"
+      : rows.length > 0
+        ? "PARTIAL"
+        : "HOLD";
+  const accuracyRows = byLead.flatMap((lead) =>
+    lead.byLocation.map((location) => ({
+      lead_days: lead.leadDays,
+      area_code: location.areaCode,
+      region: location.region,
+      station_id: location.stationId,
+      forecast_count: location.metrics.issuedForecastCount,
+      matched_count: location.metrics.matchedForecastCount,
+      matched_ratio: location.metrics.matchedForecastRatio,
+      min_temperature_mae_c:
+        location.metrics.temperature.minTemperature.meanAbsoluteError,
+      min_temperature_rmse_c:
+        location.metrics.temperature.minTemperature.rootMeanSquaredError,
+      min_temperature_bias_c: location.metrics.temperature.minTemperature.bias,
+      max_temperature_mae_c:
+        location.metrics.temperature.maxTemperature.meanAbsoluteError,
+      max_temperature_rmse_c:
+        location.metrics.temperature.maxTemperature.rootMeanSquaredError,
+      max_temperature_bias_c: location.metrics.temperature.maxTemperature.bias,
+    })),
+  );
+  await writeFile(accuracyCsvPath, toCsv(accuracyRows), "utf8");
+
+  return {
+    state,
+    source: {
+      id: "kma-historical-short-grid",
+      label: "기상청 과거 발행 단기예보 5km 격자",
+      href: "https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-dfs_shrt_grd",
     },
-    { deadlineAt: Date.now() + 30_000 },
+    scope: {
+      from: targetDates[0] ?? null,
+      to: targetDates.at(-1) ?? null,
+      requestedDayCount: targetDates.length,
+      fullYearRequested: isFullRun,
+      locationCount: targetLocations.length,
+      leadDays,
+      issueTimeKst: "1700",
+      validTimesKst: { minTemperature: "0600", maxTemperature: "1500" },
+    },
+    providerState: {
+      state: rows.length === 0 ? "UNAVAILABLE" : state === "TEMPERATURE_READY" ? "SUCCESS" : "PARTIAL",
+      permissionVerified: rows.length > 0,
+      extractedRowCount: rows.length,
+      expectedRowCount,
+      extractionCoverage: ratio(rows.length, expectedRowCount),
+      failureCount: failures.length,
+    },
+    temperaturePairCoverage: {
+      expectedPairCount: expectedRowCount,
+      minimumTemperaturePairCount: pairedMinimumCount,
+      minimumTemperatureCoverage: minimumCoverage,
+      maximumTemperaturePairCount: pairedMaximumCount,
+      maximumTemperatureCoverage: maximumCoverage,
+    },
+    byLead,
+    riskAlertBacktest: buildTemperatureRiskAlertBacktest({
+      rows,
+      stationByArea,
+      rules: openFieldRules,
+      leadDays,
+    }),
+    unavailableMetrics: [
+      {
+        metric: "precipitationProbability",
+        state: "BLOCKED_TEMPORAL_AGGREGATION",
+        reason:
+          "격자 API는 발효시각별 POP를 반환한다. 일강수 관측과 비교할 일 단위 확률을 만들려면 하루 전체 시각을 수집해야 하므로 대표 한 시각을 임의 사용하지 않았다.",
+      },
+      {
+        metric: "fiveDayLead",
+        state: "UNSUPPORTED_BY_SHORT_FORECAST_HORIZON",
+        reason:
+          "17시 단기예보 격자의 공식 제공기간은 최대 그글피까지이므로 5일 선행 예보를 만들지 않았다.",
+      },
+    ],
+    artifacts: {
+      extractJson: repositoryRelativePath(extractPath),
+      accuracyCsv: repositoryRelativePath(accuracyCsvPath),
+    },
+  };
+}
+
+async function readForecastExtract(filePath, expected) {
+  try {
+    const parsed = JSON.parse(await readFile(filePath, "utf8"));
+    if (
+      parsed?.schemaVersion === 1 &&
+      parsed.from === expected.from &&
+      parsed.to === expected.to &&
+      JSON.stringify(parsed.leadDays) === JSON.stringify(expected.leadDays) &&
+      Array.isArray(parsed.rows)
+    ) {
+      return parsed;
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  return { rows: [], failures: [] };
+}
+
+async function writeForecastExtract(filePath, payload) {
+  await writeFile(
+    filePath,
+    `${JSON.stringify({ schemaVersion: 1, ...payload }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+function forecastRowKey({ areaCode, validDate, leadDays }) {
+  return `${areaCode}|${validDate}|${leadDays}`;
+}
+
+function datesInRange(fromDate, toDate) {
+  const dates = [];
+  for (let date = fromDate; date <= toDate; date = addDays(date, 1)) {
+    dates.push(date);
+  }
+  return dates;
+}
+
+function summarizeForecastLead({
+  leadDay,
+  rows,
+  locations: targetLocations,
+  stationByArea,
+}) {
+  const byLocation = targetLocations.map((location) => {
+    const station = stationByArea.get(location.areaCode);
+    const calculation = calculateIssuedForecastMetrics({
+      issuedForecasts: rows
+        .filter((row) => row.areaCode === location.areaCode)
+        .map((row) => ({
+          issuedAt: row.issuedAt,
+          validAt: row.validAt,
+          validDate: row.validDate,
+          minTemperature: row.minTemperature,
+          maxTemperature: row.maxTemperature,
+          precipitationProbability: null,
+        })),
+      observations: station?.readings ?? [],
+    });
+    const metrics = {
+      state:
+        calculation.temperature.minTemperature.sampleCount > 0 &&
+        calculation.temperature.maxTemperature.sampleCount > 0
+          ? "TEMPERATURE_READY"
+          : calculation.matchedForecastCount > 0
+            ? "PARTIAL"
+            : "HOLD",
+      issuedForecastCount: calculation.issuedForecastCount,
+      matchedForecastCount: calculation.matchedForecastCount,
+      observationCount: calculation.observationCount,
+      matchedForecastRatio: calculation.matchedForecastRatio,
+      temperature: calculation.temperature,
+      temperatureExclusionCount: calculation.exclusions.filter(
+        ({ metric }) =>
+          metric === "minTemperature" || metric === "maxTemperature",
+      ).length,
+      precipitation: {
+        state: "BLOCKED_TEMPORAL_AGGREGATION",
+        sampleCount: 0,
+        brierScore: null,
+      },
+    };
+    return {
+      areaCode: location.areaCode,
+      region: location.displayName,
+      stationId: location.stationId,
+      stationName: location.stationName,
+      metrics,
+    };
+  });
+  return {
+    leadDays: leadDay,
+    state: byLocation.every(
+      ({ metrics }) =>
+        metrics.temperature.minTemperature.sampleCount > 0 &&
+        metrics.temperature.maxTemperature.sampleCount > 0,
+    )
+      ? "TEMPERATURE_READY"
+      : "PARTIAL",
+    overall: aggregateLocationForecastMetrics(byLocation),
+    byLocation,
+  };
+}
+
+function aggregateLocationForecastMetrics(rows) {
+  const aggregateMetric = (metric) => {
+    const parts = rows.map(({ metrics }) => metrics.temperature[metric]);
+    const sampleCount = parts.reduce((sum, part) => sum + part.sampleCount, 0);
+    if (sampleCount === 0) {
+      return {
+        sampleCount: 0,
+        meanAbsoluteError: null,
+        rootMeanSquaredError: null,
+        bias: null,
+      };
+    }
+    return {
+      sampleCount,
+      meanAbsoluteError: round(
+        parts.reduce(
+          (sum, part) => sum + part.meanAbsoluteError * part.sampleCount,
+          0,
+        ) / sampleCount,
+        4,
+      ),
+      rootMeanSquaredError: round(
+        Math.sqrt(
+          parts.reduce(
+            (sum, part) =>
+              sum + part.rootMeanSquaredError ** 2 * part.sampleCount,
+            0,
+          ) / sampleCount,
+        ),
+        4,
+      ),
+      bias: round(
+        parts.reduce((sum, part) => sum + part.bias * part.sampleCount, 0) /
+          sampleCount,
+        4,
+      ),
+    };
+  };
+  const issuedForecastCount = rows.reduce(
+    (sum, row) => sum + row.metrics.issuedForecastCount,
+    0,
+  );
+  const matchedForecastCount = rows.reduce(
+    (sum, row) => sum + row.metrics.matchedForecastCount,
+    0,
   );
   return {
-    state: envelope.adapterState,
-    probeIssueDate: issueDate,
-    probeBaseTimeKst: "1700",
-    stationLabel: location.displayName,
-    qualityFlags: envelope.qualityFlags ?? [],
-    fullYearForecastMetricsCalculated: false,
-    reason:
-      envelope.adapterState === "SUCCESS"
-        ? "단일 발행시점 접근만 확인했으며 365개 발행본 수집은 별도 배치가 필요"
-        : "과거 발행 예보 접근이 불가해 관측과 예보의 오차지표를 계산하지 못함",
+    issuedForecastCount,
+    matchedForecastCount,
+    matchedForecastRatio: ratio(matchedForecastCount, issuedForecastCount),
+    temperature: {
+      minTemperature: aggregateMetric("minTemperature"),
+      maxTemperature: aggregateMetric("maxTemperature"),
+    },
+    precipitation: {
+      state: "BLOCKED_TEMPORAL_AGGREGATION",
+      sampleCount: 0,
+      brierScore: null,
+    },
   };
+}
+
+function buildTemperatureRiskAlertBacktest({
+  rows,
+  stationByArea,
+  rules,
+  leadDays,
+}) {
+  const temperatureRules = rules.filter(
+    (rule) =>
+      rule.stage === "ANY" &&
+      ["minTemperature", "maxTemperature"].includes(rule.metric),
+  );
+  const byLeadCrop = [];
+  for (const leadDay of leadDays) {
+    for (const crop of CROPS) {
+      const cropRules = temperatureRules.filter((rule) => rule.crop === crop);
+      let truePositive = 0;
+      let falsePositive = 0;
+      let trueNegative = 0;
+      let falseNegative = 0;
+      let evaluatedPairCount = 0;
+      for (const row of rows.filter((item) => item.leadDays === leadDay)) {
+        const station = stationByArea.get(row.areaCode);
+        const observation = station?.readings.find(
+          (reading) => reading.date === row.validDate,
+        );
+        const evaluable = cropRules.filter(
+          (rule) =>
+            Number.isFinite(row[rule.metric]) &&
+            Number.isFinite(observation?.[rule.metric]),
+        );
+        if (evaluable.length === 0) continue;
+        evaluatedPairCount += 1;
+        const predicted = evaluable.some((rule) =>
+          compareForecastRule(row[rule.metric], rule.comparison),
+        );
+        const observed = evaluable.some((rule) =>
+          compareForecastRule(observation[rule.metric], rule.comparison),
+        );
+        if (predicted && observed) truePositive += 1;
+        else if (predicted) falsePositive += 1;
+        else if (observed) falseNegative += 1;
+        else trueNegative += 1;
+      }
+      byLeadCrop.push({
+        leadDays: leadDay,
+        crop,
+        ruleIds: cropRules.map((rule) => rule.ruleId),
+        state: evaluatedPairCount > 0 ? "READY" : "HOLD",
+        evaluatedPairCount,
+        truePositive,
+        falsePositive,
+        trueNegative,
+        falseNegative,
+        precision:
+          truePositive + falsePositive === 0
+            ? null
+            : round(truePositive / (truePositive + falsePositive), 4),
+        recall:
+          truePositive + falseNegative === 0
+            ? null
+            : round(truePositive / (truePositive + falseNegative), 4),
+      });
+    }
+  }
+  return {
+    state: byLeadCrop.some((row) => row.state === "READY") ? "READY" : "HOLD",
+    scope: "GENERAL_TEMPERATURE_RULES_ONLY",
+    byLeadCrop,
+  };
+}
+
+function compareForecastRule(value, comparison) {
+  switch (comparison.operator) {
+    case "GT":
+      return value > comparison.threshold;
+    case "GTE":
+      return value >= comparison.threshold;
+    case "LT":
+      return value < comparison.threshold;
+    case "LTE":
+      return value <= comparison.threshold;
+    default:
+      throw new TypeError(`Unsupported comparison: ${comparison.operator}`);
+  }
 }
 
 function summarizeProviderStates(runs) {
@@ -577,20 +1298,28 @@ function summarizeProviderStates(runs) {
 }
 
 function summarizeAdjustments(crop, rows) {
-  const adjustments = rows.map((row) => row.adjustmentDays);
+  const appliedRows = rows.filter((row) => row.adjustmentApplied);
+  const adjustments = appliedRows.map((row) => row.adjustmentDays);
   const paceRatios = rows.map((row) => row.paceRatio).filter(Number.isFinite);
+  const capHits = appliedRows.filter(
+    (row) =>
+      row.maximumAdjustmentDays > 0 &&
+      Math.abs(row.adjustmentDays) === row.maximumAdjustmentDays,
+  );
   return {
     crop,
     evaluationCount: rows.length,
-    appliedCount: rows.filter((row) => row.adjustmentApplied).length,
+    appliedCount: appliedRows.length,
     inputSufficientCount: rows.filter(
       (row) => row.pairedDayCount >= 14 && row.coverage >= 0.7,
     ).length,
-    thermallyInactiveBaselineCount: rows.filter(
+    baselineHarvestWindowMissingCount: rows.filter(
       (row) =>
         !row.adjustmentApplied &&
         row.pairedDayCount >= 14 &&
-        row.coverage >= 0.7,
+        row.coverage >= 0.7 &&
+        Number.isFinite(row.paceRatio) &&
+        !row.baselineHarvestWindowAvailable,
     ).length,
     meanAdjustmentDays: adjustments.length === 0 ? null : round(mean(adjustments), 2),
     medianAdjustmentDays: median(adjustments),
@@ -599,7 +1328,9 @@ function summarizeAdjustments(crop, rows) {
     advancedCount: adjustments.filter((value) => value < 0).length,
     unchangedCount: adjustments.filter((value) => value === 0).length,
     delayedCount: adjustments.filter((value) => value > 0).length,
-    capHitCount: adjustments.filter((value) => Math.abs(value) === 14).length,
+    capHitCount: capHits.length,
+    capHitRate:
+      appliedRows.length === 0 ? null : ratio(capHits.length, appliedRows.length),
     meanPaceRatio: paceRatios.length === 0 ? null : round(mean(paceRatios), 3),
   };
 }
@@ -645,12 +1376,23 @@ function monthEndDates(fromDate, toDate) {
 }
 
 function parseArgs(values) {
-  return Object.fromEntries(
-    values.flatMap((value) => {
-      const match = /^--(from|to)=(\d{4}-\d{2}-\d{2})$/u.exec(value);
-      return match ? [[match[1], match[2]]] : [];
-    }),
-  );
+  const parsed = {};
+  for (const value of values) {
+    const dateMatch = /^--(from|to)=(\d{4}-\d{2}-\d{2})$/u.exec(value);
+    if (dateMatch) {
+      parsed[dateMatch[1]] = dateMatch[2];
+      continue;
+    }
+    const limitMatch = /^--forecast-limit=(\d+)$/u.exec(value);
+    if (limitMatch) {
+      const limit = Number(limitMatch[1]);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 365) {
+        throw new TypeError("--forecast-limit must be between 1 and 365.");
+      }
+      parsed.forecastLimit = limit;
+    }
+  }
+  return parsed;
 }
 
 function lastCompletedKstDate(date) {

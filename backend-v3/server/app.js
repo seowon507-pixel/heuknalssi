@@ -164,6 +164,12 @@ export function createBackend({
         clientSecret: config.adapterConfig.satellite.clientSecret,
         contractVersion: config.adapterConfig.satellite.contractVersion,
       },
+      farmmap: {
+        enabled: config.adapterConfig.farmmap.enabled,
+        apiKey: config.adapterConfig.farmmap.apiKey,
+        domain: config.adapterConfig.farmmap.domain,
+        contractVersion: config.adapterConfig.farmmap.contractVersion,
+      },
     });
   const activeRuntimeStatus =
     runtimeStatus ??
@@ -220,6 +226,8 @@ export function createBackend({
       assistant: assistant.state,
       satellite:
         activeAdapters.satellite?.state ?? config.capabilities.satellite,
+      farmmap:
+        activeAdapters.farmmap?.state ?? config.capabilities.farmmap,
     },
   });
   const actionStore = sharedState.configured

@@ -20,7 +20,8 @@ export const PROVIDER_HOST_ALLOWLIST = Object.freeze({
     "stac.dataspace.copernicus.eu",
     "identity.dataspace.copernicus.eu",
     "sh.dataspace.copernicus.eu"
-  ])
+  ]),
+  FARMMAP: Object.freeze(["agis.epis.or.kr"])
 });
 export const DEFAULT_PROVIDER_RESPONSE_MAX_BYTES = 2 * 1024 * 1024;
 

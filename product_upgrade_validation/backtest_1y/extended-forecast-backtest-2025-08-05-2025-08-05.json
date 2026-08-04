@@ -1,0 +1,681 @@
+{
+  "auditKind": "EXTENDED_PRECIPITATION_AND_FIVE_DAY_FORECAST_BACKTEST",
+  "generatedAt": "2026-08-04T07:26:04.424Z",
+  "state": "PARTIAL",
+  "scope": {
+    "from": "2025-08-05",
+    "to": "2025-08-05",
+    "requestedDayCount": 1,
+    "locationCount": 8,
+    "shortLeadDays": [
+      1,
+      3
+    ],
+    "mediumLeadDays": [
+      5
+    ],
+    "dailyPopAggregation": "MAX_OF_24_HOURLY_POP"
+  },
+  "shortHourlyPrecipitation": {
+    "state": "READY",
+    "rowCount": 16,
+    "precipitationSampleCount": 16,
+    "brierScore": 0.23374999999999999,
+    "temperatureSampleCount": 0,
+    "byLeadLocation": [
+      {
+        "leadDays": 1,
+        "areaCode": "2820000000",
+        "region": "인천광역시 남동구",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.09,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4150000000",
+        "region": "경기도 이천시",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.09,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4717000000",
+        "region": "경상북도 안동시",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.36,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4476000000",
+        "region": "충청남도 부여군",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.09,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4721000000",
+        "region": "경상북도 영주시",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.36,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4728000000",
+        "region": "경상북도 문경시",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.36,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "4773000000",
+        "region": "경상북도 의성군",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.16000000000000003,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 1,
+        "areaCode": "5176000000",
+        "region": "강원특별자치도 평창군",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.09,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "2820000000",
+        "region": "인천광역시 남동구",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.09,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4150000000",
+        "region": "경기도 이천시",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.36,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4717000000",
+        "region": "경상북도 안동시",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.36,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4476000000",
+        "region": "충청남도 부여군",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.36,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4721000000",
+        "region": "경상북도 영주시",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.36,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4728000000",
+        "region": "경상북도 문경시",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.36,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "4773000000",
+        "region": "경상북도 의성군",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.16000000000000003,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 3,
+        "areaCode": "5176000000",
+        "region": "강원특별자치도 평창군",
+        "state": "PARTIAL",
+        "matchedForecastRatio": 1,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 1,
+          "brierScore": 0.09,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      }
+    ]
+  },
+  "historicalMediumFiveDay": {
+    "state": "HOLD",
+    "rowCount": 0,
+    "precipitationSampleCount": 0,
+    "brierScore": null,
+    "temperatureSampleCount": 0,
+    "byLeadLocation": [
+      {
+        "leadDays": 5,
+        "areaCode": "2820000000",
+        "region": "인천광역시 남동구",
+        "state": "HOLD",
+        "matchedForecastRatio": 0,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 0,
+          "brierScore": null,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4150000000",
+        "region": "경기도 이천시",
+        "state": "HOLD",
+        "matchedForecastRatio": 0,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 0,
+          "brierScore": null,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4717000000",
+        "region": "경상북도 안동시",
+        "state": "HOLD",
+        "matchedForecastRatio": 0,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 0,
+          "brierScore": null,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4476000000",
+        "region": "충청남도 부여군",
+        "state": "HOLD",
+        "matchedForecastRatio": 0,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 0,
+          "brierScore": null,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4721000000",
+        "region": "경상북도 영주시",
+        "state": "HOLD",
+        "matchedForecastRatio": 0,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 0,
+          "brierScore": null,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4728000000",
+        "region": "경상북도 문경시",
+        "state": "HOLD",
+        "matchedForecastRatio": 0,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 0,
+          "brierScore": null,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "4773000000",
+        "region": "경상북도 의성군",
+        "state": "HOLD",
+        "matchedForecastRatio": 0,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 0,
+          "brierScore": null,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      },
+      {
+        "leadDays": 5,
+        "areaCode": "5176000000",
+        "region": "강원특별자치도 평창군",
+        "state": "HOLD",
+        "matchedForecastRatio": 0,
+        "temperature": {
+          "minTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          },
+          "maxTemperature": {
+            "sampleCount": 0,
+            "meanAbsoluteError": null,
+            "rootMeanSquaredError": null,
+            "bias": null
+          }
+        },
+        "precipitation": {
+          "sampleCount": 0,
+          "brierScore": null,
+          "eventDefinition": "ASOS precipitationAmount > 0 mm"
+        }
+      }
+    ],
+    "permissionState": "AUTH_ERROR"
+  },
+  "guarantees": {
+    "incompleteHourlyPopScored": false,
+    "currentForecastSubstitutedForHistoricalIssue": false,
+    "missingValuesImputed": false,
+    "credentialsDisclosed": false
+  },
+  "failures": [
+    {
+      "source": "HISTORICAL_MEDIUM_FIVE_DAY",
+      "validDate": "2025-08-05",
+      "state": "AUTH_ERROR",
+      "qualityFlags": [
+        "PROVIDER_AUTH_ERROR"
+      ]
+    }
+  ],
+  "artifacts": {
+    "extractJson": "product_upgrade_validation/backtest_1y/extended-forecast-extract-2025-08-05-2025-08-05.json"
+  }
+}
