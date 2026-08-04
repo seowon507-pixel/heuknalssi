@@ -12,28 +12,12 @@
 <body>
 <div id="app">
 
-  <!-- ── 온보딩: 이름 입력 ─────────────────────── -->
-  <section id="view-hello" class="view" hidden>
-    <div class="hello-wrap">
-      <div class="hello-art" id="hello-art"></div>
-      <h1 class="hello-title">작은 밭에 온 걸 환영해요</h1>
-      <p class="hello-sub">매일 한 번 들르면, 작물이 조금씩 자라요.<br/>어떻게 불러드리면 될까요?</p>
-      <form id="hello-form" class="hello-form">
-        <input id="hello-name" type="text" maxlength="10" placeholder="이름 또는 별명" autocomplete="off" />
-        <button type="submit" class="btn btn-primary">밭 만들러 가기</button>
-      </form>
+  <!-- ── 시작 마법사 (질문식 온보딩) ───────────── -->
+  <section id="view-wizard" class="view" hidden>
+    <div class="wizard-head">
+      <button class="link-btn" id="wiz-back" hidden>‹ 이전</button>
     </div>
-  </section>
-
-  <!-- ── 온보딩: 작물 선택 ─────────────────────── -->
-  <section id="view-select" class="view" hidden>
-    <div class="select-wrap">
-      <p class="eyebrow" id="select-eyebrow">첫 씨앗</p>
-      <h1 class="select-title" id="select-title">어떤 아이와 함께할까요?</h1>
-      <p class="select-sub">여러 개를 골라도 좋아요. 심은 작물은 대시보드에서 오가며 볼 수 있어요.</p>
-      <div class="crop-grid" id="crop-grid"></div>
-      <button id="select-confirm" class="btn btn-primary btn-wide" disabled>씨앗 심기</button>
-    </div>
+    <div id="wizard-body"></div>
   </section>
 
   <!-- ── 대시보드 ─────────────────────────────── -->

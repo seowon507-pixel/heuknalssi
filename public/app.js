@@ -3,6 +3,7 @@
 // (외부 이미지 없음 → 어떤 화면에서도 스타일이 어긋나지 않음)
 
 import { CONDITIONS, conditionIcon, conditionBadge } from './conditions.js';
+import { assessSuitability } from './analysis.js';
 
 /* ════════════════════════════════════════════
    1. 일러스트 라이브러리 (SVG)
@@ -839,7 +840,7 @@ async function api(path, options = {}) {
 ════════════════════════════════════════════ */
 
 const $ = (sel) => document.querySelector(sel);
-const views = ['hello', 'select', 'home', 'todos', 'rewards', 'records', 'settings'];
+const views = ['wizard', 'home', 'todos', 'rewards', 'records', 'settings'];
 const TAB_LABELS = { home: '대시보드', todos: 'TO-DO', records: '기록', settings: '설정' };
 
 function show(name, { tabbar = true } = {}) {
@@ -1304,31 +1305,261 @@ async function plantSeeds(cropIds) {
   return planted;
 }
 
-function renderSelectView() {
-  $('#select-eyebrow').textContent = '첫 씨앗';
-  $('#select-title').textContent = '무엇을 키워볼까요?';
-  const grid = $('#crop-grid');
-  grid.innerHTML = cropCardsHTML(selectableCrops);
-  const confirm = $('#select-confirm');
-  confirm.disabled = true;
-  confirm.textContent = '씨앗 심기';
-  const picked = bindCropToggle(grid, confirm, '씨앗 심기');
-  confirm.onclick = async () => {
-    if (!picked.size) return;
-    confirm.disabled = true;
-    const planted = await plantSeeds([...picked]);
-    if (planted > 0) {
-      await refreshStatus();
-      activeCropId = [...picked][0];
-      renderHome();
-      show('home');
-    } else {
-      confirm.disabled = false;
-    }
-  };
+/* ════════════════════════════════════════════
+   5-0. 시작 마법사 — 질문식 온보딩
+   틀: 상태 질문 → (준비 중이면) 지역 → 작물 → 적합성 확인/추천 → 필지 경계
+       (이미 재배 중이면) 지역 → 필지 경계 → 작물 등록
+   지역 환경값은 예시 데이터 — 백엔드(기상·토양 API) 연동 시 교체
+════════════════════════════════════════════ */
+
+const REGIONS = [
+  { id: 'gangwon',   name: '강원 고랭지',  env: { tMax: 26, tMin: 16, moisture: 55, ph: 6.2 } },
+  { id: 'gyeonggi',  name: '경기 북부',    env: { tMax: 29, tMin: 20, moisture: 50, ph: 6.4 } },
+  { id: 'chungbuk',  name: '충북 내륙',    env: { tMax: 30, tMin: 21, moisture: 45, ph: 6.3 } },
+  { id: 'chungnam',  name: '충남 서해안',  env: { tMax: 29, tMin: 22, moisture: 60, ph: 6.5 } },
+  { id: 'jeonbuk',   name: '전북 평야',    env: { tMax: 31, tMin: 23, moisture: 55, ph: 6.0 } },
+  { id: 'jeonnam',   name: '전남 남해안',  env: { tMax: 30, tMin: 23, moisture: 65, ph: 6.2 } },
+  { id: 'gyeongbuk', name: '경북 내륙',    env: { tMax: 31, tMin: 21, moisture: 40, ph: 6.3 } },
+  { id: 'gyeongnam', name: '경남 남부',    env: { tMax: 31, tMin: 23, moisture: 55, ph: 6.1 } },
+  { id: 'jeju',      name: '제주',         env: { tMax: 29, tMin: 23, moisture: 60, ph: 5.8 } },
+];
+const regionOf = (id) => REGIONS.find((r) => r.id === id) || null;
+const myRegion = () => regionOf(localStorage.getItem('farm.region'));
+
+const PARCEL_CELLS = 24; // 6 x 4 칸
+
+let wiz = null;
+
+async function startWizard({ skipName = false, settingsOnly = false } = {}) {
+  // 첫 방문(로그인 전)에도 작물 목록이 필요 — 공개 API에서 로드
+  if (!selectableCrops.length) {
+    try {
+      const r = await fetch('/api/characters');
+      selectableCrops = (await r.json()).characters || [];
+    } catch { /* 서버 없으면 이후 단계에서 안내 */ }
+  }
+  wiz = { answers: { name: userName || '' }, history: [], settingsOnly };
+  show('wizard', { tabbar: false });
+  goWiz(settingsOnly ? 'region' : skipName ? 'mode' : 'name');
 }
 
-// 새 작물 추가 시트 (+ 아이콘): 아직 키우지 않는 작물만 보여줌
+function goWiz(step) { wiz.history.push(step); renderWiz(); }
+function backWiz() {
+  if (wiz.history.length > 1) { wiz.history.pop(); renderWiz(); }
+}
+
+function wizFrame(title, sub, inner, eyebrow = '시작하기') {
+  return `
+    <p class="eyebrow">${eyebrow}</p>
+    <h1 class="wiz-title">${title}</h1>
+    ${sub ? `<p class="wiz-sub">${sub}</p>` : ''}
+    ${inner}`;
+}
+
+function renderWiz() {
+  const step = wiz.history[wiz.history.length - 1];
+  const back = $('#wiz-back');
+  back.hidden = wiz.history.length <= 1;
+  back.onclick = backWiz;
+  const body = $('#wizard-body');
+  const a = wiz.answers;
+
+  // ── 이름 ──
+  if (step === 'name') {
+    body.innerHTML = wizFrame('어떻게 불러드리면 될까요?',
+      '매일 한 번 들르면, 작물이 조금씩 자라요.',
+      `<form id="wiz-name-form" class="hello-form" style="max-width:none">
+        <input id="wiz-name" type="text" maxlength="10" placeholder="이름 또는 별명" autocomplete="off" value="${a.name || ''}"/>
+        <button type="submit" class="btn btn-primary">다음</button>
+      </form>`);
+    $('#wiz-name-form').onsubmit = (e) => {
+      e.preventDefault();
+      const v = $('#wiz-name').value.trim();
+      if (!v) { toast('이름을 입력해 주세요.'); return; }
+      a.name = v;
+      goWiz('mode');
+    };
+    return;
+  }
+
+  // ── 첫 질문: 지금 어떤 상태인가요? ──
+  if (step === 'mode') {
+    body.innerHTML = wizFrame('지금 어떤 상태인가요?', '상황에 맞게 시작을 도와드릴게요.',
+      `<div class="wiz-options">
+        <button class="option-card" data-v="growing">
+          <b>이미 재배하고 있어요</b>
+          <span>밭과 작물이 있어요 — 위치와 작물을 바로 등록해요.</span>
+        </button>
+        <button class="option-card" data-v="preparing">
+          <b>재배를 준비하고 있어요</b>
+          <span>생각해 둔 지역과 작물이 잘 맞는지 확인해 드려요.</span>
+        </button>
+      </div>`);
+    body.querySelectorAll('.option-card').forEach((btn) => {
+      btn.onclick = () => { a.mode = btn.dataset.v; goWiz('region'); };
+    });
+    return;
+  }
+
+  // ── 위치 확인 (지역) ──
+  if (step === 'region') {
+    const title = a.mode === 'preparing' ? '어느 지역을 생각하고 있나요?' : '어디에서 키우고 있나요?';
+    body.innerHTML = wizFrame(title, '지역의 기후·토양을 기준으로 밭 상태를 분석해요.',
+      `<div class="region-grid">
+        ${REGIONS.map((r) => `
+          <button class="region-btn ${a.regionId === r.id ? 'active' : ''}" data-r="${r.id}">${r.name}</button>`).join('')}
+      </div>`, '위치 확인');
+    body.querySelectorAll('.region-btn').forEach((btn) => {
+      btn.onclick = () => {
+        a.regionId = btn.dataset.r;
+        if (wiz.settingsOnly) goWiz('parcel');
+        else if (a.mode === 'preparing') goWiz('crop-prep');
+        else goWiz('parcel');
+      };
+    });
+    return;
+  }
+
+  // ── (준비 중) 작물 질문 ──
+  if (step === 'crop-prep') {
+    body.innerHTML = wizFrame('어떤 작물을 키워보고 싶나요?', '골라주시면 지역과 잘 맞는지 확인해 드릴게요.',
+      `<div class="crop-grid">${cropCardsHTML(selectableCrops)}</div>`, '작물 확인');
+    body.querySelectorAll('.crop-card').forEach((card) => {
+      card.onclick = () => { a.cropId = card.dataset.crop; goWiz('check'); };
+    });
+    return;
+  }
+
+  // ── (준비 중) 적합성 확인 + 추천 지역 ──
+  if (step === 'check') {
+    const region = regionOf(a.regionId);
+    const suit = assessSuitability(a.cropId, region.env);
+    const cropName = CROP_NAMES[a.cropId] || a.cropId;
+    const good = suit.score >= 60;
+
+    // 다른 지역 점수를 계산해 더 좋은 곳 추천
+    const better = REGIONS
+      .filter((r) => r.id !== a.regionId)
+      .map((r) => ({ ...r, score: assessSuitability(a.cropId, r.env).score }))
+      .filter((r) => r.score > suit.score)
+      .sort((x, y) => y.score - x.score)
+      .slice(0, 3);
+
+    const devLines = suit.deviations.map((d) => {
+      const nameMap = { temp: '기온', moisture: '토양 수분', ph: '산도(pH)' };
+      return `${nameMap[d.factor]}이(가) 적정(${d.optimal.min}~${d.optimal.max}${d.unit})보다 ${d.status === 'high' ? '높아요' : '낮아요'}`;
+    });
+
+    body.innerHTML = wizFrame(`${region.name}에서 ${cropName}, 어떨까요?`, '',
+      `<div class="score-hero">
+        ${ringGauge(suit.score)}
+        <div class="score-hero-text">
+          <div class="score-grade">${suit.verdict}</div>
+          <div class="score-name">${cropName} 재배 적합도</div>
+        </div>
+      </div>
+      ${devLines.length ? `<p class="wiz-sub" style="text-align:center">${devLines.join(' · ')}</p>` : `<p class="wiz-sub" style="text-align:center">기온·수분·산도 모두 ${cropName}에게 알맞아요.</p>`}
+      ${!good && better.length ? `
+        <h3 class="section-label">주변 추천 지역</h3>
+        <div class="wiz-recos">
+          ${better.map((r) => `
+            <div class="wiz-reco">
+              <span class="wr-name">${r.name}</span>
+              <span class="wr-score">${r.score}점</span>
+              <button class="link-btn wr-move" data-r="${r.id}">여기로 변경</button>
+            </div>`).join('')}
+        </div>` : ''}
+      <div class="wiz-actions">
+        <button class="btn btn-primary btn-wide" id="wiz-check-go">
+          ${good ? '이 지역에서 시작하기' : '그래도 여기서 시작하기'}
+        </button>
+      </div>`, '적합성 확인');
+
+    body.querySelectorAll('.wr-move').forEach((btn) => {
+      btn.onclick = () => { a.regionId = btn.dataset.r; renderWiz(); };
+    });
+    $('#wiz-check-go').onclick = () => goWiz('parcel');
+    return;
+  }
+
+  // ── 필지 경계 설정 ──
+  if (step === 'parcel') {
+    const selected = new Set(a.parcel || []);
+    const region = regionOf(a.regionId);
+    body.innerHTML = wizFrame('밭의 경계를 표시해 주세요',
+      `${region ? region.name + ' · ' : ''}칸을 눌러 내 필지 모양을 그려요. (지도 연동 예정)`,
+      `<div class="parcel-grid">
+        ${Array.from({ length: PARCEL_CELLS }, (_, i) =>
+          `<button class="parcel-cell ${selected.has(i) ? 'on' : ''}" data-i="${i}" aria-label="필지 칸 ${i + 1}"></button>`).join('')}
+      </div>
+      <p class="wiz-sub" id="parcel-count" style="text-align:center"></p>
+      <button class="btn btn-primary btn-wide" id="wiz-parcel-done" disabled>경계 저장</button>`, '필지 경계');
+
+    const update = () => {
+      $('#parcel-count').textContent = selected.size
+        ? `${selected.size}칸을 골랐어요.` : '최소 1칸 이상 표시해 주세요.';
+      $('#wiz-parcel-done').disabled = selected.size === 0;
+    };
+    body.querySelectorAll('.parcel-cell').forEach((cell) => {
+      cell.onclick = () => {
+        const i = Number(cell.dataset.i);
+        selected.has(i) ? selected.delete(i) : selected.add(i);
+        cell.classList.toggle('on', selected.has(i));
+        update();
+      };
+    });
+    update();
+    $('#wiz-parcel-done').onclick = () => {
+      a.parcel = [...selected];
+      if (wiz.settingsOnly) finishWiz();
+      else if (a.mode === 'preparing') finishWiz();
+      else goWiz('crops-grow');
+    };
+    return;
+  }
+
+  // ── (이미 재배 중) 키우는 작물 등록 ──
+  if (step === 'crops-grow') {
+    body.innerHTML = wizFrame('어떤 작물을 키우고 있나요?', '여러 개를 골라도 좋아요.',
+      `<div class="crop-grid">${cropCardsHTML(selectableCrops)}</div>
+      <button class="btn btn-primary btn-wide" id="wiz-crops-done" disabled>등록하기</button>`, '작물 등록');
+    const confirm = $('#wiz-crops-done');
+    const picked = bindCropToggle(body, confirm, '등록하기');
+    confirm.onclick = () => {
+      if (!picked.size) return;
+      a.cropIds = [...picked];
+      finishWiz();
+    };
+    return;
+  }
+}
+
+async function finishWiz() {
+  const a = wiz.answers;
+  if (a.name && a.name !== userName) {
+    userName = a.name;
+    localStorage.setItem('farm.name', userName);
+  }
+  if (a.regionId) localStorage.setItem('farm.region', a.regionId);
+  if (a.parcel) localStorage.setItem('farm.parcel', JSON.stringify(a.parcel));
+
+  if (wiz.settingsOnly) {
+    toast('재배지 설정을 저장했어요.');
+    renderSettings();
+    show('settings');
+    return;
+  }
+
+  const ids = a.cropIds && a.cropIds.length ? a.cropIds : a.cropId ? [a.cropId] : [];
+  if (ids.length) await plantSeeds(ids);
+  await refreshStatus();
+  activeCropId = ids[0] || null;
+  renderHome();
+  show('home');
+}
+
+// 새 작물 추가 시트 (+ 아이콘) — 시작 마법사처럼 질문식 2단계:
+// ① 무엇을 심을까요? → ② 내 지역과 잘 맞는지 확인 → 심기
 function openSeedOverlay() {
   const growing = new Set((status?.crops || []).map((c) => c.cropId));
   const available = selectableCrops.filter((c) => !growing.has(c.id));
@@ -1336,27 +1567,53 @@ function openSeedOverlay() {
 
   const overlay = $('#overlay');
   const panel = $('#overlay-panel');
-  panel.classList.remove('detail'); // 상세 보기 시트 흔적 제거
+  panel.classList.remove('detail');
+
+  // ① 작물 선택
   panel.innerHTML = `
-    <p class="eyebrow">새 씨앗</p>
+    <p class="eyebrow">새 씨앗 · 1/2</p>
     <h2 style="font-size:20px;font-weight:400;margin-bottom:4px">무엇을 더 키워볼까요?</h2>
-    <p style="color:var(--ink-soft);font-size:13.5px;margin-bottom:16px">심은 작물은 상단 아이콘으로 오가며 볼 수 있어요.</p>
+    <p style="color:var(--ink-soft);font-size:13.5px;margin-bottom:16px">고르면 내 재배지와 잘 맞는지 확인해 드려요.</p>
     <div class="crop-grid">${cropCardsHTML(available)}</div>
-    <button class="btn btn-primary btn-wide" id="overlay-confirm" disabled>씨앗 심기</button>`;
+    <button class="btn btn-primary btn-wide" id="overlay-confirm" disabled>다음</button>`;
   overlay.hidden = false;
   const confirm = panel.querySelector('#overlay-confirm');
-  const picked = bindCropToggle(panel, confirm, '씨앗 심기');
-  confirm.onclick = async () => {
+  const picked = bindCropToggle(panel, confirm, '다음');
+
+  // ② 적합성 확인 후 심기
+  confirm.onclick = () => {
     if (!picked.size) return;
-    confirm.disabled = true;
-    const planted = await plantSeeds([...picked]);
-    overlay.hidden = true;
-    if (planted > 0) {
-      await refreshStatus();
-      activeCropId = [...picked][0];
-      renderHome();
-      popVignette();
-    }
+    const ids = [...picked];
+    const region = myRegion();
+    const rows = ids.map((id) => {
+      const name = CROP_NAMES[id] || id;
+      if (!region) return `<div class="wiz-reco"><span class="wr-name">${name}</span><span class="wr-score">지역 미설정</span></div>`;
+      const s = assessSuitability(id, region.env);
+      return `<div class="wiz-reco">
+        <span class="wr-name">${name}</span>
+        <span class="wr-score">${s.score}점</span>
+        <span class="wf-flag ${s.score >= 60 ? 'ok' : 'warn'}">${s.verdict}</span>
+      </div>`;
+    }).join('');
+    panel.innerHTML = `
+      <p class="eyebrow">새 씨앗 · 2/2</p>
+      <h2 style="font-size:20px;font-weight:400;margin-bottom:4px">${region ? `${region.name} 기준 적합도예요` : '적합도 확인'}</h2>
+      <p style="color:var(--ink-soft);font-size:13.5px;margin-bottom:16px">
+        ${region ? '점수가 낮아도 심을 수는 있어요. 더 자주 돌봐주면 돼요.' : '설정에서 재배지를 등록하면 적합도를 확인할 수 있어요.'}
+      </p>
+      <div class="wiz-recos" style="margin-bottom:16px">${rows}</div>
+      <button class="btn btn-primary btn-wide" id="overlay-plant">씨앗 심기 (${ids.length}개)</button>`;
+    panel.querySelector('#overlay-plant').onclick = async () => {
+      panel.querySelector('#overlay-plant').disabled = true;
+      const planted = await plantSeeds(ids);
+      overlay.hidden = true;
+      if (planted > 0) {
+        await refreshStatus();
+        activeCropId = ids[0];
+        renderHome();
+        popVignette();
+      }
+    };
   };
   overlay.onclick = (e) => { if (e.target === overlay) overlay.hidden = true; };
 }
@@ -1617,11 +1874,21 @@ function renderSettings() {
     </div>
     <div class="sc-row" style="margin-top:14px">
       <div>
+        <div class="sc-label">재배지</div>
+        <div class="sc-value" style="font-size:13.5px">
+          ${myRegion() ? `${myRegion().name} · 필지 ${(JSON.parse(localStorage.getItem('farm.parcel') || '[]')).length}칸` : '아직 설정 안 함'}
+        </div>
+      </div>
+      <button class="link-btn" id="edit-region-btn">변경</button>
+    </div>
+    <div class="sc-row" style="margin-top:14px">
+      <div>
         <div class="sc-label">교환소</div>
         <div class="sc-value" style="font-size:13.5px;color:var(--ink-soft)">모은 포인트로 비료 신청하기</div>
       </div>
       <button class="link-btn" id="open-rewards-settings">열기</button>
     </div>`;
+  $('#edit-region-btn').onclick = () => startWizard({ settingsOnly: true });
   $('#open-rewards-settings').onclick = async () => {
     await renderRewards();
     show('rewards');
@@ -1675,16 +1942,7 @@ async function boot() {
   });
 
   if (!userName) {
-    $('#hello-art').innerHTML = plantScene('cucumber', 'sprout', 'none');
-    show('hello', { tabbar: false });
-    $('#hello-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = $('#hello-name').value.trim();
-      if (!name) { toast('이름을 입력해 주세요.'); return; }
-      userName = name;
-      localStorage.setItem('farm.name', name);
-      await enter();
-    });
+    startWizard(); // 이름부터 묻는 질문식 시작 마법사
     return;
   }
   await enter();
@@ -1695,8 +1953,7 @@ async function enter() {
     const ob = await api('/api/me/onboarding');
     selectableCrops = ob.characters || [];
     if (ob.isFirstTime) {
-      renderSelectView();
-      show('select', { tabbar: false });
+      startWizard({ skipName: true }); // 이름은 있으니 상태 질문부터
       return;
     }
     await refreshStatus();
