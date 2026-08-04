@@ -117,6 +117,25 @@ body::before {
   margin: 26px 2px 10px;
 }
 
+/* 상태(날씨·토양) 배지 — conditions.js의 conditionBadge()가 사용.
+   ※ 아직 대시보드에는 연결하지 않음 (/conditions-preview.html 에서 확인) */
+.cond-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 8px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  color: var(--ink);
+  background: var(--paper-2);
+  box-shadow: inset 0 0 0 1.5px var(--line-soft);
+  white-space: nowrap;
+}
+.cond-badge svg { display: block; }
+.cond-badge.cond-good { background: var(--green-pale); box-shadow: inset 0 0 0 1.5px var(--green-soft); }
+.cond-badge.cond-warn { background: #f6ecdb; box-shadow: inset 0 0 0 1.5px #e0c49e; }
+.cond-badge.cond-danger { background: #f5e2d9; box-shadow: inset 0 0 0 1.5px #dcae9c; }
+
 .btn-ghost {
   background: transparent;
   color: var(--green-deep);
@@ -268,6 +287,112 @@ body::before {
   from { opacity: 0; transform: scale(0.92); }
   to   { opacity: 1; transform: scale(1); }
 }
+
+/* 양호 상태의 작물 — 기분 좋게 통통 튀는 리듬 */
+.sway-happy {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: bounce-happy 2.4s ease-in-out infinite;
+}
+@keyframes bounce-happy {
+  0%, 100% { transform: rotate(-1.8deg) translateY(0); }
+  25%      { transform: rotate(0deg) translateY(-3px); }
+  50%      { transform: rotate(1.8deg) translateY(0); }
+  75%      { transform: rotate(0deg) translateY(-3px); }
+}
+
+/* 주의 상태의 작물 — 축 처져서 느릿하게 기우뚱 (시든 느낌) */
+.sway-sad {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: droop-sad 5s ease-in-out infinite;
+}
+@keyframes droop-sad {
+  0%, 100% { transform: rotate(-2.6deg) scaleY(0.982); }
+  55%      { transform: rotate(-0.5deg) scaleY(1); }
+}
+
+/* 위험 상태의 작물 — 덜덜 떨림 */
+.sway-danger {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: tremble 0.38s ease-in-out infinite;
+}
+@keyframes tremble {
+  0%, 100% { transform: rotate(-1deg) translateX(-0.6px); }
+  50%      { transform: rotate(1deg) translateX(0.6px); }
+}
+
+/* ── 장면 연출 애니메이션 (conditionScene) ── */
+.fx { transform-box: fill-box; transform-origin: center; }
+
+@keyframes fx-fall {
+  0%   { transform: translateY(-6px); opacity: 0; }
+  15%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateY(48px); opacity: 0; }
+}
+.fx-fall { animation: fx-fall 1.8s linear infinite; }
+
+@keyframes fx-fall-fast {
+  0%   { transform: translateY(-10px); opacity: 0; }
+  12%  { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { transform: translateY(54px); opacity: 0; }
+}
+.fx-fall-fast { animation: fx-fall-fast 0.9s linear infinite; }
+
+@keyframes fx-snow {
+  0%   { transform: translate(0, -8px) rotate(0deg); opacity: 0; }
+  12%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translate(10px, 56px) rotate(50deg); opacity: 0; }
+}
+.fx-snow { animation: fx-snow 4.5s linear infinite; }
+
+@keyframes fx-drift {
+  0%, 100% { transform: translateX(-5px); }
+  50%      { transform: translateX(5px); }
+}
+.fx-drift { animation: fx-drift 7s ease-in-out infinite; }
+
+@keyframes fx-shimmer {
+  0%, 100% { transform: translateY(0); opacity: 0.45; }
+  50%      { transform: translateY(-5px); opacity: 0.95; }
+}
+.fx-shimmer { animation: fx-shimmer 2.2s ease-in-out infinite; }
+
+@keyframes fx-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+.fx-pulse { animation: fx-pulse 3.4s ease-in-out infinite; }
+
+@keyframes fx-spin { to { transform: rotate(360deg); } }
+.fx-spin { animation: fx-spin 4.5s linear infinite; }
+
+@keyframes fx-twinkle {
+  0%, 100% { opacity: 0.2; }
+  50%      { opacity: 1; }
+}
+.fx-twinkle { animation: fx-twinkle 2s ease-in-out infinite; }
+
+/* 바람 선이 흐르는 효과 (점선이 앞으로 밀려감) */
+@keyframes fx-flow { to { stroke-dashoffset: -54; } }
+.fx-flow { stroke-dasharray: 12 6; animation: fx-flow 1.3s linear infinite; }
+
+@keyframes fx-leaf-fly {
+  0%   { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+  12%  { opacity: 1; }
+  100% { transform: translate(-110px, 34px) rotate(-80deg); opacity: 0; }
+}
+.fx-leaf-fly { animation: fx-leaf-fly 3.2s ease-in infinite; }
+
+@keyframes fx-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(4px); }
+}
+.fx-bob { animation: fx-bob 3s ease-in-out infinite; }
 
 .status-block { text-align: center; margin-bottom: 16px; }
 .status-title {
@@ -730,6 +855,197 @@ body::before {
 @keyframes sheet-up {
   from { transform: translateY(40px); opacity: 0; }
   to   { transform: none; opacity: 1; }
+}
+
+/* ── 상세 보기 시트 ───────────────────────── */
+.overlay-panel { position: relative; }
+.overlay-panel.detail { min-height: 78dvh; }
+.sheet-close {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  background: var(--paper-2);
+  box-shadow: inset 0 0 0 1.5px var(--line-soft);
+  color: var(--ink-soft);
+  display: grid;
+  place-items: center;
+  z-index: 2;
+  transition: transform 0.12s ease;
+}
+.sheet-close:active { transform: scale(0.92); }
+.sheet-title { font-size: 21px; font-weight: 400; }
+.sheet-sub { font-size: 12.5px; color: var(--ink-soft); margin: 3px 0 14px; }
+
+.score-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin: 4px 0 16px;
+}
+.score-hero svg { display: block; }
+.score-grade { font-size: 23px; letter-spacing: 0.04em; }
+.score-name { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+
+.score-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.score-cell {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1.5px var(--line-soft), var(--shadow);
+  padding: 13px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+}
+.score-cell .sc-head {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.score-cell .sc-head strong { font-size: 21px; font-weight: 400; color: var(--ink); }
+.score-bar {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--green-pale);
+  overflow: hidden;
+}
+.score-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+
+.week-forecast {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1.5px var(--line-soft), var(--shadow);
+  padding: 12px 6px;
+}
+.wf-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 0;
+  border-radius: 12px;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.wf-day.today { background: var(--green-pale); }
+.wf-day.today .wf-dow { color: var(--green-deep); }
+.wf-day svg { display: block; }
+.wf-hi { font-size: 12.5px; color: var(--ink); }
+.wf-lo { font-size: 11.5px; color: var(--blue); }
+.wf-day .fx { display: block; }
+.wf-day.risky { background: #f8ece5; }
+.wf-day.today.risky { background: var(--green-pale); }
+
+/* 예보 등급 뱃지 (주의/위험) */
+.wf-flag {
+  font-size: 9.5px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+.wf-flag.warn { background: #f6ecdb; color: #a8672f; }
+.wf-flag.danger { background: #f0d8cc; color: #b04a35; }
+.wf-flag.ok { background: var(--green-pale); color: var(--green-deep); }
+.wf-flag.none { visibility: hidden; }
+
+/* 내 땅 분석 */
+.land-card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: inset 0 0 0 1.5px var(--line-soft), var(--shadow);
+  padding: 6px 14px;
+}
+.land-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 44px auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  font-size: 13px;
+}
+.land-row + .land-row { border-top: 1px solid var(--line-soft); }
+.land-row.plain { grid-template-columns: 64px 1fr auto; }
+.lr-name { color: var(--ink-soft); }
+.lr-value { text-align: right; font-size: 13.5px; }
+.lr-text { font-size: 13.5px; }
+.land-row .wf-flag { margin-top: 0; font-size: 10px; justify-self: end; }
+
+.range-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--paper-2);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+.range-bar .rb-ok {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--green-pale);
+}
+.range-bar .rb-dot {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 2px var(--card);
+  transform: translate(-50%, -50%);
+}
+
+/* 왜 주의·위험인지 설명 */
+.sheet-reasons { display: flex; flex-direction: column; gap: 8px; }
+.sheet-reason {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  background: var(--card);
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1.5px var(--line-soft), var(--shadow);
+  padding: 12px 13px;
+}
+.sheet-reason > svg { flex: none; margin-top: 2px; }
+.sheet-reason .sr-body { flex: 1; min-width: 0; }
+.sheet-reason .sr-title {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 3px;
+}
+.sheet-reason .sr-title .wf-flag { margin-top: 0; font-size: 10px; }
+.sheet-reason .sr-text {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.55;
 }
 
 .toast {
