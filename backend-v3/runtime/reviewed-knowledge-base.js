@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { REVIEWED_CROP_SOURCES } from "./reviewed-crop-rules.js";
 
 // 흙톡 RAG 코퍼스.
@@ -23,86 +25,113 @@ export const KNOWLEDGE_BASE_VERSION = "kb-v1-2026-08-04";
 
 const DRAFTED_AT = "2026-08-04";
 
-// 이미지는 문단에 URL을 직접 박지 않고 이 레지스트리의 imageId로만 참조한다.
-// 브라우저는 /api/knowledge-images/{imageId}만 호출하므로 업스트림 URL이
-// 클라이언트로 나가지 않고, 사용자 입력이 fetch 대상이 될 수도 없다.
+// 이미지는 문단에 경로나 URL을 직접 박지 않고 이 레지스트리의 imageId로만
+// 참조한다. 브라우저는 /api/knowledge-images/{imageId}만 호출하므로 사용자
+// 입력이 fetch나 파일 읽기 대상이 될 수 없다.
 //
-// url이 null이면 "이미지 자료 미연결" 상태로 렌더링된다. 실사진을 연결할 때는
-// 아래 절차를 지킨다.
-//   1. NCPMS 도감 또는 농사로에서 해당 이미지의 공개 URL을 사람이 직접 확인한다.
-//   2. 호스트가 KNOWLEDGE_IMAGE_HOST_ALLOWLIST에 있는지 확인한다.
-//   3. licence를 실제 표기대로 적는다. NCPMS 도감정보 OpenAPI는
-//      CC BY-NC 2.0(상업적 이용금지)이므로 상업적 배포 시 사용할 수 없다.
-//   4. node scripts/verify-knowledge-images.mjs 로 URL 실존과 형식을 검증한다.
+// 이미지 출처는 두 가지다.
+//
+//   asset — knowledge-images/ 폴더의 자체 제작 SVG 도해. 기동 시 한 번 읽어
+//           메모리에 두므로 네트워크도 요청별 파일 I/O도 없다. 라이선스가
+//           프로젝트 소유라 상업적 배포에도 제약이 없다.
+//   url   — 외부 기관의 공개 이미지. KNOWLEDGE_IMAGE_HOST_ALLOWLIST에 있는
+//           호스트만 허용하고 백엔드가 대신 받아 전달한다. NCPMS 도감정보
+//           OpenAPI는 CC BY-NC 2.0(상업적 이용금지)이므로 상업적 배포에는
+//           쓸 수 없다. 공개 URL을 추측해 채우지 않고, 사람이 확인한 값만
+//           적은 뒤 npm run verify:knowledge-images로 검증한다.
+//
+// 둘 다 비어 있으면 화면은 "이미지 자료 미연결"로 표시하고 설명만 보여준다.
 export { KNOWLEDGE_IMAGE_HOST_ALLOWLIST } from "../src/application/knowledge-images.js";
 
-function image({ imageId, alt, caption, credit, licence = null, url = null }) {
+const DIAGRAM_CREDIT = "흙날씨 자체 제작 도해";
+const DIAGRAM_LICENCE = "프로젝트 소유 (자체 제작)";
+
+function diagram({ imageId, asset, alt, caption }) {
   return Object.freeze({
     imageId,
-    url,
+    // 도해는 11개·각 2~3 KiB이므로 기동 시 모두 읽어 두는 편이 단순하고, 요청
+    // 경로에서 파일 시스템을 건드리지 않으므로 경로 이탈 위험도 없다.
+    body: readFileSync(new URL(`./knowledge-images/${asset}`, import.meta.url)),
+    contentType: "image/svg+xml",
+    url: null,
     alt,
     caption,
-    credit,
-    licence,
+    credit: DIAGRAM_CREDIT,
+    licence: DIAGRAM_LICENCE,
   });
 }
 
+// alt와 caption은 "무엇이 보이는 사진"이 아니라 "어디를 어떤 순서로 보라"로
+// 쓴다. 도해는 증상을 사실적으로 그리지 않으므로, 사용자가 자기 작물을 그림과
+// 맞춰 병을 확정하도록 유도해서는 안 된다.
 export const KNOWLEDGE_IMAGES = Object.freeze(
   Object.fromEntries(
     [
-      image({
+      diagram({
         imageId: "APPLE_BLOSSOM_FROST",
-        alt: "개화기 저온을 겪은 사과 꽃의 중심부가 갈색으로 변한 모습",
-        caption: "꽃 중심(암술머리)이 갈색으로 변했는지 확인하는 지점입니다.",
-        credit: "국가농작물병해충관리시스템(NCPMS) 도감",
+        asset: "blossom-frost-check.svg",
+        alt: "꽃 중심의 암술머리가 연한 녹색인 경우와 갈색인 경우를 나란히 비교한 도해",
+        caption: "꽃을 열어 중심(암술머리) 색을 비교하는 지점입니다.",
       }),
-      image({
+      diagram({
         imageId: "APPLE_SUNBURN",
-        alt: "사과 과실 표면이 햇볕에 데어 색이 바랜 모습",
-        caption: "직사광선을 받는 남서쪽 과실 표면부터 확인합니다.",
-        credit: "국가농작물병해충관리시스템(NCPMS) 도감",
+        asset: "fruit-sunburn-side.svg",
+        alt: "과실에서 직사광선을 받는 면과 그늘 면을 구분해 표시한 도해",
+        caption: "직사광선을 받는 면부터 확인하고 그늘 면과 비교합니다.",
       }),
-      image({
+      diagram({
         imageId: "PEAR_LEAF_WET_SPOT",
-        alt: "배 잎에 검은 반점이 생긴 모습",
-        caption: "잎이 오래 젖은 뒤 생긴 반점이 번지는지 같은 각도로 비교합니다.",
-        credit: "국가농작물병해충관리시스템(NCPMS) 도감",
+        asset: "leaf-spot-compare.svg",
+        alt: "같은 잎을 어제와 오늘 같은 각도로 비교해 반점 범위 변화를 보는 도해",
+        caption: "같은 잎을 같은 각도로 다시 보고 범위가 넓어졌는지 비교합니다.",
       }),
-      image({
+      diagram({
         imageId: "CUCUMBER_LEAF_UNDERSIDE",
-        alt: "오이 잎 뒷면에 작은 해충과 변색이 있는 모습",
-        caption: "잎 뒷면은 육안으로 놓치기 쉬우므로 뒤집어 확인합니다.",
-        credit: "국가농작물병해충관리시스템(NCPMS) 도감",
+        asset: "leaf-underside-check.svg",
+        alt: "잎을 뒤집어 앞면과 뒷면을 확인하는 순서를 표시한 도해",
+        caption: "앞면만 보면 놓치므로 잎을 뒤집어 뒷면까지 확인합니다.",
       }),
-      image({
+      diagram({
         imageId: "POTATO_LOWER_LEAF_SPOT",
-        alt: "감자 아랫잎에 물 먹은 듯한 반점이 생긴 모습",
-        caption: "과습이 이어진 뒤에는 아랫잎부터 넓어지는 반점을 확인합니다.",
-        credit: "국가농작물병해충관리시스템(NCPMS) 도감",
+        asset: "lower-leaf-first.svg",
+        alt: "포기의 아랫잎에서 위잎으로 올라가며 확인하는 순서를 번호로 표시한 도해",
+        caption: "아랫잎부터 위로 올라가며 확인하고 구역 쏠림을 함께 봅니다.",
       }),
-      image({
+      diagram({
         imageId: "LETTUCE_TIPBURN",
-        alt: "상추 잎 끝이 갈색으로 마른 모습",
-        caption: "잎 끝이 마르는 증상은 포기 바깥쪽 잎부터 확인합니다.",
-        credit: "국가농작물병해충관리시스템(NCPMS) 도감",
+        asset: "leaf-tip-check.svg",
+        alt: "포기를 위에서 본 모습에 겉잎 끝, 중간잎, 포기 중심의 확인 순서를 표시한 도해",
+        caption: "겉잎 끝부터 보고 중간잎과 포기 중심까지 순서대로 확인합니다.",
       }),
-      image({
+      diagram({
         imageId: "SOIL_DRAINAGE_PUDDLE",
-        alt: "비가 온 뒤 밭 표면에 물이 고여 있는 모습",
+        asset: "drainage-check.svg",
+        alt: "밭 단면에서 물이 남는 낮은 구역과 막힌 배수로를 표시한 도해",
         caption: "비가 그친 뒤 물이 남아 있는 위치가 배수 점검 지점입니다.",
-        credit: "농사로",
       }),
-      image({
+      diagram({
         imageId: "SOIL_TEST_SAMPLING",
-        alt: "밭 여러 지점에서 흙을 채취해 한데 섞는 모습",
-        caption: "한 지점만 파지 않고 밭 전체에서 골고루 채취합니다.",
-        credit: "농사로",
+        asset: "soil-sampling-points.svg",
+        alt: "밭을 위에서 본 모습에 여섯 곳의 채취 지점과 한 봉지로 섞는 과정을 표시한 도해",
+        caption: "한 지점만 파지 않고 밭 전체에서 골고루 채취해 섞습니다.",
       }),
-      image({
+      diagram({
         imageId: "FACILITY_VENTILATION",
-        alt: "시설 하우스의 측창과 천창을 열어 환기하는 모습",
-        caption: "잎이 젖어 있는 시간을 줄이려면 측창과 천창을 함께 엽니다.",
-        credit: "농사로",
+        asset: "facility-ventilation.svg",
+        alt: "하우스 단면에서 천창과 측창을 함께 열었을 때의 공기 흐름을 표시한 도해",
+        caption: "측창과 천창을 함께 열어 공기가 한 방향으로 흐르게 합니다.",
+      }),
+      diagram({
+        imageId: "OBSERVATION_PHOTO_SET",
+        asset: "photo-record-method.svg",
+        alt: "포기 전체, 증상 부위, 잎 뒷면 세 장과 촬영 날짜를 함께 남기는 방법을 표시한 도해",
+        caption: "전체·증상 부위·잎 뒷면 세 장을 날짜와 함께 남깁니다.",
+      }),
+      diagram({
+        imageId: "COLD_AIR_POOLING",
+        asset: "cold-air-pooling.svg",
+        alt: "지형 단면에서 찬 공기가 낮은 구역에 고여 예보보다 더 낮아질 수 있음을 표시한 도해",
+        caption: "찬 공기가 고이는 낮은 구역이 저온 피해 확인 지점입니다.",
       }),
     ].map((entry) => [entry.imageId, entry]),
   ),
@@ -224,6 +253,7 @@ const WEATHER_PASSAGES = [
       "맑고 바람이 없는 밤에 지면의 열이 빠져나가면 예보 최저기온보다 지면 근처가 더 차가워집니다. 그래서 예보가 영상이어도 낮은 지형이나 찬 공기가 모이는 골짜기 쪽 밭은 서리가 내릴 수 있습니다. 밭 안에서도 가장 낮은 구역과 바람이 막힌 구역을 저온 피해 확인 지점으로 정해 두세요.",
     topics: ["WEATHER", "ACTION"],
     keywords: ["서리", "저온", "동해", "냉해", "최저기온", "영하", "찬공기", "골짜기"],
+    imageId: "COLD_AIR_POOLING",
     source: RDA_SOURCE,
     sourcePageOrTable: "저온·서리 피해 예방 일반 지침",
   }),
@@ -289,6 +319,7 @@ const OBSERVATION_PASSAGES = [
       "증상은 같은 자리를 같은 각도와 같은 거리에서 반복 촬영해야 번지는지 판단할 수 있습니다. 전체 포기가 보이는 사진 한 장, 증상 부위를 가까이 찍은 사진 한 장, 잎 뒷면 사진 한 장을 함께 남기고 날짜를 적어 두세요. 이 기록은 농업기술센터에 문의할 때 그대로 쓸 수 있습니다.",
     topics: ["ACTION", "SOURCE"],
     keywords: ["사진", "기록", "촬영", "증상", "관찰", "일지", "각도"],
+    imageId: "OBSERVATION_PHOTO_SET",
     source: RDA_SOURCE,
     sourcePageOrTable: "현장 관찰 기록 방법",
   }),

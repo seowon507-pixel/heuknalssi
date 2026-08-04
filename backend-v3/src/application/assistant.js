@@ -661,6 +661,7 @@ function sourceStateText(source) {
     return "현재 분석에 연결된 자료";
   }
   if (source?.deliveryState === "LIVE") return "연결되었으나 시점 확인이 필요한 자료";
+  if (source?.deliveryState === "REFERENCE") return "공식 평년 참고자료";
   if (source?.deliveryState === "SAMPLE") return "개발 샘플이라 농업 판단에 사용하지 않는 자료";
   if (source?.adapterState === "UNAVAILABLE") return "현재 값을 받지 못한 자료";
   return null;

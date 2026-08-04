@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>흙날씨 Enterprise Icon System</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Pretendard, "Noto Sans KR", system-ui, sans-serif;
+      color: #10271a;
+      background: #f3f5f1;
+      --brand: #123f2a;
+      --brand-2: #23744a;
+      --line: #d9dfd8;
+      --muted: #657269;
+      --soft: #f7f8f5;
+      --amber: #c97708;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 38px; }
+    button { font: inherit; }
+    img { display: block; }
+    main { width: min(1240px, 100%); margin: 0 auto; }
+    .topbar {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 32px;
+      margin-bottom: 24px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 11px;
+      border: 1px solid #c8d7cd;
+      border-radius: 7px;
+      color: var(--brand-2);
+      background: #eef5f0;
+      font-size: 12px;
+      font-weight: 760;
+      letter-spacing: .08em;
+    }
+    h1 {
+      margin: 13px 0 0;
+      font-size: 34px;
+      line-height: 1.18;
+      letter-spacing: -.045em;
+    }
+    .top-copy { margin: 10px 0 0; color: var(--muted); font-size: 15px; }
+    .system-meta { display: flex; gap: 22px; padding-bottom: 4px; }
+    .system-meta div { min-width: 82px; }
+    .system-meta small { display: block; color: #7a847d; font-size: 11px; font-weight: 700; }
+    .system-meta strong { display: block; margin-top: 5px; font-size: 13px; }
+    .panel {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 12px 36px rgb(24 51 34 / 6%);
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 22px 17px;
+      border-bottom: 1px solid #e7ebe6;
+    }
+    .panel-head h2 { margin: 0; font-size: 18px; letter-spacing: -.025em; }
+    .panel-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--brand-2);
+      font-size: 12px;
+      font-weight: 750;
+    }
+    .status::before { width: 7px; height: 7px; border-radius: 50%; background: #2f9b64; content: ""; }
+    .crop-panel { margin-bottom: 18px; }
+    .crop-options {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      padding: 16px;
+    }
+    .crop-option {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 13px;
+      padding: 15px;
+      border: 1px solid #e1e6df;
+      border-radius: 12px;
+      color: #203128;
+      background: #fff;
+      text-align: left;
+    }
+    .crop-option.active { border-color: #2d744d; background: #f0f7f2; box-shadow: inset 0 0 0 1px #2d744d; }
+    .icon-box {
+      display: grid;
+      width: 46px;
+      height: 46px;
+      flex: 0 0 46px;
+      place-items: center;
+      border-radius: 10px;
+      background: var(--soft);
+    }
+    .active .icon-box { background: #fff; }
+    .icon-box img { width: 30px; height: 30px; }
+    .crop-option strong { display: block; font-size: 15px; }
+    .crop-option small { display: block; margin-top: 4px; color: #7b857e; font-size: 11px; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(340px, .9fr); gap: 18px; }
+    .health-body { display: grid; grid-template-columns: 188px minmax(0, 1fr); min-height: 278px; }
+    .score {
+      display: grid;
+      align-content: center;
+      justify-items: center;
+      border-right: 1px solid #e6eae5;
+      background: #f8faf7;
+    }
+    .score strong { font-size: 48px; letter-spacing: -.055em; color: var(--brand); }
+    .score strong span { margin-left: 3px; font-size: 17px; }
+    .score em {
+      margin-top: 4px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      color: #a65d00;
+      background: #fff0dc;
+      font-size: 12px;
+      font-style: normal;
+      font-weight: 800;
+    }
+    .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .metric {
+      display: grid;
+      align-content: center;
+      justify-items: center;
+      min-width: 0;
+      padding: 28px 16px;
+      text-align: center;
+    }
+    .metric + .metric { border-left: 1px solid #e6eae5; }
+    .metric-icon { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 13px; background: #f3f7f3; }
+    .metric-icon img { width: 30px; height: 30px; }
+    .metric label { margin-top: 14px; color: #647068; font-size: 12px; font-weight: 700; }
+    .metric strong { margin-top: 2px; font-size: 29px; letter-spacing: -.04em; }
+    .metric small { margin-top: 5px; color: var(--muted); font-size: 11px; }
+    .action-list { padding: 13px 18px 17px; }
+    .action {
+      display: grid;
+      grid-template-columns: 46px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 13px;
+      padding: 14px 4px;
+    }
+    .action + .action { border-top: 1px solid #e8ebe7; }
+    .action .icon-box { width: 42px; height: 42px; flex-basis: 42px; }
+    .action .icon-box img { width: 25px; height: 25px; }
+    .action strong { display: block; font-size: 14px; }
+    .action p { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .action time { color: var(--amber); font-size: 11px; font-weight: 760; }
+    .spec-panel { margin-top: 18px; }
+    .spec-body { display: grid; grid-template-columns: 1.1fr .9fr; }
+    .principles { display: grid; grid-template-columns: repeat(3, 1fr); padding: 19px 22px; gap: 20px; }
+    .principles strong { display: block; font-size: 12px; }
+    .principles span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+    .size-check { display: flex; align-items: center; justify-content: center; gap: 20px; border-left: 1px solid #e6eae5; background: #fafbf9; }
+    .size-item { display: flex; align-items: center; gap: 7px; color: #6f7a72; font-size: 10px; font-weight: 700; }
+    .s20 { width: 20px; height: 20px; }
+    .s24 { width: 24px; height: 24px; }
+    .s32 { width: 32px; height: 32px; }
+    @media (max-width: 900px) {
+      body { padding: 20px; }
+      .system-meta { display: none; }
+      .crop-options { grid-template-columns: repeat(2, 1fr); }
+      .workspace { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="topbar">
+      <div>
+        <span class="eyebrow">HEUKNALSSI · PRODUCT ICONS 2.0</span>
+        <h1>농업 데이터가 한눈에 읽히는 제품 아이콘</h1>
+        <p class="top-copy">장식은 줄이고, 작물·환경·행동을 3초 안에 구분하도록 설계했습니다.</p>
+      </div>
+      <div class="system-meta" aria-label="아이콘 시스템 사양">
+        <div><small>GRID</small><strong>24 × 24</strong></div>
+        <div><small>STROKE</small><strong>1.8 px</strong></div>
+        <div><small>COLORS</small><strong>3 max</strong></div>
+      </div>
+    </header>
+
+    <section class="panel crop-panel">
+      <div class="panel-head">
+        <div><h2>관리 작물 선택</h2><p>같은 규격 안에서 실루엣만으로 품목을 구분합니다.</p></div>
+        <span class="status">운영 규격 승인</span>
+      </div>
+      <div class="crop-options">
+        <button class="crop-option active" type="button"><span class="icon-box"><img src="../../ui-integration/icons/crops/apple.svg" alt=""></span><span><strong>사과</strong><small>과수 · 선택됨</small></span></button>
+        <button class="crop-option" type="button"><span class="icon-box"><img src="../../ui-integration/icons/crops/pear.svg" alt=""></span><span><strong>배</strong><small>과수</small></span></button>
+        <button class="crop-option" type="button"><span class="icon-box"><img src="../../ui-integration/icons/crops/cucumber.svg" alt=""></span><span><strong>오이</strong><small>과채류</small></span></button>
+        <button class="crop-option" type="button"><span class="icon-box"><img src="../../ui-integration/icons/crops/potato.svg" alt=""></span><span><strong>감자</strong><small>서류</small></span></button>
+        <button class="crop-option" type="button"><span class="icon-box"><img src="../../ui-integration/icons/crops/lettuce.svg" alt=""></span><span><strong>상추</strong><small>엽채류</small></span></button>
+      </div>
+    </section>
+
+    <div class="workspace">
+      <section class="panel">
+        <div class="panel-head">
+          <div><h2>오늘의 농장 상태</h2><p>환경별 상태를 동일한 시각 언어로 제공합니다.</p></div>
+          <span class="status">08.04 07:30 갱신</span>
+        </div>
+        <div class="health-body">
+          <div class="score"><strong>82<span>점</span></strong><em>주의</em></div>
+          <div class="metrics">
+            <div class="metric"><span class="metric-icon"><img src="../../ui-integration/icons/environment/weather.svg" alt=""></span><label>날씨</label><strong>78</strong><small>고온 주의</small></div>
+            <div class="metric"><span class="metric-icon"><img src="../../ui-integration/icons/environment/soil.svg" alt=""></span><label>토양</label><strong>86</strong><small>pH 적정</small></div>
+            <div class="metric"><span class="metric-icon"><img src="../../ui-integration/icons/environment/forecast.svg" alt=""></span><label>예보</label><strong>82</strong><small>7일 위험 반영</small></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div><h2>오늘 필요한 행동</h2><p>아이콘은 행동의 성격을 먼저 알립니다.</p></div>
+          <span class="status">3건</span>
+        </div>
+        <div class="action-list">
+          <div class="action"><span class="icon-box"><img src="../../ui-integration/icons/environment/water.svg" alt=""></span><div><strong>관수량 확인</strong><p>토양 수분을 확인한 뒤 오전 중 보충합니다.</p></div><time>09:00</time></div>
+          <div class="action"><span class="icon-box"><img src="../../ui-integration/icons/crops/apple.svg" alt=""></span><div><strong>과실 햇볕 데임 점검</strong><p>남서향 과실의 변색 여부를 확인합니다.</p></div><time>오늘</time></div>
+          <div class="action"><span class="icon-box"><img src="../../ui-integration/icons/environment/forecast.svg" alt=""></span><div><strong>고온 대응 계획</strong><p>내일 최고기온 전에 차광 준비를 완료합니다.</p></div><time>내일 전</time></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel spec-panel">
+      <div class="spec-body">
+        <div class="principles"><div><strong>명확한 실루엣</strong><span>한 아이콘, 한 의미</span></div><div><strong>절제된 색상</strong><span>브랜드 포함 최대 3색</span></div><div><strong>일관된 선</strong><span>24px 기준 1.8px</span></div></div>
+        <div class="size-check" aria-label="실사용 크기 검수"><span class="size-item"><img class="s20" src="../../ui-integration/icons/environment/weather.svg" alt="">20px</span><span class="size-item"><img class="s24" src="../../ui-integration/icons/environment/soil.svg" alt="">24px</span><span class="size-item"><img class="s32" src="../../ui-integration/icons/crops/apple.svg" alt="">32px</span></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

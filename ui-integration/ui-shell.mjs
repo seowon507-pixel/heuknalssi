@@ -56,6 +56,13 @@
     requestAnimationFrame(() => { liveRegion.textContent = message; });
   }
 
+  function cropIcon(crop, className = '') {
+    const icon = document.createElement('span');
+    icon.className = `app-icon crop-icon crop-icon--${crop}${className ? ` ${className}` : ''}`;
+    icon.setAttribute('aria-hidden', 'true');
+    return icon;
+  }
+
   function selectedValue(name) {
     return form.querySelector(`input[name="${name}"]:checked`)?.value || '';
   }
@@ -232,7 +239,8 @@
       const card = document.createElement('section');
       card.className = 'crop-setting-card';
       const title = document.createElement('h2');
-      title.textContent = labels.crop[crop];
+      title.className = 'crop-setting-heading';
+      title.append(cropIcon(crop), document.createTextNode(labels.crop[crop]));
       const help = document.createElement('p');
       help.textContent = crop === 'cucumber' || crop === 'lettuce'
         ? '재배 환경에 따라 기상·토양 판단 범위가 달라집니다.'
@@ -350,7 +358,8 @@
       const card = document.createElement('section');
       card.className = 'crop-setting-card growth-crop-card';
       const title = document.createElement('h2');
-      title.textContent = labels.crop[crop];
+      title.className = 'crop-setting-heading';
+      title.append(cropIcon(crop), document.createTextNode(labels.crop[crop]));
       const help = document.createElement('p');
       help.textContent = '날짜 기준 AI 예상이 기본입니다. 실제 작물과 다르면 직접 바꿔 주세요.';
       const fieldset = document.createElement('fieldset');
@@ -526,7 +535,7 @@
       if (!target) return;
       target.scrollIntoView({ block: 'start' });
       target.focus({ preventScroll: true });
-      announce(`${target.textContent || '추가 서비스'} 안내로 이동했습니다.`);
+      announce(`${target.textContent || '농장 다이어리'} 안내로 이동했습니다.`);
     });
   });
 
@@ -569,6 +578,17 @@
   document.querySelectorAll('[data-view]').forEach((button) => {
     button.addEventListener('click', () => showView(button.dataset.view));
   });
+
+  const diaryTodayDate = document.querySelector('#diary-today-date');
+  if (diaryTodayDate) {
+    const today = new Date();
+    diaryTodayDate.dateTime = today.toISOString().slice(0, 10);
+    diaryTodayDate.textContent = new Intl.DateTimeFormat('ko-KR', {
+      month: 'long',
+      day: 'numeric',
+      weekday: 'short',
+    }).format(today);
+  }
 
   document.querySelectorAll('[data-open-dialog]').forEach((button) => {
     button.addEventListener('click', () => openEvidenceDialog(button.dataset.openDialog));

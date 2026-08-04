@@ -92,6 +92,18 @@ test("DataEnvelope validates provenance and keeps timestamps semantically separa
   assert.equal(validateDataEnvelope(invalid).valid, false);
 });
 
+test("official reference datasets remain usable without being labeled live", () => {
+  const result = envelope({
+    deliveryState: "REFERENCE",
+    spatialLevel: "REFERENCE_DATASET",
+    spatialLabel: "KMA 1991-2020 climate normals",
+  });
+
+  assert.equal(result.deliveryState, "REFERENCE");
+  assert.equal(result.freshness, "CURRENT");
+  assert.deepEqual(validateDataEnvelope(result), { valid: true, errors: [] });
+});
+
 test("cached envelopes mark stale metadata and expire without returning data", () => {
   const stale = createDataEnvelope(
     {

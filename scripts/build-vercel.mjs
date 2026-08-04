@@ -1,7 +1,7 @@
 // Vercel 정적 출력 디렉터리(public/)를 구성한다.
 // 저장소 루트의 기획 문서(.md)는 배포에 포함하지 않고, UI 실행에 필요한
 // HTML 한 개와 ui-integration 브라우저 자산만 복사한다.
-import { copyFile, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,13 +48,13 @@ for (const asset of BROWSER_ASSETS) {
 // 서비스워커는 사이트 전체를 제어해야 하므로 반드시 루트에 둔다.
 await copyFile(join(integrationDirectory, "sw.js"), join(outputDirectory, "sw.js"));
 
-await mkdir(join(outputDirectory, "icons"), { recursive: true });
-for (const icon of ["icon-192.png", "icon-512.png"]) {
-  await copyFile(
-    join(integrationDirectory, "icons", icon),
-    join(outputDirectory, "icons", icon),
-  );
-}
+// PWA 아이콘과 소형 작물·환경 SVG를 같은 추적 소스에서 배포한다.
+// public/은 빌드마다 재생성되므로 자산 원본을 그 아래에 직접 두지 않는다.
+await cp(
+  join(integrationDirectory, "icons"),
+  join(outputDirectory, "icons"),
+  { recursive: true },
+);
 
 await writeFile(
   join(outputDirectory, "manifest.webmanifest"),

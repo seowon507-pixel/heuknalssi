@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220" role="img">
+  <title>이상 증상은 전체·근접·잎 뒷면 세 장과 날짜를 함께 기록한다는 도해</title>
+  <g font-family="system-ui, -apple-system, sans-serif" fill="#20342A">
+    <text x="16" y="24" font-size="13" font-weight="700">세 장을 날짜와 함께 남깁니다</text>
+
+    <!-- 1. 전체 -->
+    <g transform="translate(70 108)">
+      <rect x="-46" y="-40" width="92" height="80" rx="6" fill="#F2F8F4" stroke="#9FBFAE" stroke-width="1.6"/>
+      <path d="M0 30v-46" stroke="#4E9A6B" stroke-width="2.4" stroke-linecap="round"/>
+      <g fill="#6FB88A" stroke="#4E9A6B" stroke-width="1.2">
+        <path d="M-2 -4c-16 -2 -23 -8 -23 -11 3 -4 14 -4 23 2z"/>
+        <path d="M2 -4c16 -2 23 -8 23 -11 -3 -4 -14 -4 -23 2z"/>
+        <path d="M-2 -24c-12 -2 -18 -6 -18 -9 2 -3 11 -3 18 2z"/>
+        <path d="M2 -24c12 -2 18 -6 18 -9 -2 -3 -11 -3 -18 2z"/>
+      </g>
+      <text x="0" y="58" font-size="11" font-weight="700" text-anchor="middle">1. 포기 전체</text>
+    </g>
+
+    <!-- 2. 근접 -->
+    <g transform="translate(196 108)">
+      <rect x="-46" y="-40" width="92" height="80" rx="6" fill="#F2F8F4" stroke="#9FBFAE" stroke-width="1.6"/>
+      <path d="M-30 6c22 -22 40 -30 60 -30 -4 26 -20 42 -44 46z" fill="#EAF5EE" stroke="#6FB88A" stroke-width="1.5"/>
+      <circle cx="-2" cy="0" r="8" fill="#C98A72" stroke="#B4472E" stroke-width="1.4"/>
+      <circle cx="14" cy="-14" r="4" fill="#C98A72" stroke="#B4472E" stroke-width="1.2"/>
+      <text x="0" y="58" font-size="11" font-weight="700" text-anchor="middle">2. 증상 부위</text>
+    </g>
+
+    <!-- 3. 뒷면 -->
+    <g transform="translate(322 108)">
+      <rect x="-46" y="-40" width="92" height="80" rx="6" fill="#F2F8F4" stroke="#9FBFAE" stroke-width="1.6"/>
+      <path d="M0 -30c20 9 29 22 29 31s-9 22 -29 31c-20 -9 -29 -22 -29 -31s9 -22 29 -31z" fill="#EAF5EE" stroke="#6FB88A" stroke-width="1.5"/>
+      <path d="M0 -30v62" stroke="#9FBFAE" stroke-width="1.2"/>
+      <g fill="#5F7166"><ellipse cx="-10" cy="-6" rx="3" ry="2.2"/><ellipse cx="8" cy="6" rx="3" ry="2.2"/></g>
+      <text x="0" y="58" font-size="11" font-weight="700" text-anchor="middle">3. 잎 뒷면</text>
+    </g>
+
+    <!-- 날짜 -->
+    <g transform="translate(200 182)">
+      <rect x="-58" y="-13" width="116" height="24" rx="12" fill="#EAF5EE" stroke="#9FBFAE" stroke-width="1.2"/>
+      <text x="0" y="4" font-size="11" font-weight="700" fill="#20342A" text-anchor="middle">촬영 날짜 함께 적기</text>
+    </g>
+
+    <text x="384" y="215" font-size="9" fill="#9FBFAE" text-anchor="end">관찰 지점 도해</text>
+  </g>
+</svg>

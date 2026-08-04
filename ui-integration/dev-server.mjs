@@ -10,6 +10,7 @@ import { buildBackendEnvironment } from "./runtime-env.mjs";
 const integrationDirectory = dirname(fileURLToPath(import.meta.url));
 const projectDirectory = resolve(integrationDirectory, "..");
 const backendDirectory = join(projectDirectory, "backend-v3");
+const iconsDirectory = join(integrationDirectory, "icons");
 const reviewedRuntimePath = join(
   backendDirectory,
   "runtime",
@@ -112,6 +113,13 @@ async function routeRequest(request, response) {
     const localPath = safeIntegrationPath(url.pathname);
     if (localPath) {
       await serveFile(localPath, response, { cache: false });
+      return;
+    }
+  }
+  if (url.pathname.startsWith("/icons/")) {
+    const localPath = safeIconPath(url.pathname);
+    if (localPath) {
+      await serveFile(localPath, response, { cache: true });
       return;
     }
   }
@@ -260,6 +268,21 @@ function safeIntegrationPath(pathname) {
   if (!relativePath || relativePath.includes("\0")) return null;
   const resolvedPath = resolve(integrationDirectory, normalize(relativePath));
   const relation = relative(integrationDirectory, resolvedPath);
+  if (relation.startsWith("..") || relation === "") return null;
+  return resolvedPath;
+}
+
+function safeIconPath(pathname) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  const relativePath = decoded.replace(/^\/icons\//u, "");
+  if (!relativePath || relativePath.includes("\0")) return null;
+  const resolvedPath = resolve(iconsDirectory, normalize(relativePath));
+  const relation = relative(iconsDirectory, resolvedPath);
   if (relation.startsWith("..") || relation === "") return null;
   return resolvedPath;
 }

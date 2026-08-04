@@ -1,8 +1,12 @@
 // 흙톡 재배 참고 이미지 검증.
 //
-// 코퍼스에 등록한 이미지 URL이 실제로 존재하고, 허용 호스트에 있고, 이미지
-// 형식이며, 크기 상한 안에 있는지 확인한다. 등록된 URL을 배포 전에 여기서
-// 한 번 걸러야 화면에 깨진 이미지가 나가지 않는다.
+// 두 종류를 함께 본다.
+//   자체 제작 도해 — SVG가 잘 만들어졌고, 스크립트나 외부 참조가 없고,
+//                    뷰박스와 도해 라벨 규칙을 지키는지 확인한다.
+//   외부 이미지    — 등록한 URL이 실제로 존재하고, 허용 호스트에 있고, 이미지
+//                    형식이며, 크기 상한 안에 있는지 확인한다.
+//
+// 배포 전에 여기서 걸러야 화면에 깨진 이미지가 나가지 않는다.
 //
 // 실행:
 //   node scripts/verify-knowledge-images.js
@@ -21,6 +25,23 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
+
+// SVG 도해에 들어가면 안 되는 것들. 우리 오리진에서 서빙되므로 외부 참조와
+// 실행 가능한 내용을 원천적으로 막는다.
+const BANNED_SVG_TOKENS = Object.freeze([
+  "<script",
+  "<foreignObject",
+  "<image",
+  "<use",
+  "xlink:href",
+  "@import",
+  "data:",
+  "javascript:",
+  "onload=",
+  "onerror=",
+]);
+const EXPECTED_VIEWBOX = "0 0 400 220";
+const DIAGRAM_LABEL = "관찰 지점 도해";
 
 const strict = process.argv.includes("--strict");
 const failures = [];
@@ -46,6 +67,57 @@ for (const [imageId, entry] of Object.entries(KNOWLEDGE_IMAGES)) {
   }
   if (!entry.alt?.trim()) fail(imageId, "alt 텍스트가 없습니다.");
   if (!entry.credit?.trim()) fail(imageId, "credit(출처 표기)이 없습니다.");
+
+  // 자체 제작 도해는 네트워크 없이 내용만 검사한다.
+  if (Buffer.isBuffer(entry.body) && entry.body.length > 0) {
+    if (!entry.licence?.trim()) {
+      fail(imageId, "licence 표기가 필요합니다.");
+    }
+    if (entry.contentType !== "image/svg+xml") {
+      // 래스터 도해를 넣었다면 크기만 확인하고 넘어간다.
+      if (entry.body.length > MAX_IMAGE_BYTES) {
+        fail(imageId, `크기 상한 초과: ${(entry.body.length / 1024).toFixed(0)} KiB`);
+      } else {
+        verified.push(
+          `${imageId} — 자체 제작 ${entry.contentType}, ${(entry.body.length / 1024).toFixed(1)} KiB`,
+        );
+      }
+      continue;
+    }
+    const svg = entry.body.toString("utf8");
+    let broken = false;
+    for (const token of BANNED_SVG_TOKENS) {
+      if (svg.includes(token)) {
+        fail(imageId, `도해에 금지된 내용이 있습니다: ${token}`);
+        broken = true;
+      }
+    }
+    if (!svg.includes(`viewBox="${EXPECTED_VIEWBOX}"`)) {
+      fail(imageId, `viewBox가 "${EXPECTED_VIEWBOX}"가 아닙니다.`);
+      broken = true;
+    }
+    if (!/<title>[^<]+<\/title>/u.test(svg)) {
+      fail(imageId, "<title>이 없습니다.");
+      broken = true;
+    }
+    if (!svg.includes(DIAGRAM_LABEL)) {
+      fail(
+        imageId,
+        `사진이 아님을 밝히는 "${DIAGRAM_LABEL}" 라벨이 없습니다.`,
+      );
+      broken = true;
+    }
+    if (entry.body.length > MAX_IMAGE_BYTES) {
+      fail(imageId, `크기 상한 초과: ${(entry.body.length / 1024).toFixed(0)} KiB`);
+      broken = true;
+    }
+    if (!broken) {
+      verified.push(
+        `${imageId} — 자체 제작 도해 SVG, ${(entry.body.length / 1024).toFixed(1)} KiB, ${entry.licence}`,
+      );
+    }
+    continue;
+  }
 
   const url = typeof entry.url === "string" ? entry.url.trim() : "";
   if (!url) {
@@ -144,8 +216,8 @@ for (const line of failures) console.error(`  실패  ${line}`);
 if (notConnected.length > 0 && !strict) {
   console.log(
     "\n미연결 이미지는 설명만 표시되고 깨진 이미지로 나가지 않습니다.\n" +
-      "실사진을 붙이려면 NCPMS 도감 또는 농사로에서 공개 이미지 URL을 사람이\n" +
-      "직접 확인한 뒤 runtime/reviewed-knowledge-base.js의 url과 licence를 채우고\n" +
+      "자체 제작 도해를 붙이려면 runtime/knowledge-images/README.md의 절차를,\n" +
+      "외부 실사진을 붙이려면 사람이 확인한 공개 URL과 licence를 채운 뒤\n" +
       "이 스크립트를 다시 실행하세요.",
   );
 }

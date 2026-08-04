@@ -1517,7 +1517,8 @@
       background: #EDF6F0;
       color: #2D7650;
     }
-    .forecast-glyph svg { width: 23px; height: 23px; }
+    .forecast-glyph svg,
+    .forecast-glyph .app-icon { width: 23px; height: 23px; }
     .forecast-day-temperature {
       display: block;
       color: #17231B;
@@ -1636,6 +1637,10 @@
       color: #A9E2BD;
     }
     .live-action-visual svg {
+      width: 32px;
+      height: 32px;
+    }
+    .live-action-visual > .live-action-visual-icon {
       width: 32px;
       height: 32px;
     }
@@ -2091,9 +2096,10 @@
     .assistant-reference-image {
       display: block;
       width: 100%;
-      max-height: 190px;
-      object-fit: cover;
-      background: #EFF4F0;
+      height: 200px;
+      /* 도해는 잘리면 라벨과 화살표가 사라지므로 cover가 아니라 contain이다. */
+      object-fit: contain;
+      background: #F7FAF8;
     }
     .assistant-reference-missing {
       margin: 0;
@@ -2576,7 +2582,7 @@
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M4 7.5c3-2.2 5.3-2.2 8 0s5 2.2 8 0M4 12c3-2.2 5.3-2.2 8 0s5 2.2 8 0M5 17h14"/></svg>
         </span>
-        <span class="brand-copy"><span class="brand-name">흙날씨</span><span class="brand-module">농지 진단 AI</span></span>
+        <span class="brand-copy"><span class="brand-name">흙날씨</span><span class="brand-module">나의 농장 다이어리</span></span>
       </div>
       <button class="sidebar-context" id="sidebar-farm-trigger" type="button" aria-label="내 농장 목록 펼치기" aria-expanded="false" aria-controls="sidebar-farm-list">
         <span class="sidebar-kicker">현재 농장</span>
@@ -2584,10 +2590,10 @@
         <span id="sidebar-mode-value">재배 중 생육 점검</span>
       </button>
       <nav class="nav-list">
-        <button class="nav-button" type="button" data-view="dashboard" aria-current="page">대시보드</button>
+        <button class="nav-button" type="button" data-view="dashboard" aria-current="page">오늘 할 일</button>
+        <button class="nav-button" type="button" data-view="services">농장 다이어리</button>
         <button class="nav-button" type="button" data-view="crop-management">작물 관리</button>
         <button class="nav-button" type="button" data-view="pest-alerts">병해충 경보 <span class="nav-alert-count" id="pest-nav-count" hidden>0</span></button>
-        <button class="nav-button" type="button" data-view="services">추가 서비스</button>
         <button class="nav-button chatbot-option is-text" id="sidebar-chatbot-trigger" type="button" data-open-assistant="true">흙톡 <span>(챗봇)</span></button>
         <button class="nav-button" type="button" data-view="mypage">마이페이지</button>
       </nav>
@@ -2619,6 +2625,7 @@
               <p class="muted" id="dashboard-mode-copy">현재 재배 조건 기준 기상·토양·예보 분석</p>
             </div>
             <nav class="crop-result-switcher" id="crop-result-switcher" aria-label="작물별 분석 결과" hidden></nav>
+            <button class="diary-quick-entry" type="button" data-view="services" data-service-anchor="photo-journal-panel"><span>오늘의 기록</span> 사진·메모 남기기</button>
           </div>
         </header>
         <div class="integration-banner is-loading" id="backend-service-banner" role="status" aria-live="polite">
@@ -2696,6 +2703,54 @@
         <section class="dashboard-workspace" id="dashboard-workspace" aria-label="농장 오늘 점검 대시보드" hidden>
           <div class="dashboard-overview-grid">
             <article class="dashboard-surface dashboard-status-summary" id="dashboard-status-summary" aria-labelledby="dashboard-status-title" aria-live="polite">
+              <section class="mobile-growth-hero" id="mobile-growth-hero" aria-labelledby="mobile-scene-status" hidden>
+                <div class="mobile-growth-meta">
+                  <span id="mobile-scene-crop">선택 작물</span>
+                  <span id="mobile-scene-stage">단계 설정</span>
+                </div>
+                <div
+                  class="growth-environment-scene"
+                  id="growth-environment-scene"
+                  data-environment="neutral"
+                  data-crop="unknown"
+                  data-growth-stage="0"
+                  data-risk-tone="hold"
+                  role="img"
+                  aria-label="작물과 환경 자료를 확인하고 있습니다."
+                >
+                  <span class="scene-layer scene-sky" aria-hidden="true"></span>
+                  <span class="scene-layer scene-sun" aria-hidden="true"></span>
+                  <span class="scene-layer scene-cloud scene-cloud--back" aria-hidden="true"></span>
+                  <span class="scene-layer scene-cloud scene-cloud--front" aria-hidden="true"></span>
+                  <span class="scene-layer scene-heat" aria-hidden="true"></span>
+                  <span class="scene-layer scene-wind" aria-hidden="true"></span>
+                  <span class="scene-layer scene-precipitation" aria-hidden="true"></span>
+                  <span class="scene-layer scene-ground" aria-hidden="true"></span>
+                  <span class="scene-plant-anchor" aria-hidden="true">
+                    <span class="scene-plant-fallback"></span>
+                    <img id="mobile-scene-plant" src="/icons/crops/apple.svg" alt="" decoding="async">
+                    <span class="scene-stage-accent scene-stage-accent--left"></span>
+                    <span class="scene-stage-accent scene-stage-accent--right"></span>
+                  </span>
+                  <span class="scene-layer scene-foreground" aria-hidden="true"></span>
+                </div>
+                <div class="mobile-scene-copy">
+                  <span>오늘의 농장</span>
+                  <h3 id="mobile-scene-status">분석 중</h3>
+                  <p id="mobile-scene-action">확인한 자료로 오늘의 행동을 정리하고 있습니다.</p>
+                </div>
+                <div class="mobile-attendance-card" id="mobile-attendance-card">
+                  <div>
+                    <strong id="mobile-attendance-title">오늘의 출석</strong>
+                    <span id="mobile-attendance-meta">이번 달 기록을 확인하고 있습니다.</span>
+                  </div>
+                  <button id="dashboard-attendance-cta" type="button">오늘 출석 남기기</button>
+                  <div class="mobile-attendance-methods" id="mobile-attendance-methods" role="group" aria-label="오늘 농장 확인 방식" hidden>
+                    <button type="button" data-attendance-method="visit">농장 방문</button>
+                    <button type="button" data-attendance-method="remote">원격 확인</button>
+                  </div>
+                </div>
+              </section>
               <header class="dashboard-section-header">
                 <div>
                   <span class="dashboard-eyebrow">현재 확인 결과</span>
@@ -2705,7 +2760,7 @@
               </header>
               <div class="dashboard-status-layout">
                 <div class="dashboard-growth-state" data-state="loading">
-                  <span>생육점수</span>
+                  <span id="dashboard-score-label">생육점수</span>
                   <strong id="dashboard-growth-state">확인 중</strong>
                   <p>날씨와 토양 자료로 예상한 상태입니다. 사진을 더하면 정확도를 높일 수 있습니다.</p>
                 </div>
@@ -2753,7 +2808,7 @@
                 </div>
                 <div class="dashboard-action-header-controls">
                   <button class="dashboard-compact-button is-primary" id="dashboard-complete-all" type="button">✓ 모두 완료 표시</button>
-                  <button class="dashboard-compact-button" id="dashboard-photo-check" type="button">▣ 사진으로 확인</button>
+                  <button class="dashboard-compact-button" id="dashboard-photo-check" type="button">사진·메모 남기기</button>
                 </div>
               </header>
               <p class="dashboard-action-batch-status" id="dashboard-action-batch-status" role="status" aria-live="polite" hidden></p>
@@ -2848,7 +2903,7 @@
             <p id="crop-management-focus-copy">현재 작물에 필요한 행동과 확인 시점을 표시합니다.</p>
             <div class="feature-card-actions">
               <button class="feature-primary-button" type="button" data-view="dashboard">오늘 할 일 보기</button>
-              <button class="feature-secondary-button" type="button" data-view="services" data-service-anchor="photo-journal-panel">사진 기록 열기</button>
+              <button class="feature-secondary-button" type="button" data-view="services" data-service-anchor="photo-journal-panel">다이어리 열기</button>
             </div>
           </section>
           <section class="dashboard-surface dashboard-cycle-card feature-span-all" id="dashboard-cycle-card" aria-labelledby="dashboard-cycle-title" aria-live="polite">
@@ -2884,14 +2939,18 @@
               </div>
               <section class="harvest-photo-check" aria-labelledby="harvest-photo-title">
                 <div>
-                  <span class="feature-card-kicker">AI 사진 재확인</span>
-                  <h3 id="harvest-photo-title">지금 수확해도 되는지 확인</h3>
+                  <span class="feature-card-kicker">사진 보조 확인</span>
+                  <h3 id="harvest-photo-title">수확 시기 참고하기</h3>
                   <p>과실과 주변 잎·줄기가 함께 보이게 촬영해 주세요. 사진이 불명확하면 일정을 바꾸지 않습니다.</p>
                 </div>
                 <div class="harvest-photo-controls">
                   <label class="dashboard-compact-button" for="harvest-photo-input">사진 선택</label>
                   <input id="harvest-photo-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
                   <button class="dashboard-compact-button is-primary" id="harvest-photo-assess" type="button">수확 상태 확인</button>
+                </div>
+                <div class="inline-check">
+                  <input id="harvest-photo-consent" name="harvestPhotoConsent" type="checkbox">
+                  <label for="harvest-photo-consent">사진을 수확 시기 보조 확인 목적으로 Google AI에 한 번 전송하는 데 동의합니다. 흙날씨 사진 일지에는 저장되지 않으며 제공자의 데이터 처리 정책이 적용됩니다.</label>
                 </div>
                 <p class="harvest-photo-status" id="harvest-photo-status" role="status" aria-live="polite">수확 시기가 가까우면 사진으로 한 번 더 확인할 수 있습니다.</p>
               </section>
@@ -2946,7 +3005,7 @@
             </div>
             <div class="feature-card-actions">
               <button class="feature-primary-button" id="pest-assistant-trigger" type="button">관찰 결과 상담하기</button>
-              <button class="feature-secondary-button" type="button" data-view="services" data-service-anchor="photo-journal-panel">사진 기록 남기기</button>
+              <button class="feature-secondary-button" type="button" data-view="services" data-service-anchor="photo-journal-panel">관찰 기록 남기기</button>
             </div>
             <div class="pest-source-row">
               <span id="pest-source-note">검수된 작물 관찰 가이드를 불러오고 있습니다.</span>
@@ -2958,10 +3017,32 @@
 
       <section class="view" id="view-services" data-view-panel="services" aria-labelledby="services-title" hidden>
         <header class="page-header">
-          <div><h1 id="services-title" tabindex="-1">추가 서비스</h1><p class="muted">농장 기록과 추가 확인 서비스를 한곳에서 관리합니다.</p></div>
+          <div>
+            <span class="feature-page-kicker">MY FARM JOURNAL</span>
+            <h1 id="services-title" tabindex="-1">농장 다이어리</h1>
+            <p class="muted">오늘 한 일과 작물의 변화를 사진·메모로 차곡차곡 남깁니다.</p>
+          </div>
+          <div class="diary-header-actions">
+            <time class="diary-date-stamp" id="diary-today-date" aria-label="오늘 날짜"></time>
+            <button class="feature-primary-button diary-record-cta" type="button" data-service-anchor="photo-journal-panel">사진·메모 기록하기</button>
+          </div>
         </header>
 
         <div class="settings-surface">
+        <section class="panel diary-action-log" id="diary-action-log" aria-labelledby="diary-action-log-title">
+          <div class="section-heading">
+            <div>
+              <span class="service-eyebrow">오늘 자동으로 모인 기록</span>
+              <h2 id="diary-action-log-title">완료한 농장 일</h2>
+              <p class="muted">오늘 완료한 할 일은 다이어리에 남고, 여기에서 기록을 지워도 완료 상태는 바뀌지 않습니다.</p>
+            </div>
+            <span class="status-label" id="diary-completed-count">0개</span>
+          </div>
+          <div class="diary-completed-actions" id="diary-completed-actions" aria-live="polite">
+            <p class="diary-empty-note">아직 완료한 일이 없습니다. 오늘 할 일을 마치면 이곳에 자동으로 기록됩니다.</p>
+          </div>
+        </section>
+
         <section class="panel" id="report-history-panel" aria-labelledby="report-history-title">
           <div class="section-heading">
             <div>
@@ -3000,7 +3081,7 @@
             </div>
             <div class="satellite-controls">
               <div class="parcel-mode-switch" role="group" aria-label="필지 경계 만드는 방법">
-                <button class="parcel-mode-button is-active" id="parcel-mode-farmmap" type="button" aria-pressed="true">팜맵에서 찾기</button>
+                <button class="parcel-mode-button is-active" id="parcel-mode-farmmap" type="button" aria-pressed="true">팜맵에서 찾기 <small>(베타)</small></button>
                 <button class="parcel-mode-button" id="parcel-mode-square" type="button" aria-pressed="false">간편 경계</button>
                 <button class="parcel-mode-button" id="parcel-mode-walk" type="button" aria-pressed="false">모서리 직접 기록</button>
               </div>
@@ -3037,9 +3118,9 @@
         <section class="panel" id="photo-journal-panel" aria-labelledby="photo-journal-title">
           <div class="section-heading">
             <div>
-              <span class="service-eyebrow">작물별 비공개 현장 기록</span>
-              <h2 id="photo-journal-title">사진으로 생육 변화 기록</h2>
-              <p class="muted">촬영일 순서로 사진을 비교합니다. 색 변화는 참고 신호이며 병해·생육 악화를 확정하지 않습니다.</p>
+              <span class="service-eyebrow">사진 · 메모 · 날짜별 기록</span>
+              <h2 id="photo-journal-title">오늘의 농장 기록</h2>
+              <p class="muted">오늘 본 작물과 작업 내용을 남겨 두세요. 같은 구도로 찍은 사진은 시간에 따른 변화를 비교하기 좋습니다.</p>
             </div>
             <span class="status-label" id="photo-journal-state">기록 없음</span>
           </div>
@@ -3071,8 +3152,12 @@
                 <textarea id="journal-note" name="note" maxlength="500" rows="3" placeholder="잎 색, 처짐, 물 준 시각 등 직접 본 사실"></textarea>
               </div>
               <div class="inline-check">
-                <input id="journal-consent" name="consent" type="checkbox" required>
-                <label for="journal-consent">사진을 비공개 농장 기록으로 저장하는 데 동의합니다. 서버 저장을 사용할 수 없으면 이 기기에만 보관합니다.</label>
+                <input id="journal-local-consent" name="localConsent" type="checkbox" required>
+                <label for="journal-local-consent">사진을 이 기기의 비공개 농장 기록으로 저장하는 데 동의합니다.</label>
+              </div>
+              <div class="inline-check">
+                <input id="journal-server-consent" name="serverConsent" type="checkbox">
+                <label for="journal-server-consent">연결된 경우 비공개 서버에도 동기화합니다. 사진은 시즌 비교에 사용되며, 직접 삭제할 때까지 보관되고 기록의 삭제 버튼으로 함께 삭제할 수 있습니다. <strong>선택 사항이며 기본은 기기 저장만 사용합니다.</strong></label>
               </div>
               <button class="button button-primary" id="journal-save" type="submit">사진 기록 저장</button>
               <p class="location-search-status" id="photo-journal-status" role="status" aria-live="polite">농장 분석을 완료하면 작물별 기록을 저장할 수 있습니다.</p>
@@ -3335,11 +3420,10 @@
     </main>
 
     <nav class="bottom-nav" aria-label="모바일 주요 메뉴">
-      <button class="nav-button" type="button" data-view="dashboard" aria-current="page">대시보드</button>
-      <button class="nav-button" type="button" data-view="crop-management">작물 관리</button>
-      <button class="nav-button" type="button" data-view="pest-alerts">병해충</button>
-      <button class="nav-button" type="button" data-view="services">추가 서비스</button>
-      <button class="nav-button" type="button" data-view="mypage">마이페이지</button>
+      <button class="nav-button" type="button" data-view="dashboard" data-mobile-section="dashboard" aria-current="page">대시보드</button>
+      <button class="nav-button" type="button" data-view="dashboard" data-mobile-section="tasks">할 일</button>
+      <button class="nav-button" type="button" data-view="services" data-mobile-section="diary">다이어리</button>
+      <button class="nav-button" type="button" data-view="mypage" data-mobile-section="settings">설정</button>
     </nav>
   </div>
 
@@ -3449,11 +3533,11 @@
             <p id="crop-step-help">여러 작물을 비교하려면 복수로 선택할 수 있습니다. 분석 후 작물 탭에서 결과를 전환할 수 있습니다.</p>
             <fieldset class="settings-group choice-grid crop-grid">
               <legend class="sr-only">작물 선택</legend>
-              <label class="choice-card"><input type="checkbox" name="crop" value="apple"><span><strong>사과</strong><small>과수</small></span></label>
-              <label class="choice-card"><input type="checkbox" name="crop" value="pear"><span><strong>배</strong><small>과수</small></span></label>
-              <label class="choice-card"><input type="checkbox" name="crop" value="cucumber"><span><strong>오이</strong><small>노지·시설</small></span></label>
-              <label class="choice-card"><input type="checkbox" name="crop" value="potato"><span><strong>감자</strong><small>봄·고랭지·가을</small></span></label>
-              <label class="choice-card"><input type="checkbox" name="crop" value="lettuce"><span><strong>상추</strong><small>노지·시설</small></span></label>
+              <label class="choice-card crop-choice-card"><input type="checkbox" name="crop" value="apple"><span class="app-icon crop-icon crop-icon--apple" aria-hidden="true"></span><span><strong>사과</strong><small>과수</small></span></label>
+              <label class="choice-card crop-choice-card"><input type="checkbox" name="crop" value="pear"><span class="app-icon crop-icon crop-icon--pear" aria-hidden="true"></span><span><strong>배</strong><small>과수</small></span></label>
+              <label class="choice-card crop-choice-card"><input type="checkbox" name="crop" value="cucumber"><span class="app-icon crop-icon crop-icon--cucumber" aria-hidden="true"></span><span><strong>오이</strong><small>노지·시설</small></span></label>
+              <label class="choice-card crop-choice-card"><input type="checkbox" name="crop" value="potato"><span class="app-icon crop-icon crop-icon--potato" aria-hidden="true"></span><span><strong>감자</strong><small>봄·고랭지·가을</small></span></label>
+              <label class="choice-card crop-choice-card"><input type="checkbox" name="crop" value="lettuce"><span class="app-icon crop-icon crop-icon--lettuce" aria-hidden="true"></span><span><strong>상추</strong><small>노지·시설</small></span></label>
             </fieldset>
             <p class="validation" id="crop-error" role="alert" hidden>사과, 배, 오이, 감자, 상추 중 하나 이상을 선택해 주세요.</p>
           </section>
@@ -3524,8 +3608,8 @@
         <button class="button button-quiet command-close" id="command-close" type="button" aria-label="빠른 이동 닫기">닫기</button>
       </header>
       <div class="command-list" role="list">
-        <button class="command-item" type="button" data-command="dashboard"><span class="ui-icon icon-data" aria-hidden="true"></span>대시보드<span>이동</span></button>
-        <button class="command-item" type="button" data-command="services"><span class="ui-icon icon-check" aria-hidden="true"></span>추가 서비스<span>이동</span></button>
+        <button class="command-item" type="button" data-command="dashboard"><span class="ui-icon icon-data" aria-hidden="true"></span>오늘 할 일<span>이동</span></button>
+        <button class="command-item" type="button" data-command="services"><span class="ui-icon icon-check" aria-hidden="true"></span>농장 다이어리<span>이동</span></button>
         <button class="command-item" type="button" data-command="mypage"><span class="ui-icon icon-check" aria-hidden="true"></span>마이페이지<span>이동</span></button>
         <button class="command-item" type="button" data-command="new-analysis"><span class="ui-icon icon-check" aria-hidden="true"></span>조건 바꾸기<span>열기</span></button>
       </div>

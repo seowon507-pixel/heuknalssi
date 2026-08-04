@@ -4,6 +4,7 @@ import { parseIsoInstant } from "./strict-values.js";
 export const DELIVERY_STATES = Object.freeze([
   "LIVE",
   "CACHE",
+  "REFERENCE",
   "SAMPLE",
   "UNAVAILABLE"
 ]);

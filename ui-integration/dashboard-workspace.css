@@ -17,6 +17,61 @@
   --dashboard-shadow: 0 4px 14px rgb(31 48 37 / 3.5%);
 }
 
+/*
+ * 흙날씨 전용 소형 일러스트 아이콘.
+ * 외부 SVG는 다색 자산이므로 단색 mask가 아니라 background-image로 쓴다.
+ * 보이는 이름과 상태는 항상 실제 텍스트로 남기고 아이콘은 장식으로 숨긴다.
+ */
+.app-icon {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.crop-icon--apple { background-image: url("/icons/crops/apple.svg"); }
+.crop-icon--pear { background-image: url("/icons/crops/pear.svg"); }
+.crop-icon--cucumber { background-image: url("/icons/crops/cucumber.svg"); }
+.crop-icon--potato { background-image: url("/icons/crops/potato.svg"); }
+.crop-icon--lettuce { background-image: url("/icons/crops/lettuce.svg"); }
+.environment-icon--weather { background-image: url("/icons/environment/weather.svg"); }
+.environment-icon--soil { background-image: url("/icons/environment/soil.svg"); }
+.environment-icon--forecast { background-image: url("/icons/environment/forecast.svg"); }
+.environment-icon--water { background-image: url("/icons/environment/water.svg"); }
+
+.crop-choice-card > .crop-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.crop-setting-heading,
+.farm-crop-name-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crop-result-switcher button,
+.crop-management-switch-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.crop-result-switcher .crop-icon,
+.crop-management-switcher .crop-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.farm-crop-name-wrap .crop-icon {
+  width: 26px;
+  height: 26px;
+}
+
 /* Target shell: fixed 247 px navigation and a compact 96 px product header. */
 body {
   background: var(--dashboard-canvas);
@@ -446,6 +501,19 @@ body {
   color: #fff;
 }
 
+#view-dashboard .crop-result-switcher button[aria-current="true"] .crop-icon,
+#view-dashboard .crop-result-switcher button[aria-pressed="true"] .crop-icon,
+#view-dashboard .crop-result-switcher button.is-active .crop-icon,
+.crop-management-switch-button[aria-pressed="true"] .crop-icon {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgb(17 61 38 / 10%);
+  border-radius: 7px;
+  background-color: #f8faf7;
+  background-size: 20px 20px;
+  box-shadow: 0 1px 2px rgb(14 45 29 / 8%);
+}
+
 .dashboard-workspace {
   display: grid;
   gap: 16px;
@@ -472,7 +540,7 @@ body {
   display: block;
   margin-bottom: 6px;
   color: #2d7148;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
   letter-spacing: .02em;
 }
@@ -523,7 +591,7 @@ body {
 
 .farm-overview-kpis dt {
   color: #6d7971;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -539,7 +607,7 @@ body {
   grid-template-columns: minmax(0, 1.45fr) minmax(340px, .75fr);
   align-items: start;
   gap: 16px;
-  order: 3;
+  order: 1;
 }
 
 .farm-overview-actions,
@@ -608,7 +676,7 @@ body {
 .farm-weather-rain {
   display: block;
   color: #6d7971;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -660,7 +728,7 @@ body {
   margin: 0;
   overflow: hidden;
   color: #68736c;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -668,7 +736,7 @@ body {
 
 .farm-warning-link {
   color: #2c6843;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -692,7 +760,7 @@ body {
 .farm-overview-crops > .dashboard-section-header p {
   margin: 0;
   color: #738078;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .farm-overview-crop-grid {
@@ -773,9 +841,9 @@ body {
 }
 
 .farm-crop-axis div + div { border-left: 1px solid #edf0ed; }
-.farm-crop-axis dt { color: #768078; font-size: 10px; text-align: center; }
-.farm-crop-axis dd { margin: 3px 0 0; overflow: hidden; font-size: 12px; font-weight: 800; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-.farm-crop-detail-link { color: #2b6842; font-size: 12px; font-weight: 800; }
+.farm-crop-axis dt { color: #768078; font-size: 13px; text-align: center; }
+.farm-crop-axis dd { margin: 3px 0 0; overflow: hidden; font-size: 14px; font-weight: 800; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.farm-crop-detail-link { color: #2b6842; font-size: 14px; font-weight: 800; }
 
 .dashboard-workspace *,
 .dashboard-workspace *::before,
@@ -987,19 +1055,16 @@ body {
   width: 30px;
   height: 30px;
   margin: 0 auto 9px;
-  background: #d18417;
+  background: center / contain no-repeat url("/icons/environment/weather.svg");
   content: "";
-  mask: center / 28px 28px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 17h10a4 4 0 0 0 .8-7.9A6 6 0 0 0 6.4 8.2 4.5 4.5 0 0 0 7 17Z' fill='none' stroke='black' stroke-width='1.8'/%3E%3Cpath d='M7 4 5.5 2.5M12 3V1M3 8H1m18-1 1.5-1.5' stroke='black' stroke-width='1.8'/%3E%3C/svg%3E");
 }
 
 .dashboard-axis-list > div:nth-child(2) dt::before {
-  background: #27794a;
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 3c5 1 7 4 7 9-5 0-8-3-7-9Zm14 2c-5 1-7 4-7 9 5 0 8-3 7-9ZM12 12v9' fill='none' stroke='black' stroke-width='1.9'/%3E%3Cpath d='M4 21h16' stroke='black' stroke-width='1.9'/%3E%3C/svg%3E");
+  background-image: url("/icons/environment/soil.svg");
 }
 
 .dashboard-axis-list > div:nth-child(3) dt::before {
-  background: #27794a;
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m4 16 5-5 4 3 7-8M15 6h5v5' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E");
+  background-image: url("/icons/environment/forecast.svg");
 }
 
 .dashboard-axis-list dd {
@@ -2449,7 +2514,7 @@ body {
 }
 
 .crop-management-switch-button {
-  min-height: 38px;
+  min-height: 44px;
   padding: 8px 17px;
   border: 0;
   border-radius: 9px;
@@ -2637,6 +2702,11 @@ body {
   color: var(--dashboard-brand);
   font-size: 13px;
   font-weight: 850;
+}
+
+.management-check-number .app-icon {
+  width: 24px;
+  height: 24px;
 }
 
 .management-check-label {
@@ -3646,5 +3716,1565 @@ body.large-text .dashboard-risk-day.is-unknown strong {
   .report-history-card {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * FARM DIARY THEME
+ *
+ * 대시보드를 “지표 모음”이 아닌 매일 펼쳐보는 농장 다이어리로 읽히게 한다.
+ * 핵심 우선순위는 오늘 할 일 → 일정·위험 → 사진 기록이다. 기존 DOM·API·상태
+ * 표현은 그대로 두고 종이, 인덱스, 메모, 스크랩북 문법만 CSS로 통일한다.
+ * -------------------------------------------------------------------------- */
+
+:root {
+  --dashboard-canvas: #f6f1e8;
+  --dashboard-surface: #fffdf8;
+  --dashboard-ink: #30372f;
+  --dashboard-muted: #6f746b;
+  --dashboard-line: #ded7ca;
+  --dashboard-line-strong: #c8bfaf;
+  --dashboard-brand: #617d61;
+  --dashboard-brand-dark: #405541;
+  --dashboard-brand-soft: #e3eee0;
+  --dashboard-warning: #b7654f;
+  --dashboard-warning-soft: #f9e3dc;
+  --dashboard-danger: #b84f47;
+  --dashboard-danger-soft: #f9ddda;
+  --dashboard-info: #657b78;
+  --dashboard-radius: 22px;
+  --dashboard-shadow: 0 12px 34px rgb(70 61 46 / 8%);
+  --diary-paper: #fffdf8;
+  --diary-paper-deep: #faf5eb;
+  --diary-sage: #dce8d6;
+  --diary-sage-strong: #6f8c6d;
+  --diary-coral: #d98778;
+  --diary-coral-soft: #f6dcd6;
+  --diary-butter: #f3dda2;
+  --diary-butter-soft: #fbf1cf;
+  --diary-lilac: #e8e1ed;
+  --diary-olive: #485948;
+  --diary-pencil: #7c766b;
+  --diary-tape: rgb(240 218 167 / 70%);
+  --diary-focus: #315f46;
+}
+
+body {
+  background:
+    radial-gradient(circle at 13% 9%, rgb(235 204 189 / 28%), transparent 23rem),
+    radial-gradient(circle at 88% 18%, rgb(207 226 204 / 34%), transparent 28rem),
+    linear-gradient(180deg, #faf7f1 0%, var(--dashboard-canvas) 100%);
+  color: var(--dashboard-ink);
+  font-family: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+}
+
+body::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  background-image: radial-gradient(rgb(91 82 66 / 9%) .65px, transparent .65px);
+  background-size: 12px 12px;
+  content: "";
+  pointer-events: none;
+}
+
+.wizard-shell,
+.wizard-shell *,
+.app-main,
+.app-main * {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:is(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--diary-focus) !important;
+  outline-offset: 3px !important;
+}
+
+/* 오래 보아도 부담없는 숲색 책 표지 같은 탐색 영역 */
+.sidebar {
+  width: 248px;
+  padding: 28px 16px 22px;
+  border-right: 1px solid rgb(255 253 248 / 18%);
+  background:
+    radial-gradient(circle at 82% 7%, rgb(244 221 162 / 17%) 0 2px, transparent 3px),
+    radial-gradient(circle at 17% 84%, rgb(230 196 185 / 14%) 0 2px, transparent 3px),
+    linear-gradient(165deg, #536253 0%, #435545 52%, #354638 100%);
+  background-size: 32px 32px, 38px 38px, auto;
+  box-shadow: 10px 0 36px rgb(62 70 58 / 9%);
+}
+
+.brand-lockup {
+  min-height: 58px;
+  padding: 0 9px;
+  gap: 13px;
+}
+
+.brand-mark {
+  width: 47px;
+  height: 47px;
+  border: 1px solid rgb(255 255 255 / 45%);
+  border-radius: 16px 16px 16px 6px;
+  background: var(--diary-butter-soft);
+  color: #4e7357;
+  box-shadow: 0 8px 20px rgb(25 40 28 / 16%);
+  transform: rotate(-2deg);
+}
+
+.brand-name {
+  color: #fffdf7;
+  font-size: 22px;
+  font-weight: 850;
+  letter-spacing: -.035em;
+}
+
+.brand-module {
+  color: #d9e2d7;
+  font-size: 12px;
+  letter-spacing: .035em;
+}
+
+.sidebar-context {
+  min-height: 82px;
+  margin: 25px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid rgb(255 253 248 / 30%);
+  border-radius: 18px 18px 18px 7px;
+  background: rgb(255 253 248 / 11%);
+  box-shadow: inset 0 1px rgb(255 255 255 / 10%);
+}
+
+.sidebar-context:hover {
+  border-color: rgb(255 253 248 / 58%);
+  background: rgb(255 253 248 / 17%);
+}
+
+.sidebar-kicker,
+.sidebar-recent h2 {
+  color: #d4dfd3;
+}
+
+.sidebar-context strong {
+  max-width: 164px;
+  color: #fffdf8;
+  font-size: 15px;
+}
+
+.sidebar-recent h2 {
+  background: #465746;
+}
+
+.nav-list {
+  gap: 6px;
+}
+
+.nav-button {
+  min-height: 50px;
+  padding: 12px 15px;
+  gap: 12px;
+  border-radius: 14px 14px 14px 5px;
+  color: #e7ece5;
+  font-size: 15px;
+  font-weight: 720;
+  transition: background-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.nav-button:hover:not(:disabled) {
+  background: rgb(255 253 248 / 12%);
+  color: #fff;
+  transform: translateX(2px);
+}
+
+.sidebar .nav-button[aria-current="page"] {
+  background: #fffaf1;
+  color: #3f5542;
+  box-shadow: 0 8px 18px rgb(30 45 32 / 16%);
+}
+
+.sidebar .nav-button[aria-current="page"]::before {
+  background: #5d7b61;
+}
+
+.chatbot-option.is-text,
+.chatbot-option {
+  color: #edf3ec;
+}
+
+.chatbot-option.is-text span {
+  color: #f4dda5;
+}
+
+.nav-alert-count {
+  width: 27px;
+  height: 27px;
+  background: var(--diary-butter);
+  color: #5b4927;
+  box-shadow: 0 4px 10px rgb(41 38 25 / 15%);
+}
+
+.sidebar-update {
+  color: #d7dfd5;
+}
+
+/* 반투명 스키 페이지 상단과 인덱스 탭 */
+.topbar {
+  left: 248px;
+  height: 92px;
+  padding: 0 34px;
+  background: linear-gradient(180deg, rgb(250 247 241 / 96%), rgb(250 247 241 / 72%), transparent);
+  backdrop-filter: blur(8px);
+}
+
+.topbar-update {
+  color: #64695f;
+}
+
+.topbar-update button {
+  min-height: 44px;
+  border-color: #d8d0c2;
+  border-radius: 13px;
+  background: var(--diary-paper);
+  color: #455347;
+  box-shadow: 0 4px 14px rgb(72 65 51 / 5%);
+}
+
+.topbar #open-new-analysis {
+  min-width: 164px;
+  min-height: 52px;
+  border-color: var(--diary-olive);
+  border-radius: 16px 16px 16px 6px;
+  background: var(--diary-olive);
+  box-shadow: 0 9px 20px rgb(59 76 61 / 18%);
+}
+
+.app-main {
+  margin-left: 248px;
+  padding: 108px 28px 82px 24px;
+}
+
+#view-dashboard .page-header {
+  min-height: 78px;
+  margin: 0 340px 15px 10px;
+}
+
+#view-dashboard .page-header h1,
+.feature-page-header h1 {
+  color: #354138;
+  font-weight: 850;
+  letter-spacing: -.05em;
+}
+
+.dashboard-scope-label {
+  min-height: 32px;
+  padding: 6px 11px;
+  border-color: #e5cfa0;
+  border-radius: 10px 10px 10px 3px;
+  background: var(--diary-butter-soft);
+  color: #735b28;
+}
+
+#view-dashboard .crop-result-switcher {
+  gap: 7px;
+  padding: 2px 1px;
+}
+
+#view-dashboard .crop-result-switcher button,
+#view-dashboard .crop-result-switcher select,
+.crop-management-switch-button {
+  min-height: 46px;
+  padding: 9px 15px;
+  border-color: #dcd4c7;
+  border-radius: 13px 13px 13px 5px;
+  background: var(--diary-paper);
+  color: #51584f;
+  box-shadow: 0 4px 14px rgb(66 59 47 / 5%);
+}
+
+#view-dashboard .crop-result-switcher button[aria-current="true"],
+#view-dashboard .crop-result-switcher button[aria-pressed="true"],
+#view-dashboard .crop-result-switcher button.is-active,
+.crop-management-switch-button[aria-pressed="true"] {
+  border-color: #6f896d;
+  background: var(--diary-sage);
+  color: #405743;
+  box-shadow: 0 7px 16px rgb(78 100 76 / 12%);
+}
+
+#view-dashboard .crop-result-switcher button[aria-current="true"] .crop-icon,
+#view-dashboard .crop-result-switcher button[aria-pressed="true"] .crop-icon,
+#view-dashboard .crop-result-switcher button.is-active .crop-icon,
+.crop-management-switch-button[aria-pressed="true"] .crop-icon {
+  border-color: rgb(97 125 97 / 18%);
+  border-radius: 10px 10px 10px 4px;
+  background-color: #fffaf1;
+}
+
+/* 핑터레스트의 여백감은 따르되, 제품 정보 위계를 유지한 종이 카드 */
+.dashboard-workspace,
+.farm-overview-dashboard {
+  gap: 18px;
+}
+
+/* 제품의 첫 목적은 상태 관람이 아니라 오늘의 행동 완료이다. */
+.dashboard-workspace > .dashboard-content-grid {
+  order: 1;
+}
+
+.dashboard-workspace > .dashboard-overview-grid {
+  order: 2;
+}
+
+.dashboard-surface,
+.feature-hero-card,
+.feature-card,
+.panel,
+.report-history-card,
+.farm-overview-cycle-card {
+  border-color: var(--dashboard-line);
+  border-radius: var(--dashboard-radius);
+  background: var(--diary-paper);
+  box-shadow: var(--dashboard-shadow);
+}
+
+.dashboard-surface,
+.feature-hero-card,
+.feature-card,
+.panel,
+.report-history-card {
+  position: relative;
+}
+
+.dashboard-overview-grid {
+  height: 250px;
+  border-color: var(--dashboard-line);
+  border-radius: 24px 24px 24px 9px;
+  background: var(--diary-paper);
+  box-shadow: 0 14px 38px rgb(70 61 46 / 9%);
+}
+
+.dashboard-content-grid {
+  gap: 18px;
+}
+
+.dashboard-overview-grid > .dashboard-surface {
+  background: transparent;
+}
+
+.dashboard-status-summary {
+  background:
+    linear-gradient(90deg, transparent 0 51px, rgb(221 154 139 / 24%) 52px 53px, transparent 54px),
+    repeating-linear-gradient(180deg, transparent 0 35px, rgb(116 139 111 / 9%) 36px 37px),
+    var(--diary-paper);
+}
+
+.dashboard-risk-timeline {
+  border-left-color: #ded6c8 !important;
+  background: linear-gradient(145deg, #fffdf8 0%, #faf5e9 100%);
+}
+
+.dashboard-section-header h2,
+.dashboard-actions-header h2 {
+  color: #333d35;
+  font-size: 23px;
+  font-weight: 850;
+  letter-spacing: -.04em;
+}
+
+.dashboard-eyebrow.is-visible,
+.feature-page-kicker,
+.feature-card-kicker {
+  color: #7b8e76;
+  font-size: 12px;
+  font-weight: 820;
+  letter-spacing: .06em;
+}
+
+.dashboard-state-badge,
+.dashboard-data-badge,
+.dashboard-count,
+.dashboard-action-level,
+.feature-status-chip,
+.feature-safe-label {
+  border-radius: 12px 12px 12px 4px;
+}
+
+.dashboard-state-badge {
+  background: var(--diary-coral-soft);
+  color: #8f473b;
+}
+
+.dashboard-state-badge.is-danger {
+  background: #f7d5d2;
+  color: #a8433c;
+}
+
+.dashboard-growth-state > strong {
+  color: #536f55;
+  font-weight: 870;
+}
+
+.dashboard-growth-state > p {
+  color: #666d64;
+  font-size: 14px;
+}
+
+.dashboard-axis-list > div {
+  border-left-color: #e9e2d7 !important;
+}
+
+.dashboard-axis-list dd {
+  color: #58765a;
+}
+
+.dashboard-axis-list dt {
+  color: #555d54;
+}
+
+.dashboard-axis-list dt::before {
+  width: 32px;
+  height: 32px;
+  padding: 5px;
+  border-radius: 12px 12px 12px 4px;
+  background-color: #fbefd0;
+  background-size: 23px 23px;
+  box-shadow: inset 0 0 0 1px rgb(183 148 83 / 12%);
+}
+
+.dashboard-axis-list > div:nth-child(2) dt::before {
+  background-color: #e5efe0;
+}
+
+.dashboard-axis-list > div:nth-child(3) dt::before {
+  background-color: #e9e3ef;
+}
+
+.dashboard-risk-track::before {
+  background: #d9d2c6;
+}
+
+.dashboard-risk-marker {
+  border-width: 3px;
+  border-color: #fffdf8;
+  box-shadow: 0 2px 7px rgb(60 56 44 / 12%);
+}
+
+.dashboard-risk-day.is-caution .dashboard-risk-marker { background: #dc9670; }
+.dashboard-risk-day.is-danger .dashboard-risk-marker { background: #c75b55; }
+.dashboard-risk-day.is-normal .dashboard-risk-marker { background: #9ea79c; }
+.dashboard-risk-day.is-favorable .dashboard-risk-marker { background: #799575; }
+.dashboard-risk-day.is-unknown .dashboard-risk-marker { background: #c9c4bb; }
+.dashboard-risk-day.is-caution strong { color: #b9624e; }
+.dashboard-risk-day.is-danger strong { color: #ad433e; }
+.dashboard-risk-day.is-normal strong { color: #687068; }
+.dashboard-risk-day.is-favorable strong { color: #587356; }
+
+.dashboard-text-button,
+.dashboard-compact-button,
+.dashboard-inline-link,
+.dashboard-all-actions,
+.feature-primary-button,
+.feature-secondary-button,
+.button {
+  min-height: 44px;
+  border-radius: 13px 13px 13px 5px;
+}
+
+.dashboard-text-button,
+.dashboard-compact-button.is-primary,
+.feature-primary-button,
+.button-primary {
+  border-color: var(--diary-olive);
+  background: var(--diary-olive);
+  box-shadow: 0 7px 16px rgb(64 85 65 / 14%);
+}
+
+/* “오늘 할 일”은 한 눈에 펼친 체크리스트 속지처럼 가장 큰 비중을 갖는다. */
+.dashboard-actions,
+.farm-overview-actions {
+  border-radius: 24px 24px 24px 9px;
+  background:
+    linear-gradient(90deg, transparent 0 50px, rgb(218 140 126 / 22%) 51px 52px, transparent 53px),
+    repeating-linear-gradient(180deg, transparent 0 39px, rgb(105 127 101 / 8%) 40px 41px),
+    var(--diary-paper);
+}
+
+.dashboard-actions {
+  min-height: 660px;
+  padding: 26px 28px 28px;
+}
+
+.farm-overview-actions {
+  padding: 24px 26px;
+}
+
+.dashboard-actions-header h2::before,
+.farm-overview-actions .dashboard-section-header h2::before {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  margin-right: 2px;
+  place-items: center;
+  border-radius: 12px 12px 12px 4px;
+  background: var(--diary-coral-soft);
+  color: #a85e50;
+  content: "\2713";
+  font-size: 20px;
+  box-shadow: inset 0 0 0 1px rgb(178 99 84 / 10%);
+}
+
+.dashboard-count,
+.farm-overview-count {
+  background: var(--diary-sage);
+  color: #486249;
+}
+
+.dashboard-compact-button,
+.dashboard-inline-link,
+.dashboard-all-actions,
+.feature-secondary-button,
+.button-secondary {
+  border-color: #d8d0c4;
+  background: #fffdf9;
+  color: #4b554d;
+  box-shadow: 0 4px 12px rgb(66 58 46 / 5%);
+}
+
+.dashboard-compact-button.is-primary {
+  color: #fff;
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__card {
+  min-height: 176px;
+  border-color: #ddd4c5;
+  border-left: 5px solid #91a88a;
+  border-radius: 18px 18px 18px 7px;
+  background: rgb(255 253 248 / 92%);
+  box-shadow: 0 7px 20px rgb(74 65 51 / 6%);
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__first .action-plan__card {
+  border-left-color: var(--diary-coral);
+  background: linear-gradient(100deg, #fff9f1, #fffdf8 70%);
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__eyebrow {
+  border-radius: 9px 9px 9px 3px;
+  background: var(--diary-coral-soft);
+  color: #93493c;
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__card h3,
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__first .action-plan__card h3 {
+  color: #323a33;
+  font-size: 19px;
+  font-weight: 840;
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__importance,
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__facts p {
+  color: #5f675f;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__importance strong,
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__quick-meta dt,
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__facts strong,
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__evidence > strong {
+  color: #58745a;
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__quick-meta,
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__evidence {
+  color: #6f736d;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__meta dt {
+  color: #a7614e;
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__meta dd {
+  color: #b95f49;
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__controls button {
+  min-width: 52px;
+  min-height: 52px;
+  color: #658268;
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__check {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px 10px 10px 3px;
+  background: #fffdf8;
+  box-shadow: 0 3px 8px rgb(62 83 64 / 8%);
+}
+
+:is(#dashboard-action-list, #farm-overview-action-list) .action-plan__snooze {
+  border-color: #c7d6c3;
+  border-radius: 10px 10px 10px 4px;
+  background: #edf4ea;
+  color: #557259;
+}
+
+.dashboard-all-actions {
+  background: #f7f0e4;
+}
+
+/* 예보·토양·주간 메모는 부착형 메모 카드로 구분 */
+.dashboard-side-stack {
+  gap: 18px;
+}
+
+.dashboard-forecast-detail,
+.dashboard-weekly-risks,
+.dashboard-soil-summary {
+  border-radius: 21px 21px 21px 8px;
+}
+
+.dashboard-forecast-detail {
+  background: linear-gradient(145deg, #fffdf8 0%, #fbf5e8 100%);
+}
+
+.dashboard-weekly-risks {
+  background: linear-gradient(145deg, #fffdf8 0%, #f8eee9 100%);
+}
+
+.dashboard-soil-summary {
+  background: linear-gradient(145deg, #fffdf8 0%, #edf3e9 100%);
+}
+
+.dashboard-weekly-item {
+  border-top-color: #e6ded2;
+}
+
+.dashboard-soil-placeholder.is-metric-grid,
+.crop-cycle-facts,
+.feature-metric-row {
+  border-color: #ddd6ca;
+  border-radius: 15px 15px 15px 6px;
+  background: rgb(255 253 248 / 72%);
+}
+
+.dashboard-soil-metric strong,
+.crop-cycle-facts dd,
+.feature-metric-row dd {
+  color: #51634f;
+}
+
+/* 작물 관리·병해충: 다이어리 분류 인덱스와 콜라주 카드 */
+.product-feature-view .feature-page-header {
+  margin-bottom: 18px;
+  padding: 8px 10px 16px;
+}
+
+.feature-page-header p {
+  color: #70746d;
+  font-size: 16px;
+}
+
+.crop-management-switcher {
+  gap: 8px;
+  padding: 6px 8px 0;
+}
+
+.feature-dashboard-grid {
+  gap: 18px;
+}
+
+.feature-hero-card,
+.feature-card {
+  padding: 24px;
+  border-radius: 22px 22px 22px 8px;
+}
+
+.feature-hero-card {
+  background:
+    radial-gradient(circle at 88% 18%, rgb(243 221 162 / 34%), transparent 13rem),
+    linear-gradient(135deg, #fffdf8, #f2f6ee);
+}
+
+.feature-focus-card {
+  background: linear-gradient(145deg, #fff8ee, #fffdf8);
+}
+
+.feature-status-chip,
+.feature-safe-label {
+  background: var(--diary-sage);
+  color: #4f6c52;
+}
+
+.feature-status-chip.is-caution,
+.feature-status-chip.is-danger {
+  background: var(--diary-coral-soft);
+  color: #91473c;
+}
+
+.pest-observation-grid,
+.management-checklist {
+  gap: 12px;
+}
+
+.pest-observation-card,
+.pest-signal-card {
+  border-color: #ded6c9;
+  border-radius: 17px 17px 17px 6px;
+  background: #fffdf8;
+  box-shadow: 0 6px 18px rgb(66 58 46 / 5%);
+}
+
+.pest-observation-icon {
+  border-radius: 14px 14px 14px 5px;
+  background: var(--diary-butter-soft);
+}
+
+.farm-overview-hero {
+  border-radius: 24px 24px 24px 9px;
+  background:
+    radial-gradient(circle at 90% 20%, rgb(244 218 159 / 34%) 0 3px, transparent 4px),
+    linear-gradient(125deg, #eff5eb 0%, #fffdf8 62%);
+  background-size: 29px 29px, auto;
+}
+
+.farm-overview-kpis,
+.farm-crop-score-card,
+.farm-weather-day,
+.farm-warning-item,
+.farm-overview-cycle-card {
+  border-color: #ded6ca;
+  background: #fffdf8;
+}
+
+.farm-overview-kpis,
+.farm-crop-score-card,
+.farm-warning-item,
+.farm-overview-cycle-card {
+  border-radius: 17px 17px 17px 6px;
+}
+
+.farm-weather-day {
+  border-radius: 13px 13px 13px 4px;
+  background: #faf5e9;
+}
+
+.farm-crop-state,
+.farm-overview-cycle-heading > span,
+.crop-cycle-source {
+  border-radius: 9px 9px 9px 3px;
+}
+
+.farm-crop-state {
+  background: var(--diary-coral-soft);
+  color: #8f473b;
+}
+
+.farm-crop-state.is-good {
+  background: var(--diary-sage);
+  color: #557158;
+}
+
+.farm-crop-score-value,
+.farm-overview-kpis dd {
+  color: #58755a;
+}
+
+.farm-overview-cycles,
+.dashboard-cycle-card {
+  border-radius: 22px 22px 22px 8px;
+}
+
+.crop-cycle-progress-track {
+  background: #e5dfd3;
+}
+
+.crop-cycle-progress-track > span {
+  background: linear-gradient(90deg, #789674, #afc7a8);
+}
+
+.harvest-photo-check {
+  border-color: #d6cbb8;
+  border-radius: 17px 17px 17px 6px;
+  background: linear-gradient(135deg, #fbf0cd, #fffaf0);
+}
+
+/* 사진 기록: 입력은 메모지, 갤러리는 정돈된 폴라로이드 카드 */
+#photo-journal-panel {
+  overflow: visible;
+  border-radius: 24px 24px 24px 9px;
+  background:
+    linear-gradient(90deg, transparent 0 54px, rgb(218 140 126 / 20%) 55px 56px, transparent 57px),
+    repeating-linear-gradient(180deg, transparent 0 39px, rgb(105 127 101 / 8%) 40px 41px),
+    var(--diary-paper);
+}
+
+#photo-journal-panel::before {
+  position: absolute;
+  z-index: 1;
+  top: -9px;
+  left: 50%;
+  width: 92px;
+  height: 24px;
+  border: 1px solid rgb(183 151 81 / 8%);
+  background: var(--diary-tape);
+  content: "";
+  transform: translateX(-50%) rotate(-1.5deg);
+  pointer-events: none;
+}
+
+.photo-journal-layout {
+  gap: 24px;
+}
+
+.photo-journal-form {
+  padding: 22px;
+  border-color: #ddcfae;
+  border-radius: 18px 18px 18px 7px;
+  background: #fbf1ce;
+  box-shadow: 0 9px 24px rgb(101 83 45 / 7%);
+}
+
+.photo-journal-form :is(input[type="text"], input[type="date"], input[type="file"], textarea, select) {
+  min-height: 46px;
+  border-color: #cfc4ad;
+  border-radius: 12px 12px 12px 4px;
+  background: rgb(255 253 248 / 88%);
+}
+
+.photo-journal-form textarea {
+  min-height: 112px;
+  line-height: 1.6;
+}
+
+.photo-journal-list {
+  gap: 16px;
+}
+
+.photo-journal-item {
+  padding: 10px 10px 18px;
+  border: 0;
+  border-radius: 7px;
+  background: #fffdf8;
+  box-shadow: 0 12px 28px rgb(68 59 45 / 13%);
+}
+
+.photo-journal-item:nth-child(4n + 1) { transform: rotate(-.45deg); }
+.photo-journal-item:nth-child(4n + 3) { transform: rotate(.4deg); }
+
+.photo-journal-item img {
+  border-radius: 3px;
+  background: #eee9df;
+}
+
+.photo-journal-item-body {
+  padding: 15px 7px 3px;
+}
+
+.photo-journal-item-body p {
+  color: #5e645d;
+  font-size: 14px;
+}
+
+.photo-journal-compare {
+  border-color: #d4dfcf;
+  border-radius: 17px 17px 17px 6px;
+  background: #edf3e9;
+}
+
+.photo-journal-empty {
+  border-color: #cfc6b7;
+  border-radius: 18px 18px 18px 7px;
+  background: rgb(255 253 248 / 60%);
+}
+
+.report-history-list {
+  gap: 14px;
+}
+
+.report-history-card {
+  padding: 20px 22px;
+  border-left: 5px solid #a9bda4;
+  border-radius: 18px 18px 18px 7px;
+  background: #fffdf8;
+}
+
+.report-history-card:nth-child(3n + 2) {
+  border-left-color: #dea090;
+}
+
+.report-history-card:nth-child(3n) {
+  border-left-color: #e5ca7f;
+}
+
+/* 흐톡: 모서리에 붙은 바특 메모처럼 보이되 대화 가독성은 유지 */
+.assistant-launcher {
+  border: 2px solid #fffaf1;
+  border-radius: 20px 20px 20px 7px;
+  background: var(--diary-coral);
+  box-shadow: 0 12px 28px rgb(89 65 54 / 22%);
+}
+
+.assistant-launcher:hover,
+.assistant-launcher[aria-expanded="true"] {
+  background: #bd6f62;
+}
+
+.assistant-panel {
+  overflow: hidden;
+  border: 1px solid #d5ccbd;
+  border-radius: 24px 24px 24px 9px;
+  background: #fffdf8;
+  box-shadow: 0 24px 65px rgb(55 48 37 / 22%);
+}
+
+.assistant-panel-header {
+  border-bottom-color: #d8d1c5;
+  background: linear-gradient(135deg, #e4eee0, #f7f0d8);
+}
+
+.assistant-panel-title strong {
+  color: #405542;
+}
+
+.assistant-panel-title span {
+  color: #6c736b;
+}
+
+.assistant-messages {
+  background:
+    repeating-linear-gradient(180deg, transparent 0 35px, rgb(105 127 101 / 7%) 36px 37px),
+    #fcf8ef;
+}
+
+.assistant-message {
+  border-color: #d8d0c2;
+  border-radius: 16px 16px 16px 5px;
+  background: #fffdf8;
+}
+
+.assistant-message.is-user {
+  border-color: #cbd9c7;
+  border-radius: 16px 16px 5px 16px;
+  background: #e7f0e3;
+}
+
+.assistant-quick-questions button {
+  min-height: 44px;
+  border-color: #d7cfc1;
+  border-radius: 12px 12px 12px 4px;
+  background: #fff8ea;
+  color: #5b625a;
+}
+
+.assistant-form {
+  border-top-color: #d9d1c5;
+  background: #fffaf1;
+}
+
+.assistant-form input {
+  min-height: 46px;
+  border-color: #cabfae;
+  border-radius: 13px 13px 13px 5px;
+  background: #fffdf9;
+}
+
+.assistant-form button {
+  min-width: 58px;
+  min-height: 46px;
+  border-radius: 13px 13px 13px 5px;
+  background: var(--diary-olive);
+}
+
+@media (max-width: 1180px) {
+  .dashboard-overview-grid,
+  .dashboard-content-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-overview-grid {
+    height: auto;
+  }
+
+  .dashboard-risk-timeline {
+    min-height: 232px;
+    border-top: 1px solid var(--dashboard-line) !important;
+    border-left: 0 !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .app-main {
+    margin-left: 0;
+    padding: 92px 18px 104px;
+  }
+
+  .topbar {
+    left: 0;
+    height: 76px;
+    padding-inline: 18px;
+  }
+
+  .bottom-nav {
+    border-top: 1px solid #d8d0c2;
+    background: rgb(255 253 248 / 96%);
+    box-shadow: 0 -10px 30px rgb(67 59 47 / 10%);
+    backdrop-filter: blur(12px);
+  }
+
+  .bottom-nav .nav-button {
+    min-height: 58px;
+    border-radius: 13px 13px 13px 5px;
+    color: #667068;
+  }
+
+  .bottom-nav .nav-button[aria-current="page"] {
+    background: var(--diary-sage);
+    color: #405742;
+  }
+
+  #view-dashboard .page-header {
+    margin-inline: 0;
+  }
+
+  .photo-journal-item:nth-child(n) {
+    transform: none;
+  }
+}
+
+@media (max-width: 620px) {
+  body {
+    background:
+      radial-gradient(circle at 90% 8%, rgb(207 226 204 / 32%), transparent 15rem),
+      #f7f2e9;
+  }
+
+  .app-main {
+    padding: 88px 12px 98px;
+  }
+
+  #view-dashboard .page-header h1,
+  .feature-page-header h1 {
+    font-size: 27px;
+  }
+
+  #view-dashboard .crop-result-switcher button,
+  #view-dashboard .crop-result-switcher select,
+  .crop-management-switch-button {
+    min-height: 46px;
+    padding-inline: 13px;
+  }
+
+  .dashboard-overview-grid,
+  .dashboard-surface,
+  .feature-hero-card,
+  .feature-card,
+  .panel,
+  .farm-overview-hero,
+  .farm-overview-actions,
+  .farm-overview-weather,
+  .farm-overview-warnings,
+  .farm-overview-crops,
+  .farm-overview-cycles,
+  .dashboard-cycle-card {
+    border-radius: 18px 18px 18px 7px;
+  }
+
+  .dashboard-status-summary,
+  .dashboard-risk-timeline,
+  .dashboard-actions,
+  .dashboard-forecast-detail,
+  .dashboard-weekly-risks,
+  .dashboard-soil-summary,
+  .feature-hero-card,
+  .feature-card,
+  #photo-journal-panel {
+    padding: 18px 16px;
+  }
+
+  .dashboard-section-header h2,
+  .dashboard-actions-header h2 {
+    font-size: 21px;
+  }
+
+  .dashboard-growth-state > p,
+  .dashboard-actions-header .dashboard-eyebrow,
+  .feature-page-header p {
+    font-size: 15px;
+  }
+
+  :is(#dashboard-action-list, #farm-overview-action-list) .action-plan__card {
+    border-left-width: 4px;
+    border-radius: 16px 16px 16px 6px;
+  }
+
+  :is(#dashboard-action-list, #farm-overview-action-list) .action-plan__card h3,
+  :is(#dashboard-action-list, #farm-overview-action-list) .action-plan__first .action-plan__card h3 {
+    font-size: 18px;
+  }
+
+  :is(#dashboard-action-list, #farm-overview-action-list) .action-plan__importance,
+  :is(#dashboard-action-list, #farm-overview-action-list) .action-plan__facts p {
+    font-size: 15px;
+  }
+
+  :is(#dashboard-action-list, #farm-overview-action-list) .action-plan__quick-meta,
+  :is(#dashboard-action-list, #farm-overview-action-list) .action-plan__evidence {
+    font-size: 14px;
+  }
+
+  .photo-journal-form {
+    padding: 18px 16px;
+  }
+
+  .photo-journal-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assistant-panel {
+    border-radius: 22px 22px 0 0;
+  }
+}
+
+/* 새 정보구조: 오늘 할 일에서 기록으로 이어지는 단축 진입 */
+.dashboard-title-row {
+  width: 100%;
+}
+
+.diary-quick-entry {
+  display: inline-grid;
+  min-width: 164px;
+  min-height: 52px;
+  margin-left: auto;
+  padding: 7px 16px;
+  flex: 0 0 auto;
+  align-content: center;
+  border: 1px solid #d7b8ad;
+  border-radius: 16px 16px 16px 6px;
+  background: linear-gradient(135deg, #f7ddd6, #fff4e8);
+  color: #6e4f47;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 760;
+  line-height: 1.3;
+  text-align: left;
+  box-shadow: 0 8px 18px rgb(99 68 59 / 10%);
+  cursor: pointer;
+}
+
+.diary-quick-entry span {
+  display: block;
+  color: #a05b4c;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: .045em;
+}
+
+.diary-quick-entry:hover {
+  border-color: #c99485;
+  background: linear-gradient(135deg, #f4d2ca, #fff0df);
+  transform: translateY(-1px);
+}
+
+/* 농장 다이어리는 그룹화된 설정 목록이 아니라 날짜별 페이지이다. */
+#view-services > .page-header {
+  min-height: 112px;
+  margin-bottom: 20px;
+  padding: 20px 24px;
+  align-items: center;
+  border: 1px solid #ddd3c3;
+  border-radius: 24px 24px 24px 9px;
+  background:
+    linear-gradient(90deg, transparent 0 61px, rgb(218 140 126 / 19%) 62px 63px, transparent 64px),
+    repeating-linear-gradient(180deg, transparent 0 39px, rgb(105 127 101 / 8%) 40px 41px),
+    #fffdf8;
+  box-shadow: var(--dashboard-shadow);
+}
+
+#view-services > .page-header h1 {
+  margin: 2px 0 6px;
+  color: #364239;
+  font-size: 34px;
+  font-weight: 860;
+  letter-spacing: -.055em;
+}
+
+#view-services > .page-header p {
+  margin: 0;
+  color: #686f67;
+  font-size: 16px;
+}
+
+.diary-date-stamp {
+  display: grid;
+  min-width: 108px;
+  min-height: 76px;
+  padding: 12px 15px;
+  place-items: center;
+  border: 1px solid #d9c38c;
+  border-radius: 18px 18px 18px 6px;
+  background: var(--diary-butter-soft);
+  color: #6e5a31;
+  font-size: 16px;
+  font-weight: 840;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 8px 18px rgb(92 76 42 / 9%);
+  transform: rotate(1deg);
+}
+
+.diary-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.diary-record-cta {
+  min-height: 52px;
+  padding-inline: 18px;
+  border: 1px solid var(--diary-olive);
+  border-radius: 15px 15px 15px 5px;
+  background: var(--diary-olive);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 820;
+  box-shadow: 0 8px 18px rgb(64 85 65 / 16%);
+}
+
+#view-services .settings-surface {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  flex-direction: column;
+  gap: 20px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+#view-services .settings-surface > .panel {
+  min-width: 0;
+  max-width: 100%;
+  padding: 24px;
+  border: 1px solid var(--dashboard-line);
+  border-radius: 22px 22px 22px 8px;
+  background: var(--diary-paper);
+  box-shadow: var(--dashboard-shadow);
+}
+
+#view-services #diary-action-log { order: 1; }
+#view-services #photo-journal-panel { order: 2; }
+#view-services #report-history-panel { order: 3; }
+#view-services #satellite-service-panel { order: 4; }
+#view-services section[aria-labelledby="soil-exam-title"] { order: 5; }
+
+#view-services .section-heading h2 {
+  color: #354037;
+  font-size: 22px;
+  font-weight: 840;
+  letter-spacing: -.035em;
+}
+
+#view-services .section-heading p {
+  color: #6b7069;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+#view-services .service-eyebrow {
+  color: #7a8f76;
+  font-size: 14px;
+  letter-spacing: .07em;
+}
+
+#view-services .status-label {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 10px 10px 10px 3px;
+  background: #ede9df;
+  color: #686c66;
+  font-size: 14px;
+  font-weight: 780;
+}
+
+#view-services .status-label::before {
+  display: none;
+}
+
+#view-services #diary-action-log {
+  border-color: #cfdcc9;
+  background:
+    radial-gradient(circle at 94% 12%, rgb(244 221 162 / 40%) 0 3px, transparent 4px),
+    linear-gradient(135deg, #edf4e9, #fffdf8 70%);
+  background-size: 26px 26px, auto;
+}
+
+#diary-completed-count {
+  background: #fff8e7 !important;
+  color: #7d6536 !important;
+}
+
+.diary-completed-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.diary-completed-item {
+  display: grid;
+  min-height: 90px;
+  padding: 15px 16px 15px 54px;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  gap: 4px;
+  position: relative;
+  border: 1px solid #d6dfd1;
+  border-radius: 16px 16px 16px 6px;
+  background: rgb(255 253 248 / 86%);
+  box-shadow: 0 7px 18px rgb(72 82 66 / 6%);
+}
+
+.diary-completed-check {
+  display: grid;
+  position: absolute;
+  top: 50%;
+  left: 15px;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 10px 10px 10px 3px;
+  background: #789776;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 850;
+  transform: translateY(-50%);
+}
+
+.diary-completed-item strong {
+  overflow: hidden;
+  color: #3c483d;
+  font-size: 16px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diary-completed-meta {
+  color: #747a72;
+  font-size: 14px;
+  font-weight: 680;
+}
+
+.diary-empty-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 20px;
+  border: 1px dashed #bfcdb9;
+  border-radius: 16px 16px 16px 6px;
+  background: rgb(255 253 248 / 58%);
+  color: #667164;
+  font-size: 16px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* 사진 다이어리를 이 페이지의 시각적 주인공으로 강조 */
+#view-services #photo-journal-panel {
+  padding: 30px;
+  border-color: #d4c8b5;
+  box-shadow: 0 18px 46px rgb(72 61 44 / 12%);
+}
+
+#view-services #photo-journal-title {
+  font-size: 26px;
+}
+
+#view-services #photo-journal-state {
+  background: var(--diary-coral-soft);
+  color: #86473e;
+}
+
+/* 리포트와 외부 데이터 도구는 주 기록 흐름보다 한 단계 낮게 */
+#view-services #report-history-panel,
+#view-services #satellite-service-panel,
+#view-services section[aria-labelledby="soil-exam-title"] {
+  border-color: #e0d9ce;
+  background: rgb(255 253 248 / 76%);
+  box-shadow: 0 7px 22px rgb(68 60 48 / 5%);
+}
+
+#view-services #satellite-service-panel,
+#view-services section[aria-labelledby="soil-exam-title"] {
+  border-style: dashed;
+}
+
+@media (max-width: 1040px) {
+  .diary-quick-entry {
+    min-width: 52px;
+    padding-inline: 13px;
+  }
+
+  .diary-quick-entry span {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-title-row {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .diary-quick-entry {
+    width: 100%;
+    min-height: 48px;
+    margin-left: 0;
+    text-align: center;
+  }
+
+  .diary-quick-entry span {
+    display: inline;
+    margin-right: 5px;
+  }
+
+  #view-services > .page-header {
+    min-height: 0;
+    padding: 18px 16px;
+  }
+
+  #view-services > .page-header h1 {
+    font-size: 29px;
+  }
+
+  .diary-date-stamp {
+    width: fit-content;
+    min-width: 0;
+    min-height: 44px;
+    margin-top: 15px;
+    padding: 8px 12px;
+    font-size: 14px;
+    transform: none;
+  }
+
+  .diary-header-actions {
+    width: 100%;
+    margin-top: 14px;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .diary-date-stamp,
+  .diary-record-cta {
+    width: 100%;
+  }
+
+  #view-services .settings-surface {
+    gap: 14px;
+  }
+
+  #view-services :is(.photo-journal-layout, .photo-journal-form, .photo-journal-gallery, .satellite-setup-grid, .satellite-controls) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #view-services :is(img, svg, input, select, textarea, button) {
+    max-width: 100%;
+  }
+
+  #view-services .settings-surface > .panel,
+  #view-services #photo-journal-panel {
+    padding: 19px 16px;
+  }
+
+  .diary-completed-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #view-services .section-heading {
+    display: flex;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 390px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .app-main {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: clip;
+  }
+
+  .wizard-shell,
+  .wizard-shell > form,
+  .wizard-body,
+  .wizard-step,
+  .wizard-top,
+  .wizard-footer {
+    width: 100%;
+    min-width: 0;
+    max-width: 100vw;
+  }
+
+  .wizard-shell > form {
+    overflow-x: clip;
+  }
+
+  .wizard-step h1,
+  .wizard-step p,
+  .wizard-step label,
+  .wizard-step small {
+    overflow-wrap: anywhere;
+  }
+
+  #view-services > .page-header,
+  #view-services .settings-surface,
+  #view-services .settings-surface > .panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  #view-services .section-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  #view-services .section-heading > :first-child {
+    min-width: 0;
+  }
+
+  #view-services .section-heading p,
+  .diary-completed-item strong {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-button,
+  .diary-quick-entry,
+  .photo-journal-item,
+  .farm-crop-score-card,
+  .crop-cycle-progress-track > span {
+    transition: none !important;
+    transform: none !important;
   }
 }

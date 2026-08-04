@@ -296,7 +296,7 @@ test("데스크톱 농장 박스를 누르면 전환 목록과 농장 추가 진
     html,
     /id="sidebar-farm-trigger"[^>]*aria-expanded="false"[^>]*aria-controls="sidebar-farm-list"/u,
   );
-  assert.match(html, /data-view="services">추가 서비스<\/button>/u);
+  assert.match(html, /data-view="services">농장 다이어리<\/button>/u);
   assert.match(html, /data-view="mypage">마이페이지<\/button>/u);
   assert.match(client, /sidebarFarmList\.hidden = !expanding/u);
   assert.match(client, /sidebarFarmList\.querySelector\("button"\)\?\.focus/u);
@@ -370,6 +370,7 @@ test("생육점수는 백엔드 결과를 표시하고 세 축은 독립 값을 
   assert.match(client, /analysis\?\.growthScore/);
   assert.match(client, /`\$\{status\.score\}점`/);
   assert.match(client, /현재 작물 생육점수/);
+  assert.match(html, /id="dashboard-score-label">생육점수<\/span>/);
   assert.doesNotMatch(client, /날씨 60%|calculateCropConditionScore/);
   assert.doesNotMatch(
     client,
@@ -521,7 +522,7 @@ test("저장된 농장의 조건 변경과 농장 추가는 첫 단계에서 돌
   );
 });
 
-test("무료 흙 검사는 추가 서비스로 분리하고 즉시 행동과 구분한다", async () => {
+test("무료 흙 검사는 농장 다이어리의 보조 서비스로 분리하고 즉시 행동과 구분한다", async () => {
   const html = await readProductUi();
   const client = await readFile(
     path.join(import.meta.dirname, "backend-client.mjs"),
@@ -534,7 +535,7 @@ test("무료 흙 검사는 추가 서비스로 분리하고 즉시 행동과 구
     /<section class="view" id="view-mypage"[\s\S]*?<\/main>/,
   )?.[0] ?? "";
 
-  assert.match(html, /data-view="services">추가 서비스/);
+  assert.match(html, /data-view="services">농장 다이어리/);
   assert.match(services, /흙 검사 무료로 받는 방법/);
   assert.doesNotMatch(mypage, /흙 검사 무료로 받는 방법/);
   assert.match(client, /오늘 바로 할 일/);
@@ -721,9 +722,10 @@ test("목표 대시보드 조작은 실제 저장·가이드·기능 화면으�
   assert.match(markup, /id="dashboard-all-actions"[^>]*aria-expanded="false"/);
   assert.match(markup, /id="dashboard-photo-check"/);
   assert.doesNotMatch(markup, /data-dashboard-anchor=/);
-  assert.match(markup, /data-view="services">추가 서비스/);
+  assert.match(markup, /data-view="services">농장 다이어리/);
   assert.match(markup, /id="satellite-service-panel"/);
   assert.match(markup, /data-service-anchor="photo-journal-panel"/);
+  assert.match(markup, /id="diary-completed-actions"/);
   assert.match(markup, /data-open-dialog="weather"/);
   assert.match(markup, /data-open-dialog="soil"/);
   assert.doesNotMatch(markup, /aria-label="주의 3건"/);
@@ -733,6 +735,8 @@ test("목표 대시보드 조작은 실제 저장·가이드·기능 화면으�
   assert.match(client, /await api\.updateAction\(scope\.farmId, action\.actionId, "DONE"/);
   assert.match(client, /저장하지 못한 \$\{failures\.length\}개는 그대로 남겨 두었습니다/);
   assert.match(client, /function toggleFullActionPlan/);
+  assert.match(client, /function renderDiaryCompletedActions/);
+  assert.match(client, /item\?\.status === "DONE"/);
   assert.match(client, /switcher\.hidden = analyses\.length === 0/);
   assert.doesNotMatch(client, /function updateRiskNavigation/);
   assert.match(client, /guideButton\.addEventListener\("click", \(\) => openEvidenceDialog\("weather"\)\)/);
@@ -775,6 +779,12 @@ test("시군구 위치는 지역 참고 분석을 한 번만 알리고 확보된
   assert.match(client, /analysis\.dataSources\.filter\(sourceUsedInAnalysis\)/);
   assert.match(client, /지역 예보와 지역 토양 통계를 기준으로 현재 적용할 주의 신호와 행동을 분석했습니다/);
   assert.match(client, /actionRelevantForDisplay\(action, analysis\)/);
+  assert.match(client, /scoreLabel\.textContent = regionalReference \? "지역지수" : "생육점수"/);
+  assert.match(client, /시·군·구 공식자료로 예상한 지역 환경 상태이며 필지 실측이 아닙니다/);
+  assert.match(client, /지역 참고자료입니다\. 농장 현장 상태를 먼저 확인한 뒤 실행합니다/);
+  assert.match(client, /badge\.textContent = fieldMeasurement \? "내 밭 검사값" : "지역 통계"/);
+  assert.match(client, /\["LIVE", "CACHE", "REFERENCE"\]/);
+  assert.match(client, /"공식 참고자료"/);
 });
 
 test("행동 유형별 원인과 NOW 기한, 주간 위험 압축을 서로 섞지 않는다", async () => {
@@ -1014,6 +1024,7 @@ test("팜맵 필지 선택을 기본으로 제공하고 위성 연결 전에도 
   assert.match(client, /#parcel-use-location/);
   assert.match(client, /parcelGeometryFromCorners/);
   assert.match(markup, /id="parcel-mode-farmmap"/);
+  assert.match(markup, /팜맵에서 찾기 <small>\(베타\)<\/small>/);
   assert.match(markup, /id="parcel-farmmap-candidates"/);
   assert.match(markup, /법적 지적 경계를 대신하지 않습니다/);
 });

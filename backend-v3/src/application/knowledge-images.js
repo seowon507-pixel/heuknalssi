@@ -20,9 +20,21 @@ export const KNOWLEDGE_IMAGE_HOST_ALLOWLIST = Object.freeze([
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 6_000;
 const IMAGE_ID_PATTERN = /^[A-Z][A-Z0-9_]{2,63}$/u;
+// 외부에서 받아오는 이미지는 래스터만 허용한다. 제3자가 준 SVG는 우리 오리진에서
+// 서빙되므로 형식을 넓히지 않는다.
 const ALLOWED_CONTENT_TYPES = new Set([
   "image/jpeg",
   "image/png",
+  "image/webp",
+]);
+// 자체 제작 도해는 저장소에 있는 우리 파일이므로 SVG를 허용한다. <img>로 불린
+// SVG는 브라우저가 스크립트를 실행하지 않고, 응답에도 nosniff와 default-src
+// 'none' CSP가 붙는다. 그래도 검증 스크립트가 script·foreignObject·외부 참조를
+// 거부해 두 겹으로 막는다.
+const ALLOWED_ASSET_CONTENT_TYPES = new Set([
+  "image/svg+xml",
+  "image/png",
+  "image/jpeg",
   "image/webp",
 ]);
 
@@ -70,15 +82,31 @@ function resolveTarget(entry, allowlist) {
  * 실제로 프록시할 수 있는지만 available로 알려 준다. 흙톡 답변과 프록시 라우트가
  * 같은 판정을 쓰도록 여기 한 곳에 둔다.
  */
+/** 등록된 항목이 내보낼 수 있는 자체 제작 에셋을 들고 있는지. */
+function assetOf(entry) {
+  const body = entry?.body;
+  const contentType =
+    typeof entry?.contentType === "string"
+      ? entry.contentType.trim().toLowerCase()
+      : "";
+  if (!Buffer.isBuffer(body) || body.length === 0) return null;
+  if (!ALLOWED_ASSET_CONTENT_TYPES.has(contentType)) return null;
+  return { contentType, body };
+}
+
 export function describeKnowledgeImage(entry, imageId) {
   if (!entry || typeof entry !== "object") return null;
+  const asset = assetOf(entry);
   return Object.freeze({
     imageId,
     alt: entry.alt ?? null,
     caption: entry.caption ?? null,
     credit: entry.credit ?? null,
     licence: entry.licence ?? null,
-    available: Boolean(typeof entry.url === "string" && entry.url.trim()),
+    // 자체 제작 도해는 항상 사용할 수 있고, 외부 URL은 등록되어 있을 때만이다.
+    source: asset ? "DIAGRAM" : entry.url ? "EXTERNAL" : null,
+    available: Boolean(asset) ||
+      Boolean(typeof entry.url === "string" && entry.url.trim()),
   });
 }
 
@@ -96,14 +124,20 @@ export function createKnowledgeImageService({
         IMAGE_ID_PATTERN.test(imageId) && entry && typeof entry === "object",
     ),
   );
-  const connectedCount = [...registry.values()].filter(
-    (entry) => typeof entry.url === "string" && entry.url.trim(),
+  const diagramCount = [...registry.values()].filter((entry) =>
+    assetOf(entry),
   ).length;
+  const externalCount = [...registry.values()].filter(
+    (entry) => !assetOf(entry) && typeof entry.url === "string" && entry.url.trim(),
+  ).length;
+  const connectedCount = diagramCount + externalCount;
 
   return Object.freeze({
     state: connectedCount > 0 ? "READY" : "NOT_CONNECTED",
     registeredCount: registry.size,
     connectedCount,
+    diagramCount,
+    externalCount,
 
     /** 화면 표시용 설명. 업스트림 URL은 포함하지 않는다. */
     describe(imageId) {
@@ -118,6 +152,18 @@ export function createKnowledgeImageService({
       const entry = registry.get(imageId);
       if (!entry) {
         throw new KnowledgeImageError("KNOWLEDGE_IMAGE_NOT_FOUND");
+      }
+      // 자체 제작 도해는 기동 시 메모리에 올려 두었으므로 여기서 끝난다.
+      // 네트워크도 파일 시스템도 요청 경로에 들어오지 않는다.
+      const asset = assetOf(entry);
+      if (asset) {
+        if (asset.body.length > maxBytes) {
+          throw new KnowledgeImageError("KNOWLEDGE_IMAGE_TOO_LARGE");
+        }
+        return Object.freeze({
+          contentType: asset.contentType,
+          body: asset.body,
+        });
       }
       const target = resolveTarget(entry, allowlist);
 

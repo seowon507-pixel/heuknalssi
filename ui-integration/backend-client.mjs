@@ -100,6 +100,34 @@ const CROP_LABELS = Object.freeze({
   LETTUCE: "상추",
 });
 
+const CROP_ICON_KEYS = new Set([
+  "apple",
+  "pear",
+  "cucumber",
+  "potato",
+  "lettuce",
+]);
+
+function decorativeCropIcon(crop, className = "") {
+  const key = String(crop ?? "").toLowerCase();
+  if (!CROP_ICON_KEYS.has(key)) return null;
+  const icon = element(
+    "span",
+    `app-icon crop-icon crop-icon--${key}${className ? ` ${className}` : ""}`,
+  );
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
+function decorativeEnvironmentIcon(kind, className = "") {
+  const icon = element(
+    "span",
+    `app-icon environment-icon environment-icon--${kind}${className ? ` ${className}` : ""}`,
+  );
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
 const CULTIVATION_LABELS = Object.freeze({
   OPEN_FIELD: "노지",
   FACILITY_SOIL: "시설흙",
@@ -1696,6 +1724,7 @@ async function refreshActionPlan(analysis, { ensureRules = false } = {}) {
     writeStoredTodoFromPlan(plan, analysis);
     if (fallback) fallback.hidden = true;
     syncActionHeaderControls(plan);
+    renderDiaryCompletedActions(plan, analysis);
   } catch (error) {
     currentActionPlan = null;
     root.replaceChildren(
@@ -1707,6 +1736,7 @@ async function refreshActionPlan(analysis, { ensureRules = false } = {}) {
     );
     if (fallback) fallback.hidden = false;
     syncActionHeaderControls(null);
+    renderDiaryCompletedActions(null, analysis);
   } finally {
     root.removeAttribute("aria-busy");
   }
@@ -1812,6 +1842,40 @@ async function closeCompletedSeasonActions(scope) {
 
 function planItems(plan) {
   return [...(plan?.today ?? []), ...(plan?.upcoming ?? [])];
+}
+
+function renderDiaryCompletedActions(plan, analysis) {
+  const root = document.querySelector("#diary-completed-actions");
+  const count = document.querySelector("#diary-completed-count");
+  if (!root || !count) return;
+  const crop = CROP_LABELS[analysis?.inputSummary?.crop] ?? "작물";
+  const completed = (plan?.today ?? [])
+    .filter((item) => item?.status === "DONE")
+    .sort((left, right) => String(right.completedAt ?? "").localeCompare(String(left.completedAt ?? "")));
+  count.textContent = `${completed.length}개`;
+  if (completed.length === 0) {
+    root.replaceChildren(
+      element(
+        "p",
+        "diary-empty-note",
+        "아직 완료한 일이 없습니다. 오늘 할 일을 마치면 이곳에 자동으로 기록됩니다.",
+      ),
+    );
+    return;
+  }
+  root.replaceChildren(...completed.map((item) => {
+    const card = element("article", "diary-completed-item");
+    const completedAt = Date.parse(item.completedAt ?? "");
+    const time = Number.isFinite(completedAt)
+      ? new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" }).format(completedAt)
+      : "오늘";
+    card.append(
+      element("span", "diary-completed-check", "✓"),
+      element("strong", "", item.title ?? "농장 일 완료"),
+      element("span", "diary-completed-meta", `${crop} · ${time}`),
+    );
+    return card;
+  }));
 }
 
 function syncActionHeaderControls(plan) {
@@ -2003,12 +2067,15 @@ function actionDraftsFromAnalysis(analysis, scope) {
       forecastGuide.actions.length > 0
         ? forecastGuide.actions.slice(0, 2).join(" ")
         : actionDetail(action.actionId, analysis) || title;
+    const instruction = isRegionalReferenceAnalysis(analysis)
+      ? `지역 참고자료입니다. 농장 현장 상태를 먼저 확인한 뒤 실행합니다. ${practicalInstruction}`
+      : practicalInstruction;
     return [{
       ruleId: projection.ruleId || `analysis-action-${index}`,
       draft: {
         ...scope,
         title,
-        instruction: practicalInstruction,
+        instruction,
         reason: actionReason(action, analysis),
         horizon: projection.horizon,
         dueAt: projection.dueAt,
@@ -2118,6 +2185,9 @@ function renderDashboardStatus(analysis) {
   const displayAction = resolveDisplayAction(analysis);
   const summary = analysis?.inputSummary ?? {};
   const cropLabel = CROP_LABELS[summary.crop] ?? summary.crop ?? "작물";
+  const regionalReference = isRegionalReferenceAnalysis(analysis);
+  const scoreLabel = root.querySelector("#dashboard-score-label");
+  if (scoreLabel) scoreLabel.textContent = regionalReference ? "지역지수" : "생육점수";
   const badge = root.querySelector(".dashboard-state-badge");
   if (badge) {
     const badgeTone = status.label === "주의" ? "caution" : status.tone;
@@ -2135,12 +2205,14 @@ function renderDashboardStatus(analysis) {
     growthLabel.setAttribute(
       "aria-label",
       Number.isFinite(status.score)
-        ? `현재 작물 생육점수 ${status.score}점, ${status.label}`
+        ? `${regionalReference ? "현재 지역 환경지수" : "현재 작물 생육점수"} ${status.score}점, ${status.label}`
         : `현재 농장 상태 ${status.label}`,
     );
   }
   if (growthHelp) {
-    growthHelp.textContent = ["danger", "caution"].includes(status.tone)
+    growthHelp.textContent = regionalReference
+      ? "시·군·구 공식자료로 예상한 지역 환경 상태이며 필지 실측이 아닙니다."
+      : ["danger", "caution"].includes(status.tone)
       ? "예방 관리가 필요한 상태입니다."
       : status.tone === "good"
         ? "현재 큰 위험 신호가 없습니다."
@@ -2334,7 +2406,12 @@ function renderCropManagementView(analysis) {
   checklist.replaceChildren(
     ...managementChecklistItems(analysis).map((item, index) => {
       const card = element("article", "management-check-item");
-      const number = element("span", "management-check-number", String(index + 1));
+      const number = element("span", "management-check-number");
+      const icon = item.icon === "crop"
+        ? decorativeCropIcon(analysis?.inputSummary?.crop)
+        : decorativeEnvironmentIcon(item.icon);
+      if (icon) number.append(icon);
+      else number.textContent = String(index + 1);
       const copy = element("div", "");
       copy.append(
         element("span", "management-check-label", item.label),
@@ -2357,7 +2434,10 @@ function renderCropManagementSwitcher(activeAnalysis) {
     const crop = analysis?.inputSummary?.crop;
     const button = element("button", "crop-management-switch-button");
     button.type = "button";
-    button.textContent = CROP_LABELS[crop] ?? crop ?? "작물";
+    const icon = decorativeCropIcon(crop);
+    if (icon) button.append(icon);
+    button.append(element("span", "", CROP_LABELS[crop] ?? crop ?? "작물"));
+    button.dataset.crop = String(crop ?? "").toLowerCase();
     const active = analysis?.analysisId === activeAnalysis?.analysisId;
     button.setAttribute("aria-pressed", String(active));
     button.addEventListener("click", () => {
@@ -2382,16 +2462,19 @@ function managementChecklistItems(analysis) {
   };
   return [
     {
+      icon: "forecast",
       label: "날씨 대응",
       title: `${climate?.value ?? "자료 없음"} · ${climate?.help ?? "예보 확인"}`,
       detail: indicators.summary,
     },
     {
+      icon: "water",
       label: "토양·물 관리",
       title: `${soil?.title ?? "토양"} ${soil?.value ?? "자료 없음"}`,
       detail: soilConditionGuide(analysis).condition,
     },
     {
+      icon: "crop",
       label: "작물 관찰",
       title: observation.part,
       detail: observation.guidance,
@@ -2850,13 +2933,13 @@ function renderDashboardSoil(analysis) {
   const placeholder = root.querySelector(".dashboard-soil-placeholder");
   const badge = root.querySelector(".dashboard-data-badge");
   const measurementBasis = analysis?.soil?.result?.measurementBasis;
+  const fieldMeasurement = ["USER_SOIL_TEST", "PROVIDER_SOIL_TEST"].includes(measurementBasis);
+  const regionalReference = isRegionalReferenceAnalysis(analysis) || measurementBasis === "REGIONAL_STATISTICS";
   const title = root.querySelector("#dashboard-soil-summary-title");
   if (title) title.textContent = "토양 상태";
   if (badge) {
-    badge.textContent = ["USER_SOIL_TEST", "PROVIDER_SOIL_TEST"].includes(measurementBasis)
-      ? "내 밭 검사값"
-      : "내 밭 검사값 아님";
-    badge.hidden = true;
+    badge.textContent = fieldMeasurement ? "내 밭 검사값" : "지역 통계";
+    badge.hidden = !(fieldMeasurement || regionalReference);
   }
   if (placeholder) {
     placeholder.className = "dashboard-soil-placeholder is-metric-grid";
@@ -3517,34 +3600,11 @@ function riskCoversDate(risk, date) {
 function forecastGlyph(day) {
   const wrap = element("span", "forecast-glyph");
   wrap.setAttribute("aria-hidden", "true");
-  const svgNamespace = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(svgNamespace, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "1.8");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
   const rain =
     (Number.isFinite(day.precipitationProbability) &&
       day.precipitationProbability >= 50) ||
     (Number.isFinite(day.precipitationAmount) && day.precipitationAmount > 0);
-  const paths = rain
-    ? [
-        "M7 15.5h9a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 6.24 8.8 3.4 3.4 0 0 0 7 15.5Z",
-        "M9 18.5l-1 2",
-        "M14 18.5l-1 2",
-      ]
-    : [
-        "M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z",
-        "M12 9v8",
-      ];
-  paths.forEach((value) => {
-    const path = document.createElementNS(svgNamespace, "path");
-    path.setAttribute("d", value);
-    svg.append(path);
-  });
-  wrap.append(svg);
+  wrap.append(decorativeEnvironmentIcon(rain ? "water" : "weather"));
   return wrap;
 }
 
@@ -3566,42 +3626,18 @@ function actionVisual(analysis, weatherGuide, soilGuide) {
     soil: "토양 상태 점검",
     check: "현재 범위 양호",
   };
-  const paths = {
-    rain: [
-      "M7 13.5h9a4 4 0 0 0 .5-7.97A5.5 5.5 0 0 0 6.24 6.8 3.4 3.4 0 0 0 7 13.5Z",
-      "M9 17l-1 3",
-      "M14 17l-1 3",
-    ],
-    temperature: [
-      "M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z",
-      "M12 9v8",
-      "M17.5 4.5h2",
-      "M18.5 3.5v2",
-    ],
-    soil: [
-      "M4 7c4 1.8 12 1.8 16 0",
-      "M4 12c4 1.8 12 1.8 16 0",
-      "M4 17c4 1.8 12 1.8 16 0",
-      "M12 7v10",
-    ],
-    check: ["M5 12.5l4 4L19 6.5"],
+  const iconKinds = {
+    rain: "water",
+    temperature: "weather",
+    soil: "soil",
+    check: "forecast",
   };
   const wrap = element("div", `live-action-visual is-${kind}`);
   wrap.setAttribute("aria-hidden", "true");
-  const svgNamespace = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(svgNamespace, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "1.8");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
-  paths[kind].forEach((value) => {
-    const path = document.createElementNS(svgNamespace, "path");
-    path.setAttribute("d", value);
-    svg.append(path);
-  });
-  wrap.append(svg, element("span", "", labels[kind]));
+  wrap.append(
+    decorativeEnvironmentIcon(iconKinds[kind], "live-action-visual-icon"),
+    element("span", "live-action-visual-label", labels[kind]),
+  );
   return wrap;
 }
 
@@ -4142,8 +4178,12 @@ function renderFarmOverviewCrops(analyses) {
         axis.append(row);
       });
       const heading = element("div", "farm-crop-score-heading");
+      const cropName = element("span", "farm-crop-name-wrap");
+      const cropIcon = decorativeCropIcon(analysis?.inputSummary?.crop);
+      if (cropIcon) cropName.append(cropIcon);
+      cropName.append(element("strong", "farm-crop-name", cropLabelForAnalysis(analysis)));
       heading.append(
-        element("strong", "farm-crop-name", cropLabelForAnalysis(analysis)),
+        cropName,
         element("span", `farm-crop-state is-${status.tone}`, status.label),
       );
       const scoreWrap = element("div", "farm-crop-score-value");
@@ -4282,12 +4322,12 @@ function renderCropResultSwitcher() {
   });
   const cropButton = (analysis) => {
       const crop = analysis?.inputSummary?.crop;
-      const button = element(
-        "button",
-        "",
-        CROP_LABELS[crop] ?? crop ?? "작물",
-      );
+      const button = element("button", "");
       button.type = "button";
+      const icon = decorativeCropIcon(crop);
+      if (icon) button.append(icon);
+      button.append(element("span", "", CROP_LABELS[crop] ?? crop ?? "작물"));
+      button.dataset.crop = String(crop ?? "").toLowerCase();
       button.setAttribute(
         "aria-pressed",
         String(dashboardMode === "crop" && analysis?.analysisId === currentAnalysis?.analysisId),
@@ -6134,6 +6174,14 @@ function applySatelliteAvailability() {
   const state = document.querySelector("#satellite-service-state");
   const status = document.querySelector("#parcel-status");
   const refresh = document.querySelector("#satellite-refresh");
+  const farmmapMode = document.querySelector("#parcel-mode-farmmap");
+  const farmmapState = preflight?.capabilities?.farmmap ?? preflight?.optionalAdapters?.farmmap;
+  if (farmmapMode) {
+    farmmapMode.title = farmmapState === "READY"
+      ? "팜맵 필지 경계를 선택합니다."
+      : "팜맵은 공급자 응답을 확인한 뒤 사용할 수 있는 베타 기능입니다.";
+    farmmapMode.dataset.connectionState = farmmapState ?? "UNKNOWN";
+  }
   if (refresh) refresh.disabled = !available || !savedParcelAvailable;
   if (!available && state) {
     state.textContent = savedParcelAvailable ? "경계 저장됨" : "경계 등록 가능";
@@ -6487,6 +6535,7 @@ async function assessCurrentHarvestPhoto() {
   const input = document.querySelector("#harvest-photo-input");
   const button = document.querySelector("#harvest-photo-assess");
   const status = document.querySelector("#harvest-photo-status");
+  const consent = document.querySelector("#harvest-photo-consent");
   const file = input?.files?.[0] ?? null;
   const scope = currentFeatureScope(currentAnalysis);
   if (!scope || !currentAnalysis) {
@@ -6499,6 +6548,11 @@ async function assessCurrentHarvestPhoto() {
   }
   if (file.size > 6 * 1024 * 1024) {
     if (status) status.textContent = "수확 판정 사진은 6MB 이하로 선택해 주세요.";
+    return;
+  }
+  if (consent?.checked !== true) {
+    if (status) status.textContent = "Google AI 전송 목적을 확인하고 동의해 주세요.";
+    consent?.focus();
     return;
   }
   setBusy(button, true, "AI 확인 중…");
@@ -6525,6 +6579,7 @@ async function assessCurrentHarvestPhoto() {
     writeStoredHarvestAssessment(assessmentKey, assessment);
     renderCropCycleCard(currentAnalysis);
     if (input) input.value = "";
+    if (consent) consent.checked = false;
   } catch (error) {
     if (status) {
       status.className = "harvest-photo-status is-uncertain";
@@ -6560,7 +6615,7 @@ async function savePhotoJournalEntry(event) {
     );
     return;
   }
-  if (form.elements.consent?.checked !== true) {
+  if (form.elements.localConsent?.checked !== true) {
     setPhotoJournalStatus("기기 내 비공개 저장 동의를 확인해 주세요.", "error");
     return;
   }
@@ -6592,7 +6647,8 @@ async function savePhotoJournalEntry(event) {
     }
     let serverPhoto = null;
     let serverSyncError = null;
-    if (connected) {
+    const serverSyncRequested = form.elements.serverConsent?.checked === true;
+    if (connected && serverSyncRequested) {
       try {
         const prepared = await api.preparePhotoUpload(scope.farmId, {
           cropId: scope.cropId,
@@ -6626,14 +6682,19 @@ async function savePhotoJournalEntry(event) {
     form.elements.observedAt.value = new Date().toISOString().slice(0, 10);
     if (serverPhoto) {
       await syncLatestPhotoComparison(scope).catch(() => {});
-      setPhotoJournalStatus("사진을 비공개로 저장하고 시즌 기록에 반영했습니다.", "success");
+      setPhotoJournalStatus("사진을 이 기기와 비공개 서버에 저장했습니다. 기록의 삭제 버튼으로 함께 삭제할 수 있습니다.", "success");
     } else if (serverSyncError) {
       setPhotoJournalStatus(
         "서버 동기화는 되지 않았지만 사진은 이 기기에 안전하게 저장했습니다.",
         "error",
       );
     } else {
-      setPhotoJournalStatus("사진을 이 기기에 비공개로 저장했습니다.", "success");
+      setPhotoJournalStatus(
+        serverSyncRequested && !connected
+          ? "현재 서버에 연결되지 않아 사진을 이 기기에만 비공개로 저장했습니다."
+          : "사진을 이 기기에만 비공개로 저장했습니다.",
+        "success",
+      );
     }
     await refreshPhotoJournal(currentAnalysis);
   } catch {
@@ -9338,7 +9399,7 @@ function analysisAxisPresentation(analysis, key, state) {
 
 function sourceUsedInAnalysis(source) {
   return (
-    ["LIVE", "CACHE"].includes(source?.deliveryState) &&
+    ["LIVE", "CACHE", "REFERENCE"].includes(source?.deliveryState) &&
     source?.adapterState !== "UNSUPPORTED"
   );
 }
@@ -9396,6 +9457,7 @@ function sourceStateLabel(source) {
   if (source?.deliveryState === "SAMPLE") return "샘플";
   if (sourceHasQualityWarning(source)) return "일부 확인";
   if (source?.deliveryState === "CACHE") return "캐시 자료";
+  if (source?.deliveryState === "REFERENCE") return "공식 참고자료";
   if (source?.deliveryState === "LIVE") return "연결됨";
   if (source?.adapterState === "SUCCESS") return "연결됨";
   return source?.adapterState ?? "상태 미상";
@@ -9410,6 +9472,7 @@ function sourceTone(source) {
   ) {
     return "warning";
   }
+  if (source?.deliveryState === "REFERENCE") return "good";
   if (source?.deliveryState === "LIVE") return "good";
   if (source?.adapterState === "SUCCESS") return "good";
   return "danger";

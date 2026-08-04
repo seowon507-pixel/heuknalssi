@@ -958,6 +958,7 @@ export function createKmaClimateNormalAdapter({
           });
           return {
             adapterState: "SUCCESS",
+            deliveryState: "REFERENCE",
             validFrom: "1990-12-31T15:00:00.000Z",
             validTo: "2020-12-31T14:59:59.999Z",
             qualityFlags: [

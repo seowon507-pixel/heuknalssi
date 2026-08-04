@@ -143,6 +143,7 @@ test("live ASOS adapter sends the exact completed-day window and returns a valid
   assert.equal(requestedUrl.searchParams.get("endDt"), "20260725");
   assert.equal(requestedUrl.searchParams.get("stnIds"), "136");
   assert.equal(envelope.adapterState, "SUCCESS");
+  assert.equal(envelope.deliveryState, "LIVE");
   assert.equal(envelope.data.readings.length, 7);
   assert.equal(validateDataEnvelope(envelope).valid, true);
 });
@@ -252,6 +253,7 @@ test("climate-normal adapter falls back only to the bundled official dataset", a
   const envelope = await adapter.getNormals({ stationId: "136" });
 
   assert.equal(envelope.adapterState, "SUCCESS");
+  assert.equal(envelope.deliveryState, "REFERENCE");
   assert.ok(
     envelope.qualityFlags.includes("BUNDLED_OFFICIAL_CLIMATE_NORMALS"),
   );

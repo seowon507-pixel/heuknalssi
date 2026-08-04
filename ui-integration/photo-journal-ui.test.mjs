@@ -28,6 +28,22 @@ test("사진 저장 UI는 크기 상한과 중앙 배치 확인을 실제 저장
   assert.match(client, /subjectConfirmed: true/);
 });
 
+test("사진 기능은 기기 저장, 서버 동기화, 외부 AI 전송 동의를 분리한다", async () => {
+  const [html, client] = await Promise.all([
+    readProductUi(),
+    readFile(path.join(import.meta.dirname, "backend-client.mjs"), "utf8"),
+  ]);
+
+  assert.match(html, /id="journal-local-consent"[^>]*name="localConsent"[^>]*required/);
+  assert.match(html, /id="journal-server-consent"[^>]*name="serverConsent"/);
+  assert.match(html, /기본은 기기 저장만 사용합니다/);
+  assert.match(html, /id="harvest-photo-consent"[^>]*name="harvestPhotoConsent"/);
+  assert.match(html, /Google AI에 한 번 전송/);
+  assert.match(client, /form\.elements\.localConsent\?\.checked !== true/);
+  assert.match(client, /form\.elements\.serverConsent\?\.checked === true/);
+  assert.match(client, /consent\?\.checked !== true/);
+});
+
 async function readProductUi() {
   const projectRoot = path.resolve(import.meta.dirname, "..");
   const names = await readdir(projectRoot);
