@@ -3,7 +3,7 @@ import { providerDisclosureUrl, requestProviderJson } from "./network.js";
 
 const DEFAULT_ENDPOINT = "https://agis.epis.or.kr/ASD/farmmapApi/wfs.do";
 const DEFAULT_LAYER = "farm_map_api";
-const DEFAULT_TIMEOUT_MS = 5_000;
+const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_CANDIDATES = 20;
 const DEGREE = Math.PI / 180;
 const GRS80 = Object.freeze({

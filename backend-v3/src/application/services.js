@@ -50,6 +50,7 @@ import {
 const CANDIDATE_TTL_MS = 10 * 60 * 1000;
 const ANALYSIS_TTL_MS = 60 * 60 * 1000;
 const REPORT_LOCK_TTL_MS = 15 * 1000;
+const FARMMAP_DEADLINE_MS = 12_000;
 const STORE_CAPACITY_POLICY = 'reject';
 const ANALYSIS_LIFECYCLE_ORDER = Object.freeze([
   'RECEIVED',
@@ -420,16 +421,33 @@ export function createApplicationServices({
         limitations: ['FARMMAP_NOT_CONFIGURED'],
       };
     }
-    const result = await adapters.farmmap.searchParcels(
-      {
-        latitude: location.latitude,
-        longitude: location.longitude,
-        radiusMeters,
-      },
-      { signal, deadlineAt: clock() + Math.min(coreDeadlineMs, 7_000) },
-    );
-    if (signal?.aborted) throw signal.reason;
-    return structuredClone(result);
+    try {
+      const result = await adapters.farmmap.searchParcels(
+        {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          radiusMeters,
+        },
+        { signal, deadlineAt: clock() + FARMMAP_DEADLINE_MS },
+      );
+      if (signal?.aborted) throw signal.reason;
+      return structuredClone(result);
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason;
+      const adapterState =
+        typeof error?.adapterState === 'string'
+          ? error.adapterState
+          : error instanceof TypeError
+            ? 'SCHEMA_CHANGED'
+            : null;
+      if (!adapterState) throw error;
+      return {
+        state: 'UNAVAILABLE',
+        candidates: [],
+        sourceUrl: 'https://agis.epis.or.kr/',
+        limitations: [`FARMMAP_PROVIDER_${adapterState}`],
+      };
+    }
   }
 
   async function createAnalysis({

@@ -629,6 +629,45 @@ test('FarmMap search uses the analysis-bound exact location without exposing coo
   }), null);
 });
 
+test('FarmMap provider timeout degrades to an unavailable optional feature', async () => {
+  const calls = {
+    climate: [], observations: [], soil: [], short: [], mid: [], farmmap: [],
+  };
+  const adapters = completeAdapters(calls);
+  adapters.farmmap = {
+    id: 'farmmap-timeout-fixture',
+    state: 'CONFIGURED_UNVERIFIED',
+    async searchParcels() {
+      throw Object.assign(new Error('provider deadline exceeded'), {
+        adapterState: 'TIMEOUT',
+      });
+    },
+  };
+  const services = createApplicationServices({
+    adapters,
+    rules: reviewedRules(),
+    verifiedLocationMappings: sixVerifiedMappings(),
+    clock: () => FIXED_TIME,
+    randomBytes: deterministicRandomBytes,
+    capabilities: { farmmap: 'CONFIGURED_UNVERIFIED' },
+  });
+  const candidateToken = await confirmedCandidate(services, 'owner-farmmap-timeout');
+  await services.createAnalysis({
+    ownerSessionId: 'owner-farmmap-timeout',
+    analysisId: 'analysis-farmmap-timeout',
+    input: analysisInput(candidateToken),
+  });
+
+  const result = await services.searchFarmmapParcels({
+    ownerSessionId: 'owner-farmmap-timeout',
+    analysisId: 'analysis-farmmap-timeout',
+  });
+
+  assert.equal(result.state, 'UNAVAILABLE');
+  assert.deepEqual(result.candidates, []);
+  assert.deepEqual(result.limitations, ['FARMMAP_PROVIDER_TIMEOUT']);
+});
+
 test('field soil profile is attached without exposing the private parcel lookup key', async () => {
   const privatePnu = '4111710500100010001';
   const calls = {
