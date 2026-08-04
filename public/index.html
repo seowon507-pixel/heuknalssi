@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>청년농부 — 오늘의 밭</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ── 온보딩: 이름 입력 ─────────────────────── -->
+  <section id="view-hello" class="view" hidden>
+    <div class="hello-wrap">
+      <div class="hello-art" id="hello-art"></div>
+      <h1 class="hello-title">작은 밭에 온 걸 환영해요</h1>
+      <p class="hello-sub">매일 한 번 들르면, 작물이 조금씩 자라요.<br/>어떻게 불러드리면 될까요?</p>
+      <form id="hello-form" class="hello-form">
+        <input id="hello-name" type="text" maxlength="10" placeholder="이름 또는 별명" autocomplete="off" />
+        <button type="submit" class="btn btn-primary">밭 만들러 가기</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ── 온보딩: 작물 선택 ─────────────────────── -->
+  <section id="view-select" class="view" hidden>
+    <div class="select-wrap">
+      <p class="eyebrow" id="select-eyebrow">첫 씨앗</p>
+      <h1 class="select-title" id="select-title">어떤 아이와 함께할까요?</h1>
+      <p class="select-sub">여러 개를 골라도 좋아요. 심은 작물은 대시보드에서 오가며 볼 수 있어요.</p>
+      <div class="crop-grid" id="crop-grid"></div>
+      <button id="select-confirm" class="btn btn-primary btn-wide" disabled>씨앗 심기</button>
+    </div>
+  </section>
+
+  <!-- ── 대시보드 ─────────────────────────────── -->
+  <section id="view-home" class="view" hidden>
+    <header class="home-head">
+      <div>
+        <p class="home-greet" id="home-greet"></p>
+        <p class="home-date" id="home-date"></p>
+      </div>
+      <div class="home-right">
+        <div class="crop-badges" id="crop-badges"></div>
+      </div>
+    </header>
+
+    <div class="stage-card" id="stage-card"></div>
+
+    <div class="vignette-wrap">
+      <div class="vignette" id="vignette"></div>
+    </div>
+
+    <div class="status-block">
+      <h2 class="status-title" id="status-title"></h2>
+      <p class="status-sub" id="status-sub"></p>
+    </div>
+
+    <button id="checkin-btn" class="btn btn-primary btn-wide"></button>
+  </section>
+
+  <!-- ── 할 일 ────────────────────────────────── -->
+  <section id="view-todos" class="view" hidden>
+    <header class="page-head">
+      <h1>TO-DO</h1>
+      <p>밭일도 마음일도, 가볍게 적어둬요.</p>
+    </header>
+    <form id="todo-form" class="todo-form">
+      <input id="todo-input" type="text" maxlength="60" placeholder="오늘 할 일을 적어보세요" autocomplete="off" />
+      <button type="submit" class="todo-add" aria-label="할 일 추가">+</button>
+    </form>
+    <p class="todo-summary" id="todo-summary"></p>
+    <div class="todo-list" id="todo-list"></div>
+    <div class="suggest-row" id="todo-suggest"></div>
+  </section>
+
+  <!-- ── 교환소 (대시보드 포인트/설정에서 진입) ── -->
+  <section id="view-rewards" class="view" hidden>
+    <header class="page-head">
+      <button class="link-btn" id="rewards-back">‹ 대시보드로</button>
+      <h1>교환소</h1>
+      <p>모은 포인트로 진짜 비료를 신청할 수 있어요.</p>
+    </header>
+    <div class="point-board" id="point-board"></div>
+    <div class="reward-list" id="reward-list"></div>
+    <h3 class="section-label">신청 내역</h3>
+    <div class="order-list" id="order-list"></div>
+  </section>
+
+  <!-- ── 기록 ─────────────────────────────────── -->
+  <section id="view-records" class="view" hidden>
+    <header class="page-head">
+      <h1>기록</h1>
+      <p>지금까지 밭을 돌본 발자국이에요.</p>
+    </header>
+    <div class="stat-row" id="stat-row"></div>
+    <div class="calendar-card">
+      <p class="calendar-title" id="calendar-title"></p>
+      <div class="calendar" id="calendar"></div>
+    </div>
+    <h3 class="section-label">다이어리</h3>
+    <div class="diary-write">
+      <textarea id="diary-text" maxlength="300" rows="3" placeholder="오늘 밭에서, 그리고 하루에서 있었던 일을 남겨보세요."></textarea>
+      <div class="diary-actions">
+        <span class="diary-hint" id="diary-hint"></span>
+        <button class="btn btn-primary diary-save" id="diary-save">오늘 기록 남기기</button>
+      </div>
+    </div>
+    <div class="diary-list" id="diary-list"></div>
+    <h3 class="section-label">다 키운 작물</h3>
+    <div class="harvest-list" id="harvest-list"></div>
+  </section>
+
+  <!-- ── 설정 ─────────────────────────────────── -->
+  <section id="view-settings" class="view" hidden>
+    <header class="page-head">
+      <h1>설정</h1>
+      <p>밭의 이름표를 관리해요.</p>
+    </header>
+    <div class="settings-card" id="settings-profile"></div>
+    <div class="settings-card settings-note">
+      <p><strong>청년농부</strong>는 매일 출석으로 작물 캐릭터를 키우고,<br/>
+      모은 포인트를 실물 비료로 교환하는 서비스 프로토타입이에요.</p>
+    </div>
+  </section>
+
+  <!-- ── 하단 탭 ──────────────────────────────── -->
+  <nav class="tabbar" id="tabbar" hidden>
+    <button class="tab" data-view="home"></button>
+    <button class="tab" data-view="todos"></button>
+    <button class="tab" data-view="records"></button>
+    <button class="tab" data-view="settings"></button>
+  </nav>
+</div>
+
+<!-- 새 씨앗 선택 오버레이 (수확 후) -->
+<div id="overlay" class="overlay" hidden>
+  <div class="overlay-panel" id="overlay-panel"></div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

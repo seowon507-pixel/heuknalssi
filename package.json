@@ -1,0 +1,12 @@
+{
+  "name": "farm-attendance-logic",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "청년농부 앱 - 출석체크/포인트/작물 캐릭터 성장/비료 교환 + 프론트엔드(public/)",
+  "scripts": {
+    "demo": "node demo.js",
+    "start": "node src/server.js",
+    "test:api": "node test-api.js"
+  }
+}
