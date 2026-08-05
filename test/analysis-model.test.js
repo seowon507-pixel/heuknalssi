@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildAnalysisViewModel } from '../public/analysis-model.js';
+import { backendConditionCode, buildAnalysisViewModel } from '../public/analysis-model.js';
 
 test('analysis model uses backend scores, causes, and seven-day values without fallback data', () => {
   const result = buildAnalysisViewModel({
@@ -178,4 +178,32 @@ test('regional soil statistics request a field soil test without claiming a miss
   assert.equal(result.soil.referenceOnly, true);
   assert.equal(result.soil.needsFieldTest, true);
   assert.equal(result.soil.measurementBasis, 'REGIONAL_STATISTICS');
+});
+
+test('all supported weather and soil causes keep their backend meaning in the mobile scene', () => {
+  const cases = {
+    WEATHER_STABLE: 'stable',
+    CLEAR_WEATHER: 'clear',
+    HIGH_TEMPERATURE: 'heat',
+    EXTREME_HEAT: 'heatwave',
+    LOW_TEMPERATURE: 'cold',
+    FROST: 'frost',
+    RAIN: 'rain',
+    HEAVY_RAIN: 'downpour',
+    STRONG_WIND: 'wind',
+    TYPHOON: 'typhoon',
+    DROUGHT: 'drought',
+    SOIL_STABLE: 'soilStable',
+    SOIL_DRY: 'dry',
+    SOIL_WET: 'overwet',
+    POOR_DRAINAGE: 'drainage',
+    PH_IMBALANCE: 'acidity',
+    SALINITY_HIGH: 'salinity',
+    TEXTURE_CAUTION: 'texture',
+    FLOODING: 'flood',
+  };
+
+  for (const [backendCode, sceneCode] of Object.entries(cases)) {
+    assert.equal(backendConditionCode(backendCode), sceneCode, backendCode);
+  }
 });

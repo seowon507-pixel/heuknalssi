@@ -12,6 +12,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { FarmGame } from './farmGame.js';
 import { CoreBackendError, HeuknalssiClient } from './heuknalssiClient.js';
@@ -119,29 +120,112 @@ const server = http.createServer(async (req, res) => {
     }
     const game = store.getOrCreate(userId);
 
+    // 위치 확인 전용 프록시입니다. 상세 주소와 좌표는 후보를 만드는 동안만
+    // 흙날씨 백엔드로 전달하고, 이 앱의 사용자 저장소에는 남기지 않습니다.
+    if (req.method === 'GET' && pathname === '/api/me/locations') {
+      const query = String(requestUrl.searchParams.get('q') || '').trim().slice(0, 160);
+      try {
+        const result = await coreBackend.searchLocations({ userId, query });
+        return send(res, 200, {
+          ok: true,
+          candidates: locationCandidateProjection(result?.candidates),
+        });
+      } catch (error) {
+        return sendCoreError(res, error, '주소 후보를 찾지 못했습니다.');
+      }
+    }
+
+    if (req.method === 'POST' && pathname === '/api/me/locations/current') {
+      const body = await readJson(req);
+      const latitude = Number(body.latitude);
+      const longitude = Number(body.longitude);
+      try {
+        const result = await coreBackend.resolveCurrentLocation({ userId, latitude, longitude });
+        return send(res, 200, {
+          ok: true,
+          candidates: locationCandidateProjection(result?.candidates),
+        });
+      } catch (error) {
+        return sendCoreError(res, error, '현재 위치의 주소를 확인하지 못했습니다.');
+      }
+    }
+
+    // 개인정보 최소화: 프로필에는 시·군·구 수준 지역명만 저장합니다.
+    if (req.method === 'GET' && pathname === '/api/me/profile') {
+      return send(res, 200, {
+        ok: true,
+        profile: game.getProfile(),
+        cropProfiles: game.getStatus().cropProfiles,
+        titles: game.getTitleProgress(),
+      });
+    }
+
+    if (req.method === 'POST' && pathname === '/api/me/profile') {
+      const body = await readJson(req);
+      const update = {};
+      if (body.displayName !== undefined) update.displayName = String(body.displayName).trim().slice(0, 20);
+      if (body.onboardingComplete !== undefined) update.onboardingComplete = body.onboardingComplete === true;
+      if (body.usageMode !== undefined) update.usageMode = body.usageMode;
+      if (body.region !== undefined) update.region = String(body.region).trim().slice(0, 80);
+      if (body.cultivationMode !== undefined) update.cultivationMode = body.cultivationMode;
+      if (body.notificationsEnabled !== undefined) update.notificationsEnabled = body.notificationsEnabled === true;
+      if (body.selectedTitleKey !== undefined) update.selectedTitleKey = body.selectedTitleKey;
+      if (body.selectedBorderKey !== undefined) update.selectedBorderKey = body.selectedBorderKey;
+      const profile = game.updateProfile(update);
+      store.save();
+      return send(res, 200, { ok: true, profile, titles: game.getTitleProgress() });
+    }
+
     // 흙날씨 v3의 실제 공공데이터·작물 규칙 분석을 모바일 화면에 전달합니다.
-    if (req.method === 'GET' && pathname === '/api/me/environment') {
-      const crop = requestUrl.searchParams.get('crop');
-      const region = requestUrl.searchParams.get('region');
-      const cultivationMode = requestUrl.searchParams.get('cultivationMode') || 'OPEN_FIELD';
-      const cacheKey = `${userId}:${crop}:${region}:${cultivationMode}`;
+    if ((req.method === 'GET' || req.method === 'POST') && pathname === '/api/me/environment') {
+      const body = req.method === 'POST' ? await readJson(req) : {};
+      const crop = body.crop || requestUrl.searchParams.get('crop');
+      const region = body.region || requestUrl.searchParams.get('region');
+      const candidateToken = String(body.candidateToken || '').trim();
+      const cultivationMode = body.cultivationMode || requestUrl.searchParams.get('cultivationMode') || 'OPEN_FIELD';
+      const requestedUsageMode = body.usageMode || requestUrl.searchParams.get('usageMode');
+      const usageMode = requestedUsageMode === 'LAND_SEARCH'
+        ? 'LAND_SEARCH'
+        : 'ACTIVE_GROWING';
+      const locationKey = candidateToken
+        ? createHash('sha256').update(candidateToken).digest('hex').slice(0, 16)
+        : String(region || '');
+      const cacheKey = `${userId}:${crop}:${locationKey}:${cultivationMode}:${usageMode}`;
       const cached = environmentCache.get(cacheKey);
       if (cached && cached.expiresAt > Date.now()) {
-        return send(res, 200, { ok: true, cached: true, analysis: cached.analysis });
+        return send(res, 200, {
+          ok: true,
+          cached: true,
+          analysis: cached.analysis,
+          suitability: suitabilitySummary(cached.analysis),
+          preventive: { added: [], notifications: [] },
+        });
       }
       try {
         const fullAnalysis = await coreBackend.analyze({
           userId,
           crop,
           region,
+          candidateToken,
           cultivationMode,
+          usageMode,
         });
         const analysis = mobileAnalysisProjection(fullAnalysis);
+        const preventive = usageMode === 'ACTIVE_GROWING'
+          ? game.syncPreventiveTodos(analysis)
+          : { added: [], notifications: [] };
+        if (preventive.added.length) store.save();
         environmentCache.set(cacheKey, {
           analysis,
           expiresAt: Date.now() + ENVIRONMENT_CACHE_MS,
         });
-        return send(res, 200, { ok: true, cached: false, analysis });
+        return send(res, 200, {
+          ok: true,
+          cached: false,
+          analysis,
+          suitability: suitabilitySummary(analysis),
+          preventive,
+        });
       } catch (error) {
         const statusCode = error instanceof CoreBackendError ? error.status : 502;
         return send(res, statusCode, {
@@ -172,7 +256,16 @@ const server = http.createServer(async (req, res) => {
       if (!characterId) {
         return send(res, 400, { ok: false, message: 'characterId가 필요합니다.' });
       }
-      const result = game.selectCrop(characterId);
+      const context = body.cropContext || {};
+      const result = game.selectCrop(characterId, new Date(), {
+        usageMode: context.usageMode,
+        region: String(context.region || '').trim().slice(0, 80),
+        address: '',
+        cultivationMode: context.cultivationMode,
+        stageKey: context.stageKey,
+        startedKey: context.startedKey,
+        analysisId: context.analysisId,
+      });
       if (!result.ok) {
         return send(res, 400, result); // 없는 작물이거나 이미 키우는 중
       }
@@ -183,6 +276,22 @@ const server = http.createServer(async (req, res) => {
     // 전체 상태 조회(선택)
     if (req.method === 'GET' && pathname === '/api/me/status') {
       return send(res, 200, game.getStatus());
+    }
+
+    if (req.method === 'GET' && pathname === '/api/me/notifications') {
+      return send(res, 200, {
+        ok: true,
+        notifications: [...(game.state.notifications || [])].reverse(),
+      });
+    }
+
+    if (req.method === 'POST' && pathname === '/api/me/notifications/read') {
+      const body = await readJson(req);
+      for (const item of game.state.notifications || []) {
+        if (!body.id || item.id === body.id) item.read = true;
+      }
+      store.save();
+      return send(res, 200, { ok: true });
     }
 
     // 출석체크 (하루 1회 · 연속 출석 시 작물 성장)
@@ -320,7 +429,41 @@ function mobileAnalysisProjection(analysis) {
     inputSummary: analysis?.inputSummary ?? null,
     growthScore: analysis?.growthScore ?? null,
     environmentCause: analysis?.environmentCause ?? null,
+    forecast: analysis?.forecast ?? null,
+    actions: analysis?.actions ?? [],
+    decision: analysis?.decision ?? null,
   };
+}
+
+function suitabilitySummary(analysis) {
+  const score = analysis?.growthScore?.score;
+  const state = analysis?.growthScore?.state;
+  const isSuitable = state === 'READY' && Number.isFinite(score) && score >= 70;
+  return {
+    isSuitable,
+    score: Number.isFinite(score) ? score : null,
+    label: isSuitable ? '재배하기 좋은 편이에요' : '먼저 확인할 조건이 있어요',
+    reason: analysis?.environmentCause?.causeLabel || '분석 자료를 확인해 주세요',
+  };
+}
+
+function sendCoreError(res, error, fallbackMessage) {
+  const statusCode = error instanceof CoreBackendError ? error.status : 502;
+  return send(res, statusCode, {
+    ok: false,
+    code: error instanceof CoreBackendError ? error.code : 'CORE_BACKEND_ERROR',
+    message: error instanceof CoreBackendError ? error.message : fallbackMessage,
+  });
+}
+
+function locationCandidateProjection(candidates) {
+  if (!Array.isArray(candidates)) return [];
+  return candidates.slice(0, 8).flatMap((candidate) => {
+    const candidateToken = String(candidate?.candidateToken || '').trim();
+    const displayName = String(candidate?.displayName || '').trim();
+    if (!candidateToken || !displayName) return [];
+    return [{ candidateToken, displayName: displayName.slice(0, 160) }];
+  });
 }
 
 server.listen(PORT, () => {

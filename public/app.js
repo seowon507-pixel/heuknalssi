@@ -4,6 +4,7 @@
 
 import { CONDITIONS, conditionIcon, conditionBadge } from './conditions.js';
 import { buildAnalysisViewModel } from './analysis-model.js';
+import { currentDayPeriod } from './day-period.js';
 
 /* ════════════════════════════════════════════
    1. 일러스트 라이브러리 (SVG)
@@ -136,7 +137,7 @@ function sunArt(x, y, r = 13) {
     rays += `<line x1="${x + Math.cos(a) * (r + 4)}" y1="${y + Math.sin(a) * (r + 4)}"
       x2="${x + Math.cos(a) * (r + 9)}" y2="${y + Math.sin(a) * (r + 9)}"/>`;
   }
-  return `<g>
+  return `<g class="scene-sun">
     <circle cx="${x}" cy="${y}" r="${r}" fill="#f2dfa0" stroke="#d8b856" stroke-width="1.6"/>
     <g stroke="#d8b856" stroke-width="1.6" stroke-linecap="round">${rays}</g>
   </g>`;
@@ -790,6 +791,12 @@ function conditionScene(cropId, stageKey = 'mature', codes = 'stable') {
     <defs><clipPath id="${id}"><ellipse cx="130" cy="144" rx="112" ry="130"/></clipPath></defs>
     <ellipse cx="130" cy="144" rx="112" ry="130" fill="${sky}"/>
     <g clip-path="url(#${id})">
+      <g class="scene-night-sky" aria-hidden="true">
+        <circle cx="47" cy="50" r="1.4"/><circle cx="83" cy="82" r="1"/>
+        <circle cx="125" cy="44" r="1.2"/><circle cx="205" cy="78" r="1.3"/>
+        <path d="M199 42a15 15 0 1 1-12-23a17 17 0 0 0 12 23Z"/>
+      </g>
+      <g class="scene-dawn-glow" aria-hidden="true"><ellipse cx="130" cy="205" rx="120" ry="54"/></g>
       <path d="M10,216 Q130,197 250,216" fill="none" stroke="#e3dbc4" stroke-width="1.6"/>
       ${air}
       ${ground()}
@@ -838,6 +845,10 @@ const TAB_ICONS = {
     <path d="M8.5 4.5 Q11 2.2 13.5 4.5"/>
     <path d="M7.8 12.2 l2.3 2.3 l4.2 -4.8"/>
   </svg>`,
+  chat: `<svg width="23" height="23" viewBox="0 0 23 23" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 5.5A3 3 0 0 1 7 2.5h9A3 3 0 0 1 19 5.5v7a3 3 0 0 1-3 3h-5l-4.5 4v-4A2.5 2.5 0 0 1 4 13z"/>
+    <path d="M8 8.8h.1M11.5 8.8h.1M15 8.8h.1" stroke-width="2.2"/>
+  </svg>`,
   records: `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
     <path d="M4 5 Q4 3.5 5.5 3.5 H16.5 Q18 3.5 18 5 V17 Q18 18.5 16.5 18.5 H5.5 Q4 18.5 4 17 Z"/>
     <path d="M7.5 3.5 V18.5"/>
@@ -854,6 +865,9 @@ const TAB_ICONS = {
 ════════════════════════════════════════════ */
 
 let userName = localStorage.getItem('farm.name') || '';
+const existingUserId = localStorage.getItem('farm.userId');
+const userId = existingUserId || userName || crypto.randomUUID();
+localStorage.setItem('farm.userId', userId);
 const DEFAULT_FARM_REGION = '인천광역시 남동구';
 let farmRegion = localStorage.getItem('farm.region') || DEFAULT_FARM_REGION;
 const environmentCache = new Map();
@@ -864,7 +878,7 @@ async function api(path, options = {}) {
     headers: {
       'Content-Type': 'application/json',
       // HTTP 헤더에는 한글을 담을 수 없어 인코딩해서 보냄 (서버에서 디코딩)
-      'x-user-id': encodeURIComponent(userName),
+      'x-user-id': encodeURIComponent(userId),
       ...(options.headers || {}),
     },
   });
@@ -876,8 +890,8 @@ async function api(path, options = {}) {
 ════════════════════════════════════════════ */
 
 const $ = (sel) => document.querySelector(sel);
-const views = ['hello', 'select', 'home', 'todos', 'rewards', 'records', 'settings'];
-const TAB_LABELS = { home: '대시보드', todos: 'TO-DO', records: '기록', settings: '설정' };
+const views = ['setup', 'hello', 'select', 'home', 'todos', 'chat', 'rewards', 'records', 'settings'];
+const TAB_LABELS = { home: '대시보드', todos: 'TO-DO', chat: '상담', records: '기록', settings: '설정' };
 
 function show(name, { tabbar = true } = {}) {
   for (const v of views) $(`#view-${v}`).hidden = v !== name;
@@ -920,6 +934,7 @@ function diffDaysKey(aKey, bKey) {
 ════════════════════════════════════════════ */
 
 let status = null;        // GET /api/me/status 캐시
+let profile = null;       // GET /api/me/profile 캐시
 let activeCropId = null;  // 대시보드에 크게 보여줄 작물 (아이콘으로 전환)
 
 // 단계 스테퍼에 쓰는 짧은 이름 (씨앗에서 수확까지)
@@ -1016,8 +1031,17 @@ async function refreshCropBadgeStates(crops) {
 }
 
 function renderHome() {
+  applyTimeTheme();
+  applySelectedBorder();
   $('#home-greet').textContent = `${userName}의 작은 밭`;
   $('#home-date').textContent = fmtDate();
+  const selectedTitle = status?.titles?.unlocked?.find(
+    (title) => title.key === status?.titles?.selectedKey,
+  ) || status?.titles?.current;
+  $('#home-title-badge').textContent = selectedTitle?.name
+    ? `칭호 · ${selectedTitle.name}`
+    : '';
+  updateTodoAlert();
 
   const crop = getActiveCrop();
   activeCropId = crop ? crop.cropId : null;
@@ -1030,17 +1054,18 @@ function renderHome() {
     $('#vignette').innerHTML = plantScene(crop.cropId, crop.stageKey, mood === 'harvest' ? 'done' : mood);
   }
 
-  // 상태 문구
+  // 출석 여부는 환경 상태가 아닙니다. 실제 분석이 도착하기 전에는
+  // 양호로 추정하지 않고 중립 상태를 유지합니다.
   const sub = $('#status-sub');
   if (mood === 'harvest') {
-    renderStatusTitle('양호', '수확 준비', 'GOOD');
+    renderStatusTitle('분석 중', '환경 확인 중', 'HOLD');
     sub.textContent = `${crop.cropName}가 다 자랐어요! 수확해 주세요.`;
   } else if (mood === 'done') {
-    renderStatusTitle('양호', '촉촉', 'GOOD');
-    sub.textContent = '';
+    renderStatusTitle('분석 중', '환경 확인 중', 'HOLD');
+    sub.textContent = `${farmRegion} 환경 자료를 불러오고 있어요.`;
   } else {
-    renderStatusTitle('주의', '마른 흙', 'CAUTION');
-    sub.textContent = '아직 오늘의 물을 주지 않았어요.';
+    renderStatusTitle('분석 중', '환경 확인 중', 'HOLD');
+    sub.textContent = `${farmRegion} 환경 자료를 불러오고 있어요.`;
   }
 
   // 성장 카드 — 태어난 지 N일째 + 씨앗→수확 단계 스테퍼
@@ -1078,6 +1103,19 @@ function renderHome() {
   if (crop) refreshHomeEnvironment(crop);
 }
 
+function applyTimeTheme() {
+  const app = $('#app');
+  app.classList.remove('time-dawn', 'time-day', 'time-dusk', 'time-night');
+  app.classList.add(`time-${currentDayPeriod()}`);
+}
+
+function applySelectedBorder() {
+  const app = $('#app');
+  [...app.classList].filter((name) => name.startsWith('border-')).forEach((name) => app.classList.remove(name));
+  const key = status?.titles?.selectedBorderKey;
+  if (key && key !== 'seed') app.classList.add(`border-${key}`);
+}
+
 async function refreshHomeEnvironment(crop) {
   try {
     const detail = await loadEnvironmentDetail(crop);
@@ -1093,7 +1131,10 @@ async function refreshHomeEnvironment(crop) {
       detail.sceneCodes,
     );
   } catch {
-    // 출석·성장 화면은 분석 서버 장애와 무관하게 계속 사용할 수 있습니다.
+    if (getActiveCrop()?.cropId !== crop.cropId) return;
+    applyCropBadgeState(crop.cropId, null);
+    renderStatusTitle('연결 확인', '환경 자료 대기', 'HOLD');
+    $('#status-sub').textContent = '환경 자료를 불러오지 못했어요. 잠시 후 다시 확인해 주세요.';
   }
 }
 
@@ -1128,7 +1169,38 @@ async function loadEnvironmentDetail(crop, { force = false } = {}) {
   }
   const detail = buildAnalysisViewModel(response.analysis);
   environmentCache.set(cacheKey, detail);
+  if (response.preventive?.added?.length) notifyPreventive(response.preventive);
   return detail;
+}
+
+function updateTodoAlert(count = status?.unreadNotifications || 0) {
+  const tab = document.querySelector('.tab[data-view="todos"]');
+  if (!tab) return;
+  let badge = tab.querySelector('.tab-alert');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'tab-alert';
+    tab.append(badge);
+  }
+  badge.hidden = !count;
+  badge.textContent = count > 9 ? '9+' : String(count);
+}
+
+function notifyPreventive(preventive) {
+  const addedCount = preventive?.added?.length || 0;
+  if (!addedCount) return;
+  if (status) status.unreadNotifications = (status.unreadNotifications || 0) + 1;
+  updateTodoAlert();
+  const notification = preventive.notifications?.[0];
+  toast(`${addedCount}개의 예방 할 일을 준비했어요.`, 3600);
+  if (
+    profile?.notificationsEnabled &&
+    'Notification' in window &&
+    Notification.permission === 'granted' &&
+    notification
+  ) {
+    new Notification(notification.title, { body: notification.message, tag: notification.analysisId });
+  }
 }
 
 async function doCheckIn() {
@@ -1755,6 +1827,444 @@ async function doHarvest(cropId) {
 ════════════════════════════════════════════ */
 
 let selectableCrops = [];
+let setupState = null;
+let locationSearchTimer = null;
+
+const SETUP_STEP_PROGRESS = Object.freeze({
+  mode: 12,
+  location: 28,
+  crop: 46,
+  analyzing: 62,
+  result: 70,
+  stage: 84,
+  name: 94,
+  complete: 100,
+});
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function beginSetup(kind = 'initial') {
+  const growing = new Set((status?.crops || []).map((crop) => crop.cropId));
+  setupState = {
+    kind,
+    step: 'mode',
+    history: [],
+    usageMode: null,
+    region: profile?.region || farmRegion || '',
+    addressLabel: '',
+    candidateToken: '',
+    locationCandidates: [],
+    cropId: null,
+    stageKey: null,
+    startedKey: todayKey(),
+    cultivationMode: 'OPEN_FIELD',
+    analysis: null,
+    suitability: null,
+    availableCrops: selectableCrops.filter((crop) => !growing.has(crop.id)),
+  };
+  if (!setupState.availableCrops.length) {
+    toast('이미 지원 작물 다섯 가지를 모두 키우고 있어요.');
+    return;
+  }
+  renderSetupStep('mode', { remember: false });
+  show('setup', { tabbar: false });
+}
+
+function renderSetupStep(step, { remember = true } = {}) {
+  if (!setupState) return;
+  if (remember && setupState.step && setupState.step !== step) {
+    setupState.history.push(setupState.step);
+  }
+  setupState.step = step;
+  $('#setup-progress-bar').style.width = `${SETUP_STEP_PROGRESS[step] || 10}%`;
+  $('#setup-back').hidden = setupState.history.length === 0 || step === 'analyzing';
+  $('#setup-close').hidden = setupState.kind !== 'add';
+  const body = $('#setup-body');
+  body.innerHTML = '';
+  if (step === 'mode') renderSetupMode(body);
+  if (step === 'location') renderSetupLocation(body);
+  if (step === 'crop') renderSetupCrop(body);
+  if (step === 'analyzing') renderSetupAnalyzing(body);
+  if (step === 'result') renderSetupResult(body);
+  if (step === 'stage') renderSetupStage(body);
+  if (step === 'name') renderSetupName(body);
+}
+
+function previousSetupStep() {
+  if (!setupState?.history?.length) return;
+  const previous = setupState.history.pop();
+  renderSetupStep(previous, { remember: false });
+}
+
+function setupHeading(kicker, title, copy = '') {
+  return `<p class="setup-kicker">${escapeHtml(kicker)}</p>
+    <h1 class="setup-title">${escapeHtml(title)}</h1>
+    ${copy ? `<p class="setup-copy">${escapeHtml(copy)}</p>` : ''}`;
+}
+
+function renderSetupMode(body) {
+  body.innerHTML = `${setupHeading(
+    setupState.kind === 'add' ? '작물 추가' : '첫 질문',
+    '지금 어떤 상태인가요?',
+    '현재 상황에 맞춰 필요한 질문만 이어갈게요.',
+  )}
+    <div class="setup-options">
+      <button class="setup-option" type="button" data-usage="ACTIVE_GROWING">
+        <strong>이미 재배하고 있어요</strong>
+        <span>현재 단계와 농장 환경을 함께 살펴봐요.</span>
+      </button>
+      <button class="setup-option" type="button" data-usage="LAND_SEARCH">
+        <strong>재배를 시작하려고 해요</strong>
+        <span>이 지역이 작물과 잘 맞는지 먼저 확인해요.</span>
+      </button>
+    </div>`;
+  body.querySelectorAll('[data-usage]').forEach((button) => {
+    button.onclick = () => {
+      setupState.usageMode = button.dataset.usage;
+      renderSetupStep('location');
+    };
+  });
+}
+
+function renderSetupLocation(body) {
+  body.innerHTML = `${setupHeading(
+    '재배지 확인',
+    '어느 밭을 살펴볼까요?',
+    '정확한 위치일수록 가까운 관측소와 토양 자료를 더 잘 찾을 수 있어요.',
+  )}
+    <div class="setup-location-methods">
+      <button class="setup-option setup-location" id="setup-current-location" type="button">
+        <strong>현재 위치 사용</strong><span>GPS로 주소 후보 찾기</span>
+      </button>
+      <button class="setup-option setup-location" id="setup-manual-location" type="button">
+        <strong>주소 직접 입력</strong><span>도로명·읍면동 검색</span>
+      </button>
+    </div>
+    <p class="setup-privacy">현재 위치와 상세 주소는 주소 후보 확인을 위해 흙날씨 위치 확인 서버에 일시 전송되며 저장하지 않습니다. 앱에는 시·군·구만 남겨요.</p>
+    <div class="setup-form" id="setup-address-form" hidden>
+      <label class="sr-only" for="setup-address">농장 주소</label>
+      <input class="setup-input" id="setup-address" autocomplete="street-address" placeholder="예: 인천광역시 남동구 구월동" />
+      <button class="btn btn-primary" id="setup-address-search" type="button">주소 후보 찾기</button>
+      <div class="setup-location-results" id="setup-location-results" aria-live="polite"></div>
+    </div>
+    <div class="setup-actions">
+      <button class="setup-secondary" id="setup-region-only" type="button">정확한 주소를 모르면 시·군·구로 계속하기</button>
+    </div>`;
+
+  const form = $('#setup-address-form');
+  const input = $('#setup-address');
+  $('#setup-manual-location').onclick = () => {
+    form.hidden = false;
+    input.focus();
+  };
+  $('#setup-current-location').onclick = useCurrentSetupLocation;
+  $('#setup-address-search').onclick = () => searchSetupLocation(input.value);
+  input.oninput = () => {
+    clearTimeout(locationSearchTimer);
+    if (input.value.trim().length < 2) return;
+    locationSearchTimer = setTimeout(() => searchSetupLocation(input.value), 450);
+  };
+  input.onkeydown = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      searchSetupLocation(input.value);
+    }
+  };
+  $('#setup-region-only').onclick = () => {
+    form.hidden = false;
+    const region = input.value.trim() || setupState.region;
+    if (!region) return toast('시·군·구를 입력해 주세요.');
+    chooseSetupLocation({ displayName: region, candidateToken: '' });
+  };
+}
+
+async function useCurrentSetupLocation() {
+  const button = $('#setup-current-location');
+  if (!navigator.geolocation) return toast('이 기기에서는 현재 위치를 사용할 수 없어요.');
+  button.disabled = true;
+  button.querySelector('span').textContent = '위치를 확인하고 있어요';
+  navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+    try {
+      const result = await api('/api/me/locations/current', {
+        method: 'POST',
+        body: JSON.stringify({ latitude: coords.latitude, longitude: coords.longitude }),
+      });
+      if (!result.ok || !result.candidates?.length) throw new Error(result.message || '주소 후보가 없어요.');
+      setupState.locationCandidates = result.candidates;
+      chooseSetupLocation(result.candidates[0]);
+    } catch (error) {
+      toast(error.message || '현재 위치를 주소로 바꾸지 못했어요.');
+      button.disabled = false;
+      button.querySelector('span').textContent = 'GPS로 주소 후보 찾기';
+    }
+  }, () => {
+    toast('위치 권한을 허용하지 않았어요. 주소를 직접 입력해 주세요.');
+    button.disabled = false;
+    button.querySelector('span').textContent = 'GPS로 주소 후보 찾기';
+  }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
+}
+
+async function searchSetupLocation(rawQuery) {
+  const query = String(rawQuery || '').trim();
+  if (query.length < 2) return toast('주소를 두 글자 이상 입력해 주세요.');
+  const root = $('#setup-location-results');
+  if (!root) return;
+  root.innerHTML = '<p class="setup-copy">주소 후보를 찾고 있어요.</p>';
+  try {
+    const result = await api(`/api/me/locations?q=${encodeURIComponent(query)}`);
+    if (!result.ok) throw new Error(result.message || '주소 후보를 찾지 못했어요.');
+    setupState.locationCandidates = result.candidates || [];
+    renderLocationCandidates(root, setupState.locationCandidates);
+  } catch (error) {
+    root.innerHTML = `<p class="setup-error">${escapeHtml(error.message || '주소 후보를 찾지 못했어요.')}</p>`;
+  }
+}
+
+function renderLocationCandidates(root, candidates) {
+  root.innerHTML = '';
+  if (!candidates.length) {
+    root.innerHTML = '<p class="setup-error">주소 후보가 없어요. 시·군·구까지 다시 입력해 주세요.</p>';
+    return;
+  }
+  candidates.forEach((candidate) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'setup-location-candidate';
+    button.textContent = candidate.displayName;
+    button.onclick = () => chooseSetupLocation(candidate);
+    root.append(button);
+  });
+}
+
+function generalizedRegion(displayName) {
+  const parts = String(displayName || '').trim().split(/\s+/u).filter(Boolean);
+  if (!parts.length) return '';
+  if (parts[0].includes('세종')) return parts[0];
+  if (/도$/u.test(parts[0]) && /시$/u.test(parts[1] || '') && /구$/u.test(parts[2] || '')) {
+    return parts.slice(0, 3).join(' ');
+  }
+  return parts.slice(0, Math.min(2, parts.length)).join(' ');
+}
+
+function chooseSetupLocation(candidate) {
+  setupState.addressLabel = String(candidate.displayName || '').trim();
+  setupState.region = generalizedRegion(setupState.addressLabel);
+  setupState.candidateToken = String(candidate.candidateToken || '');
+  renderSetupStep('crop');
+}
+
+function renderSetupCrop(body) {
+  body.innerHTML = `${setupHeading(
+    '작물 선택',
+    '어떤 작물을 살펴볼까요?',
+    `${setupState.region}의 날씨와 토양을 작물 기준에 맞춰 비교해요.`,
+  )}
+    <div class="setup-crops">${setupState.availableCrops.map((crop) => `
+      <button class="setup-option setup-crop" type="button" data-setup-crop="${crop.id}">
+        ${cropPortrait(crop.id)}<strong>${escapeHtml(crop.name)}</strong>
+      </button>`).join('')}</div>`;
+  body.querySelectorAll('[data-setup-crop]').forEach((button) => {
+    button.onclick = () => {
+      setupState.cropId = button.dataset.setupCrop;
+      analyzeSetupSelection();
+    };
+  });
+}
+
+async function analyzeSetupSelection() {
+  renderSetupStep('analyzing');
+  const payload = {
+    crop: setupState.cropId,
+    region: setupState.region,
+    candidateToken: setupState.candidateToken,
+    cultivationMode: setupState.cultivationMode,
+    usageMode: setupState.usageMode,
+  };
+  try {
+    const result = await api('/api/me/environment', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!result.ok) throw new Error(result.message || '환경 분석을 완료하지 못했어요.');
+    setupState.analysis = result.analysis;
+    setupState.suitability = result.suitability;
+    setupState.preventive = result.preventive;
+    renderSetupStep('result');
+  } catch (error) {
+    setupState.analysis = null;
+    setupState.suitability = { isSuitable: false, score: null, label: '분석을 마치지 못했어요', reason: error.message };
+    renderSetupStep('result');
+  }
+}
+
+function renderSetupAnalyzing(body) {
+  const cropName = CROP_NAMES[setupState.cropId] || '작물';
+  body.innerHTML = `<div class="setup-loading" role="status">
+    <div class="setup-loading-art">${cropPortrait(setupState.cropId || 'lettuce')}</div>
+    <p class="setup-kicker">환경 분석 중</p>
+    <h1 class="setup-title">${escapeHtml(setupState.region)}와 ${escapeHtml(cropName)}를<br/>함께 살펴보고 있어요</h1>
+    <p class="setup-copy">기상청 예보와 토양 자료를 작물 기준에 맞춰 비교합니다.</p>
+  </div>`;
+}
+
+function setupAlternativeCandidates() {
+  return (setupState.locationCandidates || [])
+    .filter((candidate) => candidate.candidateToken !== setupState.candidateToken)
+    .slice(0, 3);
+}
+
+function renderSetupResult(body) {
+  const result = setupState.suitability || {};
+  const cropName = CROP_NAMES[setupState.cropId] || '작물';
+  const score = Number.isFinite(result.score) ? `${Math.round(result.score)}점` : '확인 중';
+  const isPlanningConcern = setupState.usageMode === 'LAND_SEARCH' && !result.isSuitable;
+  const alternatives = setupAlternativeCandidates();
+  body.innerHTML = `${setupHeading(
+    '재배지 분석',
+    isPlanningConcern ? '먼저 살펴볼 조건이 있어요' : `${cropName}와 잘 맞는지 확인했어요`,
+    setupState.addressLabel || setupState.region,
+  )}
+    <div class="setup-result ${isPlanningConcern ? 'caution' : 'good'}">
+      <span class="setup-result-score">${escapeHtml(score)}</span>
+      <strong>${escapeHtml(result.label || '환경 분석 결과')}</strong>
+      <p>${escapeHtml(result.reason || '작물 기준과 비교한 결과예요.')}</p>
+    </div>
+    ${isPlanningConcern ? `<div class="setup-alternatives">
+      <p class="setup-copy">인근 주소 후보를 다시 비교할 수 있어요.</p>
+      ${alternatives.map((candidate, index) => `<button type="button" class="setup-location-candidate" data-alternative="${index}">${escapeHtml(candidate.displayName)}</button>`).join('')}
+    </div>` : ''}
+    <div class="setup-actions">
+      <button class="btn btn-primary" id="setup-result-next" type="button">${isPlanningConcern ? '이 지역에서 준비 계속하기' : '현재 작물 상태 알려주기'}</button>
+      ${isPlanningConcern ? '<button class="setup-secondary" id="setup-find-other" type="button">다른 지역 다시 찾기</button>' : ''}
+      ${!setupState.analysis ? '<button class="setup-secondary" id="setup-retry-analysis" type="button">분석 다시 시도</button>' : ''}
+    </div>`;
+  body.querySelectorAll('[data-alternative]').forEach((button) => {
+    button.onclick = () => {
+      const candidate = alternatives[Number(button.dataset.alternative)];
+      setupState.addressLabel = candidate.displayName;
+      setupState.region = generalizedRegion(candidate.displayName);
+      setupState.candidateToken = candidate.candidateToken;
+      analyzeSetupSelection();
+    };
+  });
+  $('#setup-result-next').onclick = () => renderSetupStep('stage');
+  const other = $('#setup-find-other');
+  if (other) other.onclick = () => renderSetupStep('location');
+  const retry = $('#setup-retry-analysis');
+  if (retry) retry.onclick = analyzeSetupSelection;
+}
+
+function renderSetupStage(body) {
+  const crop = setupState.availableCrops.find((item) => item.id === setupState.cropId);
+  const stages = crop?.stages || [];
+  const question = setupState.usageMode === 'ACTIVE_GROWING'
+    ? '지금 어느 단계인가요?'
+    : '어느 단계부터 시작할까요?';
+  body.innerHTML = `${setupHeading('작물 상태', question, '잘 모르겠다면 가장 비슷한 모습을 골라도 괜찮아요.')}
+    <div class="setup-stages">${stages.map((stage) => `
+      <button class="setup-option setup-stage" type="button" data-stage="${stage.key}">
+        <span class="setup-stage-art">${cropPortrait(setupState.cropId, stage.key)}</span>
+        <strong>${escapeHtml(stepLabel(setupState.cropId, stage.key))}</strong>
+      </button>`).join('')}</div>
+    <div class="setup-form setup-stage-meta">
+      <label for="setup-cultivation">재배 환경</label>
+      <select class="setup-select" id="setup-cultivation">
+        <option value="OPEN_FIELD">노지</option>
+        <option value="FACILITY_SOIL">시설 흙재배</option>
+        <option value="FACILITY_HYDRO">시설 수경재배</option>
+      </select>
+      <label for="setup-started">${setupState.usageMode === 'ACTIVE_GROWING' ? '심거나 옮겨 심은 날짜' : '시작 예정일'}</label>
+      <input class="setup-input" id="setup-started" type="date" value="${setupState.startedKey}" max="${setupState.usageMode === 'ACTIVE_GROWING' ? todayKey() : ''}" />
+    </div>
+    <div class="setup-actions"><button class="btn btn-primary" id="setup-stage-next" type="button" disabled>이 상태로 시작하기</button></div>`;
+  const next = $('#setup-stage-next');
+  body.querySelectorAll('[data-stage]').forEach((button) => {
+    button.onclick = () => {
+      body.querySelectorAll('[data-stage]').forEach((item) => item.classList.remove('selected'));
+      button.classList.add('selected');
+      setupState.stageKey = button.dataset.stage;
+      next.disabled = false;
+    };
+  });
+  next.onclick = () => {
+    setupState.cultivationMode = $('#setup-cultivation').value;
+    setupState.startedKey = $('#setup-started').value || todayKey();
+    if (!setupState.stageKey) return;
+    if (!userName) renderSetupStep('name');
+    else completeSetup();
+  };
+}
+
+function renderSetupName(body) {
+  body.innerHTML = `${setupHeading('마지막 질문', '어떻게 불러드릴까요?', '밭 이름과 기록에 사용할 이름이에요.')}
+    <form class="setup-form" id="setup-name-form">
+      <input class="setup-input" id="setup-name" maxlength="10" autocomplete="nickname" placeholder="이름 또는 별명" />
+      <button class="btn btn-primary" type="submit">내 밭 시작하기</button>
+    </form>`;
+  $('#setup-name-form').onsubmit = (event) => {
+    event.preventDefault();
+    const value = $('#setup-name').value.trim();
+    if (!value) return toast('이름이나 별명을 입력해 주세요.');
+    userName = value;
+    localStorage.setItem('farm.name', userName);
+    completeSetup();
+  };
+}
+
+async function completeSetup() {
+  const body = $('#setup-body');
+  body.innerHTML = `<div class="setup-loading" role="status">${cropPortrait(setupState.cropId)}<h1 class="setup-title">작은 밭을 준비하고 있어요</h1></div>`;
+  const cropResult = await api('/api/me/character', {
+    method: 'POST',
+    body: JSON.stringify({
+      characterId: setupState.cropId,
+      cropContext: {
+        usageMode: setupState.usageMode,
+        region: setupState.region,
+        cultivationMode: setupState.cultivationMode,
+        stageKey: setupState.stageKey,
+        startedKey: setupState.startedKey,
+        analysisId: setupState.analysis?.analysisId || null,
+      },
+    }),
+  });
+  if (!cropResult.ok) {
+    toast(cropResult.message || '작물을 추가하지 못했어요.');
+    renderSetupStep('stage', { remember: false });
+    return;
+  }
+  const profileResult = await api('/api/me/profile', {
+    method: 'POST',
+    body: JSON.stringify({
+      displayName: userName,
+      onboardingComplete: true,
+      usageMode: setupState.usageMode,
+      region: setupState.region,
+      cultivationMode: setupState.cultivationMode,
+    }),
+  });
+  profile = profileResult.profile || profile;
+  farmRegion = setupState.region || farmRegion;
+  localStorage.setItem('farm.region', farmRegion);
+  environmentCache.clear();
+  await refreshStatus();
+  activeCropId = setupState.cropId;
+  renderHome();
+  show('home');
+  if (setupState.preventive?.added?.length) {
+    notifyPreventive(setupState.preventive);
+  } else {
+    toast(setupState.kind === 'add' ? '새 작물을 밭에 더했어요.' : '내 밭을 시작했어요.');
+  }
+  setupState = null;
+}
 
 function cropCardsHTML(list) {
   return list.map((c) => `
@@ -1824,35 +2334,7 @@ function renderSelectView() {
 
 // 새 작물 추가 시트 (+ 아이콘): 아직 키우지 않는 작물만 보여줌
 function openSeedOverlay() {
-  const growing = new Set((status?.crops || []).map((c) => c.cropId));
-  const available = selectableCrops.filter((c) => !growing.has(c.id));
-  if (!available.length) { toast('이미 모든 작물을 키우고 있어요.'); return; }
-
-  const overlay = $('#overlay');
-  const panel = $('#overlay-panel');
-  panel.classList.remove('detail'); // 상세 보기 시트 흔적 제거
-  panel.innerHTML = `
-    <p class="eyebrow">새 씨앗</p>
-    <h2 style="font-size:20px;font-weight:400;margin-bottom:4px">무엇을 더 키워볼까요?</h2>
-    <p style="color:var(--ink-soft);font-size:13.5px;margin-bottom:16px">심은 작물은 상단 아이콘으로 오가며 볼 수 있어요.</p>
-    <div class="crop-grid">${cropCardsHTML(available)}</div>
-    <button class="btn btn-primary btn-wide" id="overlay-confirm" disabled>씨앗 심기</button>`;
-  overlay.hidden = false;
-  const confirm = panel.querySelector('#overlay-confirm');
-  const picked = bindCropToggle(panel, confirm, '씨앗 심기');
-  confirm.onclick = async () => {
-    if (!picked.size) return;
-    confirm.disabled = true;
-    const planted = await plantSeeds([...picked]);
-    overlay.hidden = true;
-    if (planted > 0) {
-      await refreshStatus();
-      activeCropId = [...picked][0];
-      renderHome();
-      popVignette();
-    }
-  };
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.hidden = true; };
+  beginSetup('add');
 }
 
 /* ════════════════════════════════════════════
@@ -1878,6 +2360,112 @@ async function addTodo(text) {
   renderTodoList(res.todos);
 }
 
+const todoEvidenceCache = new Map();
+
+function todoSourceContext(todo) {
+  const match = String(todo?.sourceKey || '').match(/^environment:(\d{4}-\d{2}-\d{2}):([^:]+):/);
+  return {
+    dateKey: match?.[1] || null,
+    cropId: todo?.cropId || match?.[2] || null,
+  };
+}
+
+function normalizedTodoText(value) {
+  return String(value || '').replace(/[.!?。]|\s/g, '').toLowerCase();
+}
+
+function todoDateLabel(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? fmtKey(value) : '';
+}
+
+function todoLooksSoilRelated(text) {
+  return /토양|흙|pH|산도|EC|염류|배수|관수|수분|고인 물|침수|토성/.test(String(text || ''));
+}
+
+async function recoverTodoEvidence(todo) {
+  if (todo?.evidence) return todo.evidence;
+  if (todo?.source !== 'ENVIRONMENT_ANALYSIS') return null;
+  const source = todoSourceContext(todo);
+  const crop = (status?.crops || []).find((item) => item.cropId === source.cropId);
+  if (!crop) return null;
+
+  try {
+    const detail = await loadEnvironmentDetail(crop);
+    const target = normalizedTodoText(todo.text);
+    const actionDay = detail.week.find((day) =>
+      day.guidance?.actions?.some((action) => normalizedTodoText(action) === target));
+    const datedDay = detail.week.find((day) => day.date === source.dateKey);
+    const riskyDay = detail.week.find((day) => day.status === 'DANGER' || day.status === 'CAUTION');
+    const day = actionDay || datedDay || riskyDay || null;
+    const soilRelated = todoLooksSoilRelated(todo.text) && !actionDay;
+    const cropContext = { cropName: CROP_NAMES[crop.cropId] || crop.cropName || crop.cropId };
+    const soilCopy = soilRelated ? soilScoreExplanation(detail, cropContext) : null;
+    const weatherCopy = !soilRelated && day
+      ? weatherDayExplanation(day, cropContext, detail)
+      : null;
+    return {
+      cropId: crop.cropId,
+      cropName: cropContext.cropName,
+      dateKey: day?.date || source.dateKey || detail.updatedAt?.slice(0, 10) || null,
+      status: soilRelated ? detail.soil.status : day?.status || detail.status,
+      statusLabel: soilRelated
+        ? (detail.soil.status === 'DANGER' ? '위험' : detail.soil.status === 'GOOD' ? '양호' : '주의')
+        : day?.statusLabel || detail.statusLabel,
+      axis: soilRelated ? 'soil' : 'weather',
+      causeLabel: soilRelated ? detail.soil.label : day?.causeLabel || detail.weather.label,
+      reason: soilCopy?.lines?.[0] || weatherCopy?.lines?.slice(0, 2).join(' ') || null,
+      recheck: day?.guidance?.recheck || null,
+      recovered: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function loadTodoEvidence(todos) {
+  // 같은 작물의 자동 할 일이 여러 개여도 환경 분석은 한 번만 불러옵니다.
+  // 기존 20개 할 일이 동일 API를 동시에 호출하던 지연을 막습니다.
+  const cropIds = new Set(
+    todos
+      .map((todo) => todoSourceContext(todo).cropId)
+      .filter(Boolean),
+  );
+  await Promise.allSettled([...cropIds].map((cropId) => {
+    const crop = status?.crops?.find((item) => item.cropId === cropId);
+    return crop ? loadEnvironmentDetail(crop) : Promise.resolve();
+  }));
+  const pairs = await Promise.all(todos.map(async (todo) => [todo.id, await recoverTodoEvidence(todo)]));
+  todoEvidenceCache.clear();
+  for (const [id, evidence] of pairs) {
+    if (evidence) todoEvidenceCache.set(id, evidence);
+  }
+}
+
+function todoEvidenceCopy(todo) {
+  const evidence = todo.evidence || todoEvidenceCache.get(todo.id);
+  if (!evidence) return null;
+  const dateLabel = todoDateLabel(evidence.dateKey) || '최근 분석';
+  const untilLabel = evidence.untilKey && evidence.untilKey !== evidence.dateKey
+    ? `~${todoDateLabel(evidence.untilKey)}`
+    : '';
+  const cropName = evidence.cropName || CROP_NAMES[evidence.cropId] || CROP_NAMES[todo.cropId] || '작물';
+  const statusLabel = evidence.statusLabel || (todo.priority === 'DANGER' ? '위험' : '주의');
+  const causeLabel = evidence.causeLabel || '환경 변화';
+  const reason = evidence.reason
+    || `${causeLabel} 신호가 ${cropName}의 생육에 영향을 줄 수 있어 예방 행동으로 추가했어요.`;
+  const timing = evidence.axis === 'soil'
+    ? `${dateLabel}${untilLabel} 토양 분석에서 확인된 신호예요. 오늘 밭 상태를 확인하고 행동한 뒤 다시 살펴보세요.`
+    : `${dateLabel}${untilLabel} 예보와 연결된 일이에요. 가능하면 예보 전에, 늦어도 해당 날짜 오전에 확인하세요.`;
+  const statusParticle = statusLabel === '위험' ? '과' : '와';
+  return {
+    preview: `${cropName} · ${dateLabel} ${causeLabel} ${statusLabel}${statusParticle} 연결`,
+    signal: `${dateLabel}${untilLabel} · ${cropName} · ${statusLabel} · ${causeLabel}`,
+    reason,
+    timing: evidence.recheck ? `${timing} ${evidence.recheck}` : timing,
+    recovered: evidence.recovered === true,
+  };
+}
+
 function renderTodoList(todos) {
   const doneCount = todos.filter((t) => t.done).length;
   $('#todo-summary').textContent = todos.length
@@ -1886,17 +2474,54 @@ function renderTodoList(todos) {
 
   $('#todo-list').innerHTML = todos.length
     ? todos.map((t) => `
-      <div class="todo-item ${t.done ? 'done' : ''}" data-id="${t.id}">
+      <article class="todo-item ${t.done ? 'done' : ''} ${t.priority ? `priority-${t.priority.toLowerCase()}` : ''}" data-id="${t.id}">
         <button class="todo-check" aria-label="완료 표시">${todoCheckSvg(t.done)}</button>
-        <span class="todo-text"></span>
-        <span class="todo-date">${fmtKey(t.createdKey)}</span>
+        <button class="todo-main" type="button" aria-expanded="false">
+          <span class="todo-copy">${t.priority ? `<small class="todo-priority">${t.priority === 'DANGER' ? '위험 예방' : '주의 예방'}</small>` : ''}<span class="todo-text"></span><small class="todo-link-preview"></small></span>
+        </button>
+        <span class="todo-date"></span>
         <button class="todo-del" aria-label="삭제">✕</button>
-      </div>`).join('')
+        <div class="todo-evidence" hidden>
+          <p class="todo-signal"></p>
+          <div><strong>왜 필요한가요?</strong><p class="todo-reason"></p></div>
+          <div><strong>언제 확인하나요?</strong><p class="todo-timing"></p></div>
+          <small class="todo-evidence-note" hidden>기존 할 일은 저장된 분석 날짜와 현재 연결된 같은 작물 자료를 기준으로 정리했어요.</small>
+        </div>
+      </article>`).join('')
     : `<p class="empty-note">아직 할 일이 없어요.<br/>아래에서 하나 골라 시작해볼까요?</p>`;
 
   // 사용자 입력 텍스트는 innerHTML 대신 textContent로 안전하게 채움
   document.querySelectorAll('.todo-item').forEach((el, i) => {
-    el.querySelector('.todo-text').textContent = todos[i].text;
+    const todo = todos[i];
+    const copy = todoEvidenceCopy(todo);
+    el.querySelector('.todo-text').textContent = todo.text;
+    const dateKey = copy
+      ? (todo.evidence || todoEvidenceCache.get(todo.id)).dateKey
+      : todo.createdKey;
+    el.querySelector('.todo-date').textContent = todoDateLabel(dateKey);
+    const main = el.querySelector('.todo-main');
+    const evidencePanel = el.querySelector('.todo-evidence');
+    if (copy) {
+      el.querySelector('.todo-link-preview').textContent = copy.preview;
+      el.querySelector('.todo-signal').textContent = copy.signal;
+      el.querySelector('.todo-reason').textContent = copy.reason;
+      el.querySelector('.todo-timing').textContent = copy.timing;
+      el.querySelector('.todo-evidence-note').hidden = !copy.recovered;
+      const toggleEvidence = () => {
+        const willOpen = evidencePanel.hidden;
+        evidencePanel.hidden = !willOpen;
+        main.setAttribute('aria-expanded', String(willOpen));
+        el.classList.toggle('is-open', willOpen);
+      };
+      main.onclick = toggleEvidence;
+      el.onclick = (event) => {
+        if (event.target.closest('.todo-main, .todo-check, .todo-del, .todo-evidence')) return;
+        toggleEvidence();
+      };
+    } else {
+      el.querySelector('.todo-link-preview').textContent = '직접 적은 할 일';
+      main.disabled = true;
+    }
     el.querySelector('.todo-check').onclick = async () => {
       const res = await api('/api/me/todos/toggle', {
         method: 'POST', body: JSON.stringify({ id: el.dataset.id }),
@@ -1922,7 +2547,88 @@ function renderTodoList(todos) {
 
 async function renderTodos() {
   const data = await api('/api/me/todos');
-  renderTodoList(data.todos || []);
+  const todos = data.todos || [];
+  await loadTodoEvidence(todos);
+  renderTodoList(todos);
+  await api('/api/me/notifications/read', { method: 'POST', body: '{}' });
+  if (status) status.unreadNotifications = 0;
+  updateTodoAlert(0);
+}
+
+/* ════════════════════════════════════════════
+   6. 농장 상담 (현재 분석 근거 기반 로컬 상담)
+════════════════════════════════════════════ */
+
+const CHAT_SUGGESTIONS = ['오늘 무엇부터 할까?', '왜 주의 상태야?', '토양은 어떤 상태야?'];
+
+function chatStorageKey() { return `farm.chat.${userId}`; }
+function chatHistory() {
+  try { return JSON.parse(localStorage.getItem(chatStorageKey()) || '[]'); } catch { return []; }
+}
+function saveChatHistory(messages) {
+  localStorage.setItem(chatStorageKey(), JSON.stringify(messages.slice(-30)));
+}
+
+async function renderChat() {
+  $('#chat-suggestions').innerHTML = CHAT_SUGGESTIONS.map((text, index) => `<button type="button" data-chat-suggest="${index}">${text}</button>`).join('');
+  document.querySelectorAll('[data-chat-suggest]').forEach((button) => {
+    button.onclick = () => sendChatQuestion(CHAT_SUGGESTIONS[Number(button.dataset.chatSuggest)]);
+  });
+  renderChatMessages(chatHistory());
+}
+
+function renderChatMessages(messages) {
+  const root = $('#chat-messages');
+  root.innerHTML = '';
+  if (!messages.length) {
+    const welcome = document.createElement('div');
+    welcome.className = 'chat-message assistant';
+    welcome.textContent = '지금 보고 있는 작물의 환경 분석을 바탕으로 오늘 할 일과 주의 이유를 정리해 드릴게요.';
+    root.append(welcome);
+    return;
+  }
+  for (const message of messages) {
+    const item = document.createElement('div');
+    item.className = `chat-message ${message.role === 'user' ? 'user' : 'assistant'}`;
+    item.textContent = message.text;
+    root.append(item);
+  }
+  root.lastElementChild?.scrollIntoView({ block: 'end' });
+}
+
+async function sendChatQuestion(rawQuestion) {
+  const question = String(rawQuestion || '').trim();
+  if (!question) return;
+  const messages = chatHistory();
+  messages.push({ role: 'user', text: question, at: new Date().toISOString() });
+  renderChatMessages(messages);
+  const crop = getActiveCrop();
+  let answer;
+  try {
+    if (!crop) throw new Error('먼저 작물을 설정해 주세요.');
+    const detail = await loadEnvironmentDetail(crop);
+    answer = localGroundedAnswer(question, crop, detail);
+  } catch (error) {
+    answer = error.message || '현재 분석을 불러오지 못했어요.';
+  }
+  messages.push({ role: 'assistant', text: answer, at: new Date().toISOString() });
+  saveChatHistory(messages);
+  renderChatMessages(messages);
+}
+
+function localGroundedAnswer(question, crop, detail) {
+  const name = crop.cropName || CROP_NAMES[crop.cropId] || '작물';
+  const riskyDay = detail.week.find((day) => day.status === 'DANGER' || day.status === 'CAUTION');
+  const firstAction = riskyDay?.guidance?.actions?.[0];
+  if (/토양|흙|산도|pH|EC/iu.test(question)) {
+    const observed = Number.isFinite(detail.soil.observedValue) ? `현재 참고값은 ${detail.soil.observedValue}예요. ` : '';
+    const range = detail.soil.optimalRange?.length === 2 ? `${name}의 적정 범위는 ${detail.soil.optimalRange[0]}~${detail.soil.optimalRange[1]}예요. ` : '';
+    return `${detail.soil.label}으로 판단했어요. ${observed}${range}${detail.soil.referenceOnly ? '지역 통계라서 내 밭 토양검정을 연결하면 더 정확해져요.' : ''}`.trim();
+  }
+  if (/점수|왜|주의|위험/iu.test(question)) {
+    return `${name}의 환경 점수는 ${Number.isFinite(detail.totalScore) ? `${detail.totalScore}점` : '산정 중'}이고, 가장 큰 원인은 ${detail.causeLabel}이에요. ${firstAction || '상세 보기에서 기준값과 현장 확인 항목을 함께 확인해 주세요.'}`;
+  }
+  return `${name}는 현재 ${detail.statusLabel} 상태예요. ${riskyDay ? `${fmtKey(riskyDay.date)}에는 ${riskyDay.causeLabel}을 확인해야 해요. ` : ''}${firstAction || '오늘은 잎과 토양 수분을 먼저 살펴보세요.'}`;
 }
 
 /* ════════════════════════════════════════════
@@ -2012,6 +2718,51 @@ const STAGE_NAME_HINT = {
   growing: '자라는 중', flower: '꽃', blossom: '꽃', fruit: '열매', mature: '다 자람',
 };
 
+let diaryPhotoData = null;
+
+function photoDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('young-farmer-local', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('diaryPhotos');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function localPhoto(action, dayKey, value) {
+  const db = await photoDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction('diaryPhotos', 'readwrite');
+    const store = transaction.objectStore('diaryPhotos');
+    const key = `${userId}:${dayKey}`;
+    const request = action === 'get' ? store.get(key) : action === 'delete' ? store.delete(key) : store.put(value, key);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  }).finally(() => db.close());
+}
+
+function resizeDiaryPhoto(file) {
+  return new Promise((resolve, reject) => {
+    if (!/^image\/(jpeg|png|webp)$/u.test(file.type) || file.size > 12 * 1024 * 1024) {
+      reject(new Error('12MB 이하 JPG·PNG·WEBP 사진을 골라 주세요.'));
+      return;
+    }
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+    image.onload = () => {
+      const scale = Math.min(1, 1280 / Math.max(image.width, image.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('사진을 읽지 못했어요.')); };
+    image.src = url;
+  });
+}
+
 function diaryDateLabel(dayKey) {
   const [y, m, d] = dayKey.split('-').map(Number);
   const date = new Date(y, m - 1, d);
@@ -2024,6 +2775,33 @@ async function renderDiary() {
   const tKey = todayKey();
   const todayEntry = entries.find((e) => e.dayKey === tKey);
 
+  diaryPhotoData = await localPhoto('get', tKey).catch(() => null);
+  const preview = $('#diary-photo-preview');
+  preview.hidden = !diaryPhotoData;
+  preview.src = diaryPhotoData || '';
+  $('#diary-photo-remove').hidden = !diaryPhotoData;
+
+  $('#diary-photo').onchange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      diaryPhotoData = await resizeDiaryPhoto(file);
+      preview.src = diaryPhotoData;
+      preview.hidden = false;
+      $('#diary-photo-remove').hidden = false;
+    } catch (error) {
+      toast(error.message);
+      event.target.value = '';
+    }
+  };
+  $('#diary-photo-remove').onclick = () => {
+    diaryPhotoData = null;
+    preview.src = '';
+    preview.hidden = true;
+    $('#diary-photo-remove').hidden = true;
+    $('#diary-photo').value = '';
+  };
+
   const textarea = $('#diary-text');
   const saveBtn = $('#diary-save');
   if (document.activeElement !== textarea) {
@@ -2034,11 +2812,21 @@ async function renderDiary() {
 
   saveBtn.onclick = async () => {
     const text = textarea.value.trim();
-    if (!text && !todayEntry) { toast('내용을 적어주세요.'); return; }
+    if (!text && !diaryPhotoData && !todayEntry) {
+      toast('한 줄이나 사진 한 장을 남겨 주세요.');
+      return;
+    }
+    const savedText = text || (diaryPhotoData ? '사진으로 오늘 밭을 기록했어요.' : '');
     saveBtn.disabled = true;
-    const res = await api('/api/me/diary', { method: 'POST', body: JSON.stringify({ text }) });
+    const res = await api('/api/me/diary', {
+      method: 'POST',
+      body: JSON.stringify({ text: savedText }),
+    });
     saveBtn.disabled = false;
     if (!res.ok) { toast(res.message || '저장하지 못했어요.'); return; }
+    if (res.deleted) await localPhoto('delete', tKey).catch(() => {});
+    else if (diaryPhotoData) await localPhoto('put', tKey, diaryPhotoData).catch(() => {});
+    else await localPhoto('delete', tKey).catch(() => {});
     toast(res.deleted ? '오늘 일기를 지웠어요.' : '오늘의 기록을 심어뒀어요.');
     renderDiary();
   };
@@ -2056,6 +2844,15 @@ async function renderDiary() {
       </div>`).join('')
     : `<p class="empty-note">첫 일기가 아직 없어요.<br/>한 줄이면 충분해요.</p>`;
   list.querySelectorAll('.d-text').forEach((el, i) => { el.textContent = entries[i].text; });
+  await Promise.all(entries.map(async (entry, index) => {
+    const photo = await localPhoto('get', entry.dayKey).catch(() => null);
+    if (!photo) return;
+    const image = document.createElement('img');
+    image.className = 'd-photo';
+    image.src = photo;
+    image.alt = `${diaryDateLabel(entry.dayKey)} 밭 사진`;
+    list.children[index]?.append(image);
+  }));
 }
 
 function renderRecords() {
@@ -2105,14 +2902,14 @@ function renderSettings() {
     <div class="sc-row">
       <div>
         <div class="sc-label">밭 주인</div>
-        <div class="sc-value">${userName}</div>
+        <div class="sc-value">${escapeHtml(userName)}</div>
       </div>
       <button class="link-btn" id="rename-btn">이름 바꾸기</button>
     </div>
     <div class="sc-row" style="margin-top:14px">
       <div>
         <div class="sc-label">농장 지역</div>
-        <div class="sc-value farm-region-value">${farmRegion}</div>
+        <div class="sc-value farm-region-value">${escapeHtml(farmRegion)}</div>
       </div>
       <button class="link-btn" id="region-btn">지역 바꾸기</button>
     </div>
@@ -2122,6 +2919,13 @@ function renderSettings() {
         <div class="sc-value" style="font-size:13.5px;color:var(--ink-soft)">모은 포인트로 비료 신청하기</div>
       </div>
       <button class="link-btn" id="open-rewards-settings">열기</button>
+    </div>
+    <div class="sc-row" style="margin-top:14px">
+      <div>
+        <div class="sc-label">예방 알림</div>
+        <div class="sc-value" style="font-size:13.5px;color:var(--ink-soft)">${profile?.notificationsEnabled ? '주의·위험 알림 켜짐' : '필요할 때만 켤 수 있어요'}</div>
+      </div>
+      <button class="link-btn" id="notification-setting">${profile?.notificationsEnabled ? '끄기' : '켜기'}</button>
     </div>`;
   $('#region-btn').onclick = () => {
     const next = prompt('농장 지역을 시·군·구까지 입력해 주세요.', farmRegion);
@@ -2136,6 +2940,22 @@ function renderSettings() {
     await renderRewards();
     show('rewards');
   };
+  $('#notification-setting').onclick = async () => {
+    let enabled = !profile?.notificationsEnabled;
+    if (enabled && 'Notification' in window && Notification.permission !== 'granted') {
+      const permission = await Notification.requestPermission();
+      enabled = permission === 'granted';
+      if (!enabled) toast('기기 알림 권한이 꺼져 있어 앱 안에서만 알려드릴게요.');
+    }
+    const result = await api('/api/me/profile', {
+      method: 'POST',
+      body: JSON.stringify({ notificationsEnabled: enabled }),
+    });
+    if (!result.ok) return toast('알림 설정을 바꾸지 못했어요.');
+    profile = result.profile;
+    renderSettings();
+    toast(enabled ? '주의·위험 예방 알림을 켰어요.' : '기기 알림을 껐어요.');
+  };
   $('#rename-btn').onclick = () => {
     const next = prompt('새 이름을 입력해 주세요.\n(이름이 바뀌면 새 밭에서 다시 시작해요)', userName);
     if (!next || !next.trim() || next.trim() === userName) return;
@@ -2143,6 +2963,43 @@ function renderSettings() {
     localStorage.setItem('farm.name', userName);
     location.reload();
   };
+
+  renderTitleSettings();
+}
+
+function renderTitleSettings() {
+  const titles = status?.titles;
+  if (!titles) {
+    $('#settings-titles').innerHTML = '<p class="empty-note">출석 기록을 불러오면 칭호가 보여요.</p>';
+    return;
+  }
+  const unlocked = new Set(titles.unlocked.map((title) => title.key));
+  const allTitles = [
+    ['seed', '씨앗', 0], ['sprout', '새싹', 3], ['sapling', '어린 나무', 7],
+    ['tree', '튼튼한 나무', 14], ['grove', '작은 숲', 30], ['worldtree', '세계수', 60],
+  ];
+  $('#settings-titles').innerHTML = `
+    <div class="sc-label">나의 칭호와 밭 테두리</div>
+    <div class="sc-value">${titles.current.name}</div>
+    <p class="reference-note">${titles.next ? `${titles.next.name}까지 출석 ${titles.next.remaining}번` : '모든 칭호를 모았어요'}</p>
+    <div class="title-grid">${allTitles.map(([key, name, count]) => `
+      <button class="title-choice ${titles.selectedBorderKey === key ? 'selected' : ''}" data-title="${key}" ${unlocked.has(key) ? '' : 'disabled'}>
+        <strong>${name}</strong><span>${unlocked.has(key) ? '테두리 선택 가능' : `출석 ${count}회에 열림`}</span>
+      </button>`).join('')}</div>`;
+  document.querySelectorAll('[data-title]:not(:disabled)').forEach((button) => {
+    button.onclick = async () => {
+      const result = await api('/api/me/profile', {
+        method: 'POST',
+        body: JSON.stringify({ selectedTitleKey: button.dataset.title, selectedBorderKey: button.dataset.title }),
+      });
+      if (!result.ok) return toast('칭호를 바꾸지 못했어요.');
+      profile = result.profile;
+      await refreshStatus();
+      renderTitleSettings();
+      applySelectedBorder();
+      toast('칭호와 밭 테두리를 바꿨어요.');
+    };
+  });
 }
 
 /* ════════════════════════════════════════════
@@ -2161,11 +3018,24 @@ async function boot() {
     t.addEventListener('click', async () => {
       if (v === 'home') { await refreshStatus(); renderHome(); }
       if (v === 'todos') renderTodos();
+      if (v === 'chat') renderChat();
       if (v === 'records') { await refreshStatus(); renderRecords(); }
-      if (v === 'settings') renderSettings();
+      if (v === 'settings') { await refreshStatus(); renderSettings(); }
       show(v);
     });
   });
+
+  $('#chat-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = $('#chat-input');
+    const question = input.value.trim();
+    if (!question) return;
+    input.value = '';
+    await sendChatQuestion(question);
+  });
+
+  $('#setup-back').onclick = previousSetupStep;
+  $('#setup-close').onclick = () => { renderHome(); show('home'); };
 
   // 할 일 추가 폼
   $('#todo-form').addEventListener('submit', async (e) => {
@@ -2184,30 +3054,31 @@ async function boot() {
     show('home');
   });
 
-  if (!userName) {
-    $('#hello-art').innerHTML = plantScene('cucumber', 'sprout', 'none');
-    show('hello', { tabbar: false });
-    $('#hello-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const name = $('#hello-name').value.trim();
-      if (!name) { toast('이름을 입력해 주세요.'); return; }
-      userName = name;
-      localStorage.setItem('farm.name', name);
-      await enter();
-    });
-    return;
-  }
   await enter();
 }
 
 async function enter() {
   try {
+    const profileResult = await api('/api/me/profile');
+    profile = profileResult.profile || null;
+    if (!userName && profile?.displayName) {
+      userName = profile.displayName;
+      localStorage.setItem('farm.name', userName);
+    }
+    if (profile?.region) {
+      farmRegion = profile.region;
+      localStorage.setItem('farm.region', farmRegion);
+    }
     const ob = await api('/api/me/onboarding');
     selectableCrops = ob.characters || [];
     if (ob.isFirstTime) {
-      renderSelectView();
-      show('select', { tabbar: false });
+      await refreshStatus();
+      beginSetup('initial');
       return;
+    }
+    if (!userName) {
+      userName = profile?.displayName || '농부';
+      localStorage.setItem('farm.name', userName);
     }
     await refreshStatus();
     renderHome();
@@ -2216,6 +3087,10 @@ async function enter() {
     toast('서버에 연결할 수 없어요. 터미널에서 npm start를 실행해 주세요.', 4000);
   }
 }
+
+setInterval(() => {
+  if (!$('#view-home')?.hidden) applyTimeTheme();
+}, 15 * 60 * 1000);
 
 // 앱 화면(index.html)에서만 부팅 — 미리보기 페이지 등이 이 모듈을
 // import 해서 그림 함수만 쓸 수 있게 함

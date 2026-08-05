@@ -12,6 +12,16 @@
 <body>
 <div id="app">
 
+  <!-- ── 질문형 농장 설정 ─────────────────────── -->
+  <section id="view-setup" class="view setup-view" hidden>
+    <header class="setup-head">
+      <button id="setup-back" class="setup-back" type="button" aria-label="이전 질문" hidden>‹</button>
+      <div class="setup-progress" aria-label="설정 진행률"><i id="setup-progress-bar"></i></div>
+      <button id="setup-close" class="setup-close" type="button" aria-label="설정 닫기" hidden>✕</button>
+    </header>
+    <main class="setup-body" id="setup-body" aria-live="polite"></main>
+  </section>
+
   <!-- ── 온보딩: 이름 입력 ─────────────────────── -->
   <section id="view-hello" class="view" hidden>
     <div class="hello-wrap">
@@ -42,6 +52,7 @@
       <div>
         <p class="home-greet" id="home-greet"></p>
         <p class="home-date" id="home-date"></p>
+        <p class="home-title-badge" id="home-title-badge"></p>
       </div>
       <div class="home-right">
         <div class="crop-badges" id="crop-badges"></div>
@@ -79,6 +90,21 @@
     <div class="suggest-row" id="todo-suggest"></div>
   </section>
 
+  <!-- ── 농장 상담 ───────────────────────────── -->
+  <section id="view-chat" class="view" hidden>
+    <header class="page-head chat-head">
+      <div class="chat-orb" aria-hidden="true">⌁</div>
+      <div><h1>밭 상담</h1><p>현재 농장 분석을 바탕으로 답해요.</p></div>
+    </header>
+    <div class="chat-suggestions" id="chat-suggestions"></div>
+    <div class="chat-messages" id="chat-messages" aria-live="polite"></div>
+    <form id="chat-form" class="chat-form">
+      <label class="sr-only" for="chat-input">농장 상담 질문</label>
+      <input id="chat-input" maxlength="400" placeholder="예: 오늘 무엇을 먼저 해야 해?" autocomplete="off" />
+      <button type="submit" aria-label="질문 보내기">↑</button>
+    </form>
+  </section>
+
   <!-- ── 교환소 (대시보드 포인트/설정에서 진입) ── -->
   <section id="view-rewards" class="view" hidden>
     <header class="page-head">
@@ -106,6 +132,12 @@
     <h3 class="section-label">다이어리</h3>
     <div class="diary-write">
       <textarea id="diary-text" maxlength="300" rows="3" placeholder="오늘 밭에서, 그리고 하루에서 있었던 일을 남겨보세요."></textarea>
+      <div class="diary-photo-row">
+        <label class="diary-photo-pick" for="diary-photo">사진 한 장 더하기</label>
+        <input id="diary-photo" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+        <button id="diary-photo-remove" class="link-btn" type="button" hidden>사진 빼기</button>
+      </div>
+      <img id="diary-photo-preview" class="diary-photo-preview" alt="선택한 밭 사진 미리보기" hidden />
       <div class="diary-actions">
         <span class="diary-hint" id="diary-hint"></span>
         <button class="btn btn-primary diary-save" id="diary-save">오늘 기록 남기기</button>
@@ -123,6 +155,7 @@
       <p>밭의 이름표를 관리해요.</p>
     </header>
     <div class="settings-card" id="settings-profile"></div>
+    <div class="settings-card" id="settings-titles"></div>
     <div class="settings-card settings-note">
       <p><strong>청년농부</strong>는 매일 출석으로 작물 캐릭터를 키우고,<br/>
       모은 포인트를 실물 비료로 교환하는 서비스 프로토타입이에요.</p>
@@ -133,6 +166,7 @@
   <nav class="tabbar" id="tabbar" hidden>
     <button class="tab" data-view="home"></button>
     <button class="tab" data-view="todos"></button>
+    <button class="tab tab-chat" data-view="chat"></button>
     <button class="tab" data-view="records"></button>
     <button class="tab" data-view="settings"></button>
   </nav>
