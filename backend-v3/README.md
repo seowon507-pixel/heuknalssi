@@ -1,0 +1,240 @@
+# 흙날씨.진단 Backend v3
+
+기후·토양·최근 관측·예보를 서로 다른 근거 축으로 유지하면서, 다음 확인 행동을 결정적으로 반환하는 P0 백엔드입니다. `growthScore`는 작물 영향도에 자료 신뢰도와 실제 충족도를 곱한 `growth-score-v2`입니다. 지역 토양통계의 전체 영향은 최대 12%이며, 필지 토양 상한은 연속식으로 계산합니다. 시설수경은 내부 환경자료 없이 외기예보만으로 생육점수를 확정하지 않습니다.
+
+## 현재 상태
+
+이 저장소는 **안전한 기본값으로 닫혀 있습니다.** 검수된 규칙·위치 매핑·공급자 계약이 없으면 서버는 숫자를 추측하지 않고 모듈을 `HOLD`, `UNAVAILABLE`, `UNSUPPORTED`로 반환합니다. `/api/health/preflight`도 이 상태에서 `ready: false`, `serviceState: "HOLD"`를 반환합니다.
+
+실제 배포를 준비하려면 다음 외부 자산을 먼저 동결해야 합니다.
+
+- 5개 작물의 출처·단위·문서 위치·검토일·버전을 가진 규칙
+- 최소 6개 시연지역의 출처·버전·유효기간을 가진 위치 매핑
+- checksum과 규칙 버전이 일치하는 기후평년 스냅샷
+- ASOS 운영지점·요청기간 자료존재·거리·월평년 계약
+- 농경지화학성 통계정보 V2의 XML 필드·단위·pH 구간 경계·토지이용 계약
+- 실제 응답 fixture로 검증한 Kakao·KMA 단기·중기 계약
+
+이 자산이 없는 상태에서 feature flag나 임의 contract 문자열만 켜는 것은 배포 준비 완료가 아닙니다.
+
+`fixture-*`와 `smartfarm-reference-v1` contract ID는 공급자 버전명이 아니라 저장소의 계약 fixture와 parser를 묶는 내부 allowlist ID입니다. 정확히 일치하지 않는 문자열은 외부 호출 전에 거부됩니다.
+
+문서화된 `npm start` 경로에서도 검수 자산을 조립할 수 있습니다.
+`TRUSTED_BACKEND_RUNTIME_MODULE`에 운영자 소유 `.js`/`.mjs` 파일의
+절대경로를 지정하고 그 모듈에서 `createRuntimeOptions({ env, fetchImpl,
+clock })`를 export합니다. 반환값에는 `adapters`, `rules` 또는
+`ruleRegistry`, `verifiedLocationMappings`, `runtimeStatus`,
+`soilContract`만 허용됩니다. 이 모듈은 요청 입력이나
+업로드 파일이 아니라 배포 코드로 취급해야 하며, 미설정·로드 실패 시
+검증되지 않은 기본값으로 대신 시작하지 않습니다.
+
+## 실행
+
+Node.js 22 이상이 필요하며 외부 패키지 설치는 필요하지 않습니다.
+
+```sh
+npm test
+npm run check
+npm start
+```
+
+로컬 기본 주소는 `http://localhost:3100`입니다. 운영에서는 32자 이상의 `SESSION_SECRET`과 명시적인 `ALLOWED_ORIGINS`가 필수입니다. 실제 키 값은 `.env.example`에 넣지 말고 배포 Secret으로 주입합니다.
+
+기본 네트워크 모드는 직접 연결이며 전달 헤더를 신뢰하지 않습니다. 역방향
+프록시 뒤에서 운영할 때만 `TRUSTED_PROXY_RANGES`에 실제 프록시의 IP 또는
+CIDR을 쉼표로 구분해 지정합니다. 서버는 소켓 주소부터 오른쪽에서 왼쪽으로
+신뢰 체인을 확인한 뒤 검증된 클라이언트 IP만 속도 제한 키로 사용합니다.
+포괄적인 `TRUST_PROXY=true` 설정은 안전상 거부됩니다.
+
+### 지역 토양 pH 자료
+
+외부 실행 모드에서 공공데이터 키와 검수 런타임을 설정하면
+`농경지화학성 통계정보 V2`의 공식 pH 구간별 면적 통계를 조회합니다.
+Kakao가 반환한 10자리 법정동 코드를 그대로 사용하고, 작물과 재배형태에
+따라 과수·논밭·시설 토지이용 구분을 선택합니다.
+
+이 값은 지역의 pH 분포이지 사용자의 필지 측정값이 아닙니다. 서버는
+구간별 면적을 임의 평균 pH로 바꾸지 않으며, 작물 기준 안·경계·밖 면적의
+비율만 설명 근거로 사용합니다. 필지 pH와 EC는 토양검정 결과가 등록되기
+전까지 결측으로 유지하고 실제 측정을 다음 행동으로 안내합니다.
+
+### SmartFarm 공개 비교자료
+
+외부 실행 모드에서 아래 환경값을 모두 설정하면 SmartFarm 참고 모듈이 활성화됩니다. 키 값은 출력·로그·응답·캐시 키에 포함하지 않습니다.
+
+```text
+ENABLE_SMARTFARM=true
+SMARTFARM_SERVICE_KEY=<발급받은 키>
+SMARTFARM_CONTRACT_VERSION=smartfarm-reference-v1
+```
+
+지원 조합은 공식 데이터와 대회 대상 작물이 직접 겹치는 경우로 제한합니다.
+
+- 시설 오이: 품목별 시설원예 농가·작기 코호트, 자료기간·시설유형·토경/수경·지역 분포, 환경·제어·생육·이미지·컨설팅·생산량·생산비 자료의 제공 여부
+- 노지 사과: 노지 농가 코호트, 작기·환경·생육 자료의 제공 여부
+- 노지 감자: 노지 농가 코호트, 작기·환경 자료의 제공 여부
+- 배·상추·노지 오이: 다른 작물로 대체하지 않고 `NOT_APPLICABLE`
+
+이 모듈은 개인 농가를 임의 선택하거나 식별값을 반환하지 않습니다. 공개 코호트의 표본·기간·비교 가능성만 표시하며 기후·토양·예보 판단, 행동 순위, 적합도나 점수에 반영하지 않습니다. SmartFarm 호출 실패도 핵심 분석을 실패시키지 않습니다.
+
+실호출에서 `SMARTFARM_SERVICE_KEY_NOT_REGISTERED`가 반환되면 키 문자열이 존재하더라도 해당 SmartFarm Open API 신청이 등록·승인되지 않은 상태입니다. 스마트팜코리아의 `Open API 신청/확인`에서 승인된 서비스 키를 확인한 뒤 다시 실행해야 하며, 이때 핵심 분석은 유지하고 공개 비교자료만 보류합니다.
+
+### 농장 분석 도우미
+
+Google AI 키가 있으면 분석별 질문 API가 자동으로 활성화됩니다. 아래 변수 중
+하나만 사용하며 `GOOGLE_AI_API_KEY`, `GEMINI_API_KEY`,
+`GOOGLE_API_KEY` 순서로 확인합니다.
+
+```text
+GOOGLE_AI_API_KEY=<Google AI Studio에서 발급한 키>
+ENABLE_GOOGLE_AI=true
+GOOGLE_AI_MODEL=gemini-3.5-flash-lite
+```
+
+`ENABLE_GOOGLE_AI`는 생략해도 키가 있으면 활성화되며, 명시적으로
+`false`를 지정하면 외부 호출 없이 결정형 설명으로 동작합니다. 키와 모델은
+브라우저로 전달하지 않습니다. 질문 원문·주소·좌표도 Google AI에 보내지
+않고, 서버가 분류한 질문 주제와 검증된 사실·행동 목록만 전달합니다.
+Google AI는 허용된 항목 ID만 선택하며 최종 문장은 서버가 작성합니다.
+
+### 흙톡 재배 참고 지식 (RAG)
+
+도우미는 현재 분석 근거 외에 검수된 재배 참고 문단을 함께 검색해 답변에
+붙입니다. 문단마다 이미지 슬롯과 출처가 있어 설명과 사진을 함께 보여줍니다.
+
+- 코퍼스: `runtime/reviewed-knowledge-base.js` (문단 36건, 도해 11건)
+- 검색: `src/application/knowledge-retrieval.js`. 한국어 형태소 분석기 없이
+  공백 토큰과 문자 bigram을 색인하는 BM25이며, 작물·주제 필터와 상대 임계값을
+  함께 씁니다. 외부 호출과 무작위성이 없어 같은 질문은 항상 같은 문단을
+  돌려줍니다.
+- 생성: 하지 않습니다. Google AI는 여기서도 항목 ID만 선택하고, 답변에 실리는
+  문장은 검수된 문단 원문입니다. 임베딩 API도 사용하지 않습니다.
+- 안전 정책이 먼저 실행되므로 농약·비료·병명 질문에서는 검색을 아예
+  건너뜁니다. 응답의 `retrieval.state`가 `SKIPPED_BY_POLICY`로 표시됩니다.
+- 응답에 `references[]`가 추가됩니다. 기존 `answer`, `mode`, `grounded`,
+  `outcome`, `notice` 필드는 그대로라 이전 클라이언트와 호환됩니다.
+
+문단은 현재 전부 `reviewState: "DRAFT"`입니다. 운영에서는 DRAFT가 노출되지
+않으므로 흙톡은 기존처럼 분석 근거만으로 답합니다. 개발·시연에서 보려면
+`ALLOW_DRAFT_KNOWLEDGE=true`를 설정하고, 화면에는 `검수 대기 자료` 배지가
+함께 붙습니다. 검수를 마친 문단은 `reviewState`를 `REVIEWED`로 바꾸고
+`reviewedBy`에 검수자를 적으면 플래그 없이 노출됩니다.
+
+### 재배 참고 이미지 — 자체 제작 도해
+
+이미지는 `runtime/knowledge-images/`의 **자체 제작 SVG 도해 11건**입니다.
+외부 자료에 의존하지 않으므로 라이선스 제약이 없고, 네트워크 없이 동작하며,
+저장소에 2~3 KiB짜리 텍스트로 들어갑니다.
+
+도해는 **증상 사진이 아니라 관찰 지점과 순서를 설명하는 그림**입니다. 증상을
+사실적으로 그리지 않는 이유는 안전 때문입니다. 사용자가 자기 밭 작물을 우리
+그림과 맞춰 병을 스스로 확정하면, 흙톡이 하지 않겠다고 정한 진단을 그림이
+대신하게 됩니다. 그래서 모든 도해에 `관찰 지점 도해` 라벨을 넣고, `alt`와
+`caption`에 병명·진단 표현을 쓰지 않습니다. 자세한 작성 규칙은
+`runtime/knowledge-images/README.md`에 있습니다.
+
+`GET /api/knowledge-images/:imageId`가 이미지를 전달합니다.
+
+- 경로 매개변수는 레지스트리 키(`[A-Z][A-Z0-9_]{2,63}`)이며 URL이나 파일
+  경로를 받지 않습니다. 사용자 입력이 fetch나 파일 읽기 대상이 될 수 없습니다.
+- 도해는 기동 시 메모리에 올려 두므로 요청 경로에서 파일 시스템을 건드리지
+  않습니다.
+- 외부 이미지도 같은 라우트로 지원합니다. 이때는 코퍼스에 등록된 URL만 쓰고,
+  호스트가 `KNOWLEDGE_IMAGE_HOST_ALLOWLIST`에 없으면 요청 자체를 만들지
+  않습니다. 리다이렉트는 따라가지 않고 HTTPS·래스터 MIME·2 MiB 상한을
+  검사합니다. 브라우저가 외부 기관 서버에 직접 접속하지 않으므로 CSP는
+  `img-src 'self'`로 유지되고 사용자 IP와 Referer도 외부로 나가지 않습니다.
+- 응답에는 업스트림 URL이 담기지 않습니다. 클라이언트는 `imageId`,
+  `available`, `source`(`DIAGRAM` 또는 `EXTERNAL`)만 받습니다.
+
+`npm run verify:knowledge-images`로 배포 전에 검증합니다. 도해는 뷰박스·
+`<title>`·도해 라벨·크기와 함께 스크립트·`foreignObject`·외부 참조가 없는지
+확인하고, 외부 URL은 실존·호스트·형식·크기를 확인합니다.
+
+NCPMS 실사진을 추가하려면 공개 URL을 사람이 직접 확인한 뒤 `url`과 `licence`를
+채우세요. 공개 URL이나 응답 구조를 추측해 넣지 않습니다. NCPMS 도감정보
+OpenAPI는 **CC BY-NC 2.0(상업적 이용금지)**이므로 상업적 배포에는 쓸 수
+없습니다.
+
+### 병해충·위성 보조 기능
+
+- `GET /api/analyses/:analysisId/pest-guidance`는 분석과 같은 익명 세션에서만 조회됩니다.
+- 대상 5작물의 현장 관찰 항목은 서버 검수본 `pest-observation-v1-2026-08-03`을 사용합니다.
+- 기상 위험은 관찰 시점을 정하는 참고 신호일 뿐 병해충 발생이나 병명을 진단하지 않습니다.
+- NCPMS 실시간 예찰·발생정보는 별도 NCPMS 일반회원 OpenAPI 신청과 매뉴얼 계약 검증 전까지 `NOT_CONNECTED`입니다. 공개 URL이나 XML 구조를 추측해 호출하지 않습니다.
+- 병해충 검수 출처는 `https://ncpms.rda.go.kr/npms/OpenApiInfo.np`입니다.
+- Copernicus 자격정보가 구성되면 사전점검은 `CONFIGURED_UNVERIFIED`로 표시하고, 사용자가 확인한 노지 필지에서 첫 실제 호출로 연결을 검증합니다.
+- Sentinel-2 L2A NDVI는 구름·그림자 마스크와 유효 픽셀 비율을 통과한 관측만 사용하며 병해충 원인이나 생육 상태로 진단하지 않습니다.
+
+## API 흐름
+
+1. `GET /api/session`으로 서명 익명 세션과 CSRF 토큰을 받습니다.
+2. `POST /api/locations/current`로 기기 좌표를 법정동 후보로 변환하거나
+   `GET /api/locations?q=...`에서 위치 후보를 검색합니다.
+3. 사용자가 후보 하나를 확인합니다.
+4. `POST /api/analyses`에 후보 토큰과 확인된 농업 입력만 보냅니다.
+5. `GET /api/analyses/:id`로 소유자 범위 결과를 조회합니다.
+6. `POST /api/analyses/:id/report`로 결정론적 보고서를 요청합니다.
+7. `POST /api/analyses/:id/assistant`에 질문을 보내 현재 분석의 검증된
+   근거와 행동만 설명받습니다.
+
+현재 위치 좌표는 후보 변환 요청에서만 받고 응답·로그에 반환하지 않습니다.
+분석 요청의 위치에는 좌표를 보내지 않습니다.
+
+```json
+{
+  "usageMode": "LAND_SEARCH",
+  "location": {
+    "candidateToken": "opaque-token",
+    "userConfirmed": true
+  },
+  "crop": "CUCUMBER",
+  "cultivationMode": "OPEN_FIELD",
+  "season": {
+    "kind": "CUSTOM",
+    "profileId": "CUSTOM",
+    "startMonth": 5,
+    "endMonth": 9,
+    "userConfirmed": true
+  }
+}
+```
+
+## 코드 경계
+
+- `src/domain`: 요청·규칙·기후·토양·최근 관측·예보·상태·결정·행동
+- `src/adapters`: 공급자 파싱, 엄격한 결측 처리, DataEnvelope, deadline·cache
+- `src/application`: 위치 복원, 모듈 오케스트레이션, 근거·보고서 조립
+- `src/infrastructure`: 세션 범위 저장소, opaque ID, 멱등성, 속도 제한
+- `src/api`: HTTP 계약, CORS·CSRF·소유권·오류 응답
+- `server`: 환경 설정과 실제 조립
+
+권위 로직 명세는 [09_흙날씨진단_서비스로직_명세서.md](../09_흙날씨진단_서비스로직_명세서.md)입니다.
+
+## 핵심 안전 불변조건
+
+- 각 데이터 축의 원점수와 상태는 독립적으로 보존합니다. 대표 생육점수는 검수된 중요도·자료 신뢰도·자료 충족도만 적용하며 구성요소를 함께 반환합니다.
+- 빈 문자열·`null`·`-`를 0으로 바꾸지 않습니다.
+- 결측을 0점으로 바꾸지 않으며 근거강도 0.35 미만에서는 대표점수를 보류합니다.
+- 토양 통계를 필지 대표값이나 임의 평균으로 만들지 않습니다.
+- `stale`·`sample` 자료로 현재 위험 부재나 안심성 결론을 만들지 않습니다.
+- 넓은 행정구역에 임의 중심좌표나 거리 0을 만들지 않습니다.
+- 미검증 규칙·계약·선택 기능은 외부 호출 없이 닫힙니다.
+- P0 보고서는 자유형 LLM 문장을 생성하지 않습니다.
+
+## 공유 상태와 배포 준비
+
+`SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`를 설정하면 세션·위치 후보·
+분석·멱등성·속도 제한·기기 백업·사진 시즌 기록을 Supabase 공유 상태로
+전환합니다. 비공개 `farm-photos` Storage 버킷은 서버를 통해서만 접근합니다.
+설정값이 있다는
+이유만으로 배포 준비 상태를 올리지 않으며, `/api/health/preflight` 요청마다
+같은 Data API 권한으로 원자 쓰기·잠금 읽기·비교·삭제 probe를 통과해야
+`storage.state: "READY"`가 됩니다. 규칙·위치·공급자 조건도 모두 충족된
+경우에만 `deploymentState: "READY"`를 반환합니다.
+
+테이블/RPC, 명시적 GRANT, RLS, 키 주입과 배포 검증 절차는
+[`supabase/README.md`](./supabase/README.md)를 따릅니다. Supabase CLI가 없는
+환경에서 임의 마이그레이션 이름을 만들지 않도록 검수 SQL과 실제 migration
+생성 절차를 분리했습니다. 공유 저장소를 설정하지 않은 로컬 개발에서는
+기존 bounded 인메모리 저장소를 사용하지만 배포 상태는 항상 `HOLD`입니다.

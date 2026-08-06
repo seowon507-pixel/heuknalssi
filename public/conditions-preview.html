@@ -8,7 +8,18 @@
 <link rel="stylesheet" href="style.css" />
 <style>
   /* 이 페이지 전용 — 앱 화면과 무관한 검수용 */
+  #app { max-width: 1100px; }
   .pv-wrap { padding: 26px 22px 60px; }
+  /* 도감: 상태 1줄 = 작물 5종 나열 */
+  .pv-dex-row { margin-bottom: 22px; }
+  .pv-dex-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px 2px; }
+  .pv-dex-head .pv-dex-label { font-size: 16.5px; }
+  .pv-dex-head .pv-dex-cond { font-size: 12px; color: var(--ink-soft); }
+  .pv-dex-scenes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .pv-dex-cell { text-align: center; }
+  .pv-dex-cell svg { width: 100%; height: auto; display: block; }
+  .pv-dex-cell .pv-dex-crop { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; }
+  @media (max-width: 720px) { .pv-dex-scenes { grid-template-columns: repeat(2, 1fr); } }
   .pv-title { font-size: 21px; font-weight: 400; }
   .pv-sub { font-size: 13px; color: var(--ink-soft); margin: 4px 0 20px; }
   .pv-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 8px; }
@@ -51,10 +62,8 @@
   <h1 class="pv-title">상태 표시 사전</h1>
   <p class="pv-sub">데이터 조건 → 「등급 · 표시 문구」. 아직 대시보드에는 연결되지 않은 로직입니다.</p>
 
-  <h3 class="section-label">작물별 장면 (conditionScene) — 상태를 입힌 정원</h3>
-  <div class="pv-crops" id="pv-crops"></div>
-  <div class="pv-crops pv-stages" id="pv-stages"></div>
-  <div class="pv-scenes" id="pv-scenes"></div>
+  <h3 class="section-label">작물별 장면 (conditionScene) — 상태 도감 · 작물 5종 한눈에</h3>
+  <div id="pv-dex"></div>
 
   <h3 class="section-label">헤드라인 조합 예시 (fieldHeadline)</h3>
   <div id="pv-headlines"></div>
@@ -73,53 +82,27 @@
 import { CONDITIONS, conditionIcon, conditionBadge, fieldHeadline } from './conditions.js';
 import { conditionScene } from './app.js';
 
-// ── 작물별 장면: 작물 + 성장 단계를 고르면 19가지 상태를 전부 입혀서 보여줌 ──
+// ── 상태 도감: 버튼 전환 없이 19가지 상태 × 작물 5종을 전부 나열 ──
 const CROPS = [
   ['cucumber', '오이'], ['apple', '사과'], ['pear', '배'], ['potato', '감자'], ['lettuce', '상추'],
 ];
-// 작물별 성장 단계 (config.js와 동일한 순서)
-const CROP_STAGES = {
-  lettuce:  ['seed', 'sprout', 'growing', 'mature'],
-  cucumber: ['seed', 'sprout', 'seedling', 'flower', 'fruit', 'mature'],
-  potato:   ['seed', 'sprout', 'leafing', 'bulking', 'mature'],
-  apple:    ['sapling', 'young', 'grown', 'blossom', 'fruit', 'mature'],
-  pear:     ['sapling', 'young', 'grown', 'blossom', 'fruit', 'mature'],
-};
-const STAGE_LABELS = {
-  seed: '씨앗', sprout: '새싹', seedling: '모종', sapling: '묘목',
-  young: '어린 나무', grown: '성목', leafing: '잎 성장', bulking: '감자 비대',
-  growing: '성장', flower: '꽃', blossom: '꽃', fruit: '열매', mature: '수확',
-};
-// 감자는 씨감자/싹으로 부름
-const CROP_STAGE_LABELS = { potato: { seed: '씨감자', sprout: '싹' } };
-const stageLabel = (crop, key) => (CROP_STAGE_LABELS[crop] && CROP_STAGE_LABELS[crop][key]) || STAGE_LABELS[key];
 const SEV = { good: '양호', warn: '주의', danger: '위험' };
-let currentCrop = 'cucumber';
-let currentStage = 'mature';
 
-function renderScenes() {
-  const stages = CROP_STAGES[currentCrop];
-  if (!stages.includes(currentStage)) currentStage = stages[stages.length - 1];
-
-  document.querySelector('#pv-crops').innerHTML = CROPS.map(([id, name]) =>
-    `<button class="pv-crop-btn ${id === currentCrop ? 'active' : ''}" data-crop="${id}">${name}</button>`).join('');
-  document.querySelectorAll('.pv-crop-btn').forEach((b) => {
-    b.onclick = () => { currentCrop = b.dataset.crop; renderScenes(); };
-  });
-
-  document.querySelector('#pv-stages').innerHTML = stages.map((key) =>
-    `<button class="pv-crop-btn pv-stage-btn ${key === currentStage ? 'active' : ''}" data-stage="${key}">${stageLabel(currentCrop, key)}</button>`).join('');
-  document.querySelectorAll('.pv-stage-btn').forEach((b) => {
-    b.onclick = () => { currentStage = b.dataset.stage; renderScenes(); };
-  });
-
-  document.querySelector('#pv-scenes').innerHTML = Object.entries(CONDITIONS).map(([code, c]) => `
-    <div class="pv-scene">
-      ${conditionScene(currentCrop, currentStage, code)}
-      <div class="pv-scene-title"><span class="sev-${c.severity}">${SEV[c.severity]}</span> · ${c.label}</div>
-    </div>`).join('');
-}
-renderScenes();
+document.querySelector('#pv-dex').innerHTML = Object.entries(CONDITIONS).map(([code, c]) => `
+  <div class="pv-dex-row">
+    <div class="pv-dex-head">
+      <span class="pv-sev ${c.severity}">${SEV[c.severity]}</span>
+      <span class="pv-dex-label">${c.label}</span>
+      <span class="pv-dex-cond">${c.condition}</span>
+    </div>
+    <div class="pv-dex-scenes">
+      ${CROPS.map(([id, name]) => `
+        <div class="pv-dex-cell">
+          ${conditionScene(id, 'mature', code)}
+          <div class="pv-dex-crop">${name}</div>
+        </div>`).join('')}
+    </div>
+  </div>`).join('');
 
 const weather = Object.entries(CONDITIONS).filter(([, c]) => c.group === 'weather');
 const soil = Object.entries(CONDITIONS).filter(([, c]) => c.group === 'soil');

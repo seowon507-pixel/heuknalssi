@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220" role="img">
+  <title>개화기 저온 피해는 꽃 중심의 암술머리 색으로 확인한다는 도해</title>
+  <g font-family="system-ui, -apple-system, sans-serif" fill="#20342A">
+    <text x="16" y="24" font-size="13" font-weight="700">꽃 중심(암술머리) 색을 비교합니다</text>
+
+    <!-- 정상 꽃 -->
+    <g transform="translate(96 118)">
+      <g fill="#EAF5EE" stroke="#9FBFAE" stroke-width="1.4">
+        <ellipse cx="0" cy="-32" rx="16" ry="22"/>
+        <ellipse cx="0" cy="-32" rx="16" ry="22" transform="rotate(72)"/>
+        <ellipse cx="0" cy="-32" rx="16" ry="22" transform="rotate(144)"/>
+        <ellipse cx="0" cy="-32" rx="16" ry="22" transform="rotate(216)"/>
+        <ellipse cx="0" cy="-32" rx="16" ry="22" transform="rotate(288)"/>
+      </g>
+      <circle cx="0" cy="0" r="12" fill="#8FCBA4" stroke="#4E9A6B" stroke-width="1.6"/>
+      <text x="0" y="52" font-size="12" font-weight="700" text-anchor="middle">연한 녹색</text>
+      <text x="0" y="68" font-size="11" fill="#5F7166" text-anchor="middle">결실 가능</text>
+    </g>
+
+    <!-- 피해 의심 꽃 -->
+    <g transform="translate(268 118)">
+      <g fill="#EAF5EE" stroke="#9FBFAE" stroke-width="1.4">
+        <ellipse cx="0" cy="-32" rx="16" ry="22"/>
+        <ellipse cx="0" cy="-32" rx="16" ry="22" transform="rotate(72)"/>
+        <ellipse cx="0" cy="-32" rx="16" ry="22" transform="rotate(144)"/>
+        <ellipse cx="0" cy="-32" rx="16" ry="22" transform="rotate(216)"/>
+        <ellipse cx="0" cy="-32" rx="16" ry="22" transform="rotate(288)"/>
+      </g>
+      <circle cx="0" cy="0" r="12" fill="#C98A72" stroke="#B4472E" stroke-width="1.6"/>
+      <text x="0" y="52" font-size="12" font-weight="700" fill="#B4472E" text-anchor="middle">갈색</text>
+      <text x="0" y="68" font-size="11" fill="#5F7166" text-anchor="middle">저온 피해 의심</text>
+    </g>
+
+    <text x="182" y="120" font-size="18" fill="#9FBFAE">→</text>
+
+    <text x="16" y="200" font-size="11" fill="#5F7166">저온이 지난 다음 날 아침, 밭에서 가장 낮은 구역부터 꽃을 열어 확인합니다.</text>
+    <text x="384" y="215" font-size="9" fill="#9FBFAE" text-anchor="end">관찰 지점 도해</text>
+  </g>
+</svg>

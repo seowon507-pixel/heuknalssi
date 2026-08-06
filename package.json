@@ -3,10 +3,14 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=22" },
   "description": "청년농부 앱 - 출석체크/포인트/작물 캐릭터 성장/비료 교환 + 프론트엔드(public/)",
   "scripts": {
     "demo": "node demo.js",
-    "start": "node src/server.js",
+    "start": "node scripts/dev-all.mjs",
+    "start:app": "node --env-file-if-exists=.env src/server.js",
+    "start:core": "node --env-file-if-exists=backend-v3/.env backend-v3/server/index.js",
+    "test": "node --test test/*.test.js",
     "test:api": "node test-api.js"
   }
 }

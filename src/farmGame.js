@@ -10,7 +10,7 @@
 
 import { CROPS, CROP_IDS, REWARDS, REDEMPTION_RULES } from './config.js';
 import { createAttendanceState, checkIn, hasCheckedInToday } from './attendance.js';
-import { createCropState, addGrowth, getGrowthProgress, growthForStreak } from './growth.js';
+import { createCropState, addGrowth, getGrowthProgress, growthForStreak, stageIndexForGrowth, totalGrowthRequired } from './growth.js';
 import { createRedemptionLog, redeem, updateOrderStatus, countRedemptionsInMonth } from './redemption.js';
 import { toDateKey } from './dateUtil.js';
 
@@ -137,8 +137,10 @@ export class FarmGame {
    * 키울 작물을 하나 추가합니다. (여러 종류 동시 재배 가능, 같은 종류는 1개씩)
    * @param {string|null} startStageKey - 시작 단계 key (예: 'sprout').
    *   이미 자라 있는 작물을 등록할 때 그 단계부터 시작합니다. 없으면 첫 단계부터.
+   * @param {number|null} startGrowthDays - 이미 키운 일수. 중간부터 앱을 쓰기 시작할 때
+   *   실제 키운 지 며칠째인지 직접 입력받아 그만큼 성장치를 채워줍니다.
    */
-  selectCrop(cropId, when = new Date(), startStageKey = null) {
+  selectCrop(cropId, when = new Date(), startStageKey = null, startGrowthDays = null) {
     const crop = CROPS[cropId];
     if (!crop) {
       return { ok: false, message: `없는 작물입니다: ${cropId}` };
@@ -151,10 +153,19 @@ export class FarmGame {
     }
 
     const cropState = createCropState(cropId);
-    cropState.startedKey = typeof when === 'string' ? when : toDateKey(when);
+    const days = Number.isFinite(startGrowthDays) ? Math.max(0, Math.floor(startGrowthDays)) : 0;
+    const startedAt = days > 0 ? new Date(when.getTime ? when.getTime() - days * 86_400_000 : Date.now() - days * 86_400_000) : when;
+    cropState.startedKey = typeof startedAt === 'string' ? startedAt : toDateKey(startedAt);
+    this.state.crops.push(cropState);
 
-    // 시작 단계 지정: 해당 단계의 요구 성장치에서 시작
-    if (startStageKey) {
+    if (days > 0) {
+      // 이미 키운 일수만큼 성장치를 바로 채움 (일수 = 성장치 단위와 동일)
+      const maxGrowth = totalGrowthRequired(cropId);
+      cropState.growth = Math.min(days, maxGrowth);
+      cropState.stageIndex = stageIndexForGrowth(cropId, cropState.growth);
+      cropState.matured = cropState.growth >= maxGrowth;
+    } else if (startStageKey) {
+      // 시작 단계 지정: 해당 단계의 요구 성장치에서 시작
       const idx = crop.stages.findIndex((s) => s.key === startStageKey);
       if (idx > 0) {
         cropState.growth = crop.stages[idx].daysRequired;
@@ -162,7 +173,6 @@ export class FarmGame {
         cropState.matured = idx === crop.stages.length - 1;
       }
     }
-    this.state.crops.push(cropState);
 
     const stageName = crop.stages[cropState.stageIndex].name;
     return {

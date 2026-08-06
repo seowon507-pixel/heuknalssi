@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
 <title>청년농부 — 오늘의 밭</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -11,6 +11,15 @@
 </head>
 <body>
 <div id="app">
+
+  <!-- ── 로그인 (이메일 인증코드) ───────────────── -->
+  <section id="view-login" class="view" hidden>
+    <div class="login-wrap">
+      <h1 class="wiz-title">이메일로 로그인</h1>
+      <p class="wiz-sub">이메일로 받은 인증코드를 입력하면 로그인돼요.</p>
+      <div id="login-body"></div>
+    </div>
+  </section>
 
   <!-- ── 시작 마법사 (질문식 온보딩) ───────────── -->
   <section id="view-wizard" class="view" hidden>
@@ -34,6 +43,9 @@
 
     <div class="stage-card" id="stage-card"></div>
 
+    <!-- 미니 상점 아이콘 (테두리 꾸미기) -->
+    <div class="shop-dock" id="shop-dock"></div>
+
     <div class="vignette-wrap">
       <div class="vignette" id="vignette"></div>
     </div>
@@ -43,7 +55,9 @@
       <p class="status-sub" id="status-sub"></p>
     </div>
 
-    <button id="checkin-btn" class="btn btn-primary btn-wide"></button>
+    <div class="home-actions">
+      <button id="checkin-btn" class="btn btn-primary btn-wide"></button>
+    </div>
   </section>
 
   <!-- ── 할 일 ────────────────────────────────── -->
@@ -101,11 +115,18 @@
     </div>
     <h3 class="section-label">다이어리</h3>
     <div class="diary-write">
+      <input id="diary-title" type="text" maxlength="40" placeholder="제목 (예: 첫 새싹을 봤다)" autocomplete="off" />
       <textarea id="diary-text" maxlength="300" rows="3" placeholder="오늘 밭에서, 그리고 하루에서 있었던 일을 남겨보세요."></textarea>
+      <!-- 붙인 사진 미리보기 -->
+      <div class="photo-slot" id="photo-slot"></div>
+      <div class="photo-row" id="photo-row"></div>
       <div class="diary-actions">
         <span class="diary-hint" id="diary-hint"></span>
         <button class="btn btn-primary diary-save" id="diary-save">오늘 기록 남기기</button>
       </div>
+      <!-- 카메라 촬영 / 보관함 선택 (숨은 파일 입력) -->
+      <input type="file" id="photo-camera-input" accept="image/*" capture="environment" hidden />
+      <input type="file" id="photo-pick-input" accept="image/*" multiple hidden />
     </div>
     <div class="diary-list" id="diary-list"></div>
     <h3 class="section-label">다 키운 작물</h3>
@@ -115,13 +136,13 @@
   <!-- ── 설정 ─────────────────────────────────── -->
   <section id="view-settings" class="view" hidden>
     <header class="page-head">
-      <h1>설정</h1>
-      <p>밭의 이름표를 관리해요.</p>
+      <h1>마이페이지</h1>
+      <p>내 정보와 밭 꾸미기를 관리해요.</p>
     </header>
     <div class="settings-card" id="settings-profile"></div>
     <div class="settings-card settings-note">
       <p><strong>청년농부</strong>는 매일 출석으로 작물 캐릭터를 키우고,<br/>
-      모은 포인트를 실물 비료로 교환하는 서비스 프로토타입이에요.</p>
+      모은 포인트로 밭 테두리를 꾸미거나 실물 비료로 교환하는 서비스 프로토타입이에요.</p>
     </div>
   </section>
 

@@ -45,8 +45,13 @@ export class UserStore {
     if (!this.persist) return;
     const users = {};
     for (const [uid, game] of this.games) users[uid] = game.toJSON();
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-    fs.writeFileSync(DATA_FILE, JSON.stringify({ stock: this.stock, users }, null, 2));
+    try {
+      fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+      fs.writeFileSync(DATA_FILE, JSON.stringify({ stock: this.stock, users }, null, 2));
+    } catch {
+      // 읽기 전용 파일시스템(예: 서버리스 배포)에서는 저장을 건너뜁니다.
+      // 이 경우 진행 상황은 그 요청 처리 동안의 메모리에만 남습니다.
+    }
   }
 
   /** userId에 해당하는 게임을 가져오고, 없으면 새로 만듭니다. (신규 = isFirstTime true) */

@@ -1,0 +1,22 @@
+{
+  "name": "heuknalssi-backend-v3",
+  "version": "3.0.0",
+  "private": true,
+  "description": "흙날씨.진단 v3 백엔드 — 근거·자료상태·행동 중심 분석 API",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test",
+    "check": "node scripts/check-project.js",
+    "verify:backtest": "node --env-file-if-exists=../.env scripts/verify-backtests.js",
+    "verify:backtest:1y": "node --env-file-if-exists=../.env scripts/verify-one-year-backtest.js",
+    "verify:backtest:forecast-extended": "node --env-file-if-exists=../.env scripts/verify-forecast-extended.js",
+    "verify:backtest:evidence": "node scripts/verify-evidence-backtests.js",
+    "verify:live": "node --env-file-if-exists=../.env scripts/verify-live-providers.js",
+    "verify:flow": "node scripts/verify-natural-flow.js",
+    "verify:knowledge-images": "node scripts/verify-knowledge-images.js"
+  }
+}
