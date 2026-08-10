@@ -127,6 +127,25 @@ function toSession(body, fallbackEmail) {
   };
 }
 
+// Supabase(GoTrue)가 돌려주는 error_code별 한국어 메시지.
+// 모르는 코드는 각 호출부에서 넘긴 한국어 fallbackMessage를 그대로 쓴다 —
+// Supabase의 영어 원문(msg/error_description)은 절대 사용자에게 보여주지 않는다.
+const AUTH_ERROR_MESSAGES = {
+  email_address_invalid: '올바른 이메일 형식이 아니에요.',
+  validation_failed: '입력값을 다시 확인해 주세요.',
+  user_already_exists: '이미 가입된 이메일이에요.',
+  email_exists: '이미 가입된 이메일이에요.',
+  weak_password: '비밀번호가 너무 약해요. 다른 비밀번호로 시도해 주세요.',
+  same_password: '이전과 같은 비밀번호는 사용할 수 없어요.',
+  invalid_credentials: '이메일 또는 비밀번호가 올바르지 않아요.',
+  email_not_confirmed: '이메일 인증이 아직 완료되지 않았어요.',
+  otp_expired: '인증코드가 만료됐어요. 다시 요청해 주세요.',
+  otp_disabled: '인증코드 기능을 사용할 수 없어요.',
+  signup_disabled: '지금은 회원가입을 받고 있지 않아요.',
+  over_email_send_rate_limit: '이메일 요청이 너무 많아요. 잠시 후 다시 시도해 주세요.',
+  over_request_rate_limit: '요청이 너무 많아요. 잠시 후 다시 시도해 주세요.',
+};
+
 async function toAuthError(res, fallbackMessage) {
   let body = null;
   try {
@@ -134,7 +153,7 @@ async function toAuthError(res, fallbackMessage) {
   } catch {
     // 본문이 JSON이 아니면 무시
   }
-  const message = body?.error_description || body?.msg || body?.message || fallbackMessage;
   const code = body?.error_code || body?.code || 'AUTH_ERROR';
+  const message = AUTH_ERROR_MESSAGES[code] || fallbackMessage;
   return new AuthError(message, { status: res.status, code });
 }
