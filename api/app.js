@@ -1,4 +1,4 @@
-// 청년농부 게임 API(출석·작물·토양검정 등)를 Vercel 서버리스 함수로 노출합니다.
+// 귀농이 게임 API(출석·작물·토양검정 등)를 Vercel 서버리스 함수로 노출합니다.
 // src/server.js의 handleRequest(req,res)를 그대로 재사용합니다 — 로컬(node src/server.js)과
 // 이 함수가 완전히 같은 라우팅 로직을 씁니다.
 // vercel.json의 rewrite가 /api/* 요청을 이 함수로 보냅니다

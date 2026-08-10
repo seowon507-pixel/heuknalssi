@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": { "node": ">=22" },
-  "description": "청년농부 앱 - 출석체크/포인트/작물 캐릭터 성장/비료 교환 + 프론트엔드(public/)",
+  "description": "귀농이 앱 - 출석체크/포인트/작물 캐릭터 성장/비료 교환 + 프론트엔드(public/)",
   "scripts": {
     "demo": "node demo.js",
     "start": "node scripts/dev-all.mjs",
